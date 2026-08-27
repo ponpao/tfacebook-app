@@ -1,0 +1,104 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  /* The accounts grid owns its own horizontal/vertical scrollbars; the
+     window shell must never grow its own or the app shows two scrollbars
+     stacked on top of each other. */
+  overflow: hidden;
+}
+
+body {
+  background: #f0f0f0;
+  color: #1a1a1a;
+  font-family: 'Segoe UI', Tahoma, system-ui, sans-serif;
+  font-size: 12px;
+  user-select: none;
+}
+
+/* Window drag regions for the frameless title bar */
+.drag {
+  -webkit-app-region: drag;
+}
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* Thin classic scrollbars */
+*::-webkit-scrollbar {
+  width: 14px;
+  height: 14px;
+}
+*::-webkit-scrollbar-thumb {
+  background: #c8c8c8;
+  border: 3px solid #f0f0f0;
+  border-radius: 8px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+*::-webkit-scrollbar-track {
+  background: #f0f0f0;
+}
+
+@layer components {
+  /* Classic raised WinForms-style button */
+  .win-btn {
+    @apply inline-flex items-center gap-1 rounded-[3px] border border-[#adadad] bg-gradient-to-b
+           from-white to-[#e6e6e6] px-2.5 py-1 text-[12px] text-[#1a1a1a]
+           hover:from-[#f5faff] hover:to-[#dceefb] hover:border-[#7eb4ea]
+           active:from-[#dce9f7] active:to-[#c7ddf5]
+           disabled:opacity-50 disabled:pointer-events-none transition-colors;
+  }
+  /* Small icon-only square button (folder +/-/edit) */
+  .win-btn-sq {
+    @apply inline-flex h-[26px] w-[26px] items-center justify-center rounded-[3px]
+           border border-[#adadad] bg-gradient-to-b from-white to-[#e6e6e6]
+           text-[#1a1a1a] hover:from-[#f5faff] hover:to-[#dceefb] hover:border-[#7eb4ea]
+           active:from-[#dce9f7] active:to-[#c7ddf5]
+           disabled:opacity-50 disabled:pointer-events-none transition-colors;
+  }
+  /* Yellow/orange highlighted primary action (Import) */
+  .win-btn-accent {
+    @apply inline-flex items-center gap-1 rounded-[3px] border border-[#d9a300]
+           bg-gradient-to-b from-[#ffe08a] to-[#ffc93c] px-3 py-1 text-[12px]
+           font-semibold text-[#5a4300] hover:from-[#ffe9a8] hover:to-[#ffd35c]
+           active:from-[#f5c93c] active:to-[#e8b52a] transition-colors;
+  }
+  /* Classic fieldset group box — thin, clean 1px line (folder manager,
+     search, threads, scenario boxes all use this one class). A previous
+     pass thickened this to border-2 for a "heavier" look; reverted per
+     feedback that it read as too bulky/less professional, not more defined. */
+  .win-fieldset {
+    @apply relative rounded-[2px] border border-slate-300 bg-[#fbfbfb] px-2.5 pb-1.5 pt-2 shadow-none;
+  }
+  .win-fieldset > legend {
+    @apply px-1 text-[11px] text-[#555];
+  }
+  /* Classic sunken input / select — thin border, no focus glow/ring. Flat,
+     professional desktop look: no box-shadow on focus, just a color change. */
+  .win-input {
+    @apply rounded-[2px] border border-slate-300 bg-white px-1.5 py-[3px] text-[12px]
+           text-[#1a1a1a] shadow-none outline-none ring-0 focus:border-[#0078d4] focus:shadow-none focus:ring-0
+           disabled:bg-[#f0f0f0] disabled:text-[#888];
+  }
+  .win-select {
+    @apply rounded-[2px] border border-slate-300 bg-white px-1.5 py-[3px] text-[12px]
+           text-[#1a1a1a] shadow-none outline-none ring-0 focus:border-[#0078d4] focus:shadow-none focus:ring-0;
+  }
+  /* Menu strip item */
+  .menu-item {
+    @apply inline-flex items-center gap-1 px-2.5 py-1 text-[12px] text-[#333]
+           hover:bg-[#e5f1fb] hover:border hover:border-[#b6d5f0] border border-transparent
+           rounded-[2px] cursor-default;
+  }
+}

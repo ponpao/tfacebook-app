@@ -1,0 +1,91 @@
+// ---------------------------------------------------------------------------
+// electron-builder.json5 — Windows packaging config.
+//   * NSIS installer (.exe) + portable (.exe) targets
+//   * better-sqlite3 / sharp ship compiled .node binaries and are unpacked
+//     from asar (native modules can't be loaded from inside an asar archive)
+//   * the pre-staged Playwright Chromium build (see scripts/prepare-chromium.cjs)
+//     ships as an extraResource so end users never run `playwright install`
+// ---------------------------------------------------------------------------
+{
+  appId: 'com.tfacebook.app',
+  productName: 'TFACEBOOK',
+  copyright: 'Copyright © 2026',
+
+  // GitHub Releases as the update feed — electron-updater (see src/main/updater.ts)
+  // checks this repo's latest release for a newer version. Auth for `electron-builder
+  // --publish` comes from the GH_TOKEN/GITHUB_TOKEN env var at publish time, not from
+  // anything in this file; releaseType 'release' means `npm run release` publishes a
+  // normal (non-draft, non-prerelease) GitHub Release once run with that token set.
+  publish: {
+    provider: 'github',
+    owner: 'ponpao',
+    repo: 'tfacebook-app',
+    releaseType: 'release'
+  },
+
+  directories: {
+    output: 'dist',
+    buildResources: 'build'
+  },
+
+  files: [
+    'out/**/*',
+    'package.json',
+    // Only the downloaded browser binaries live outside the asar (shipped via
+    // extraResources instead) — the playwright/playwright-core npm packages
+    // themselves (the JS API that `require("playwright")` needs) must stay.
+    '!node_modules/playwright-core/.local-browsers/**/*',
+    '!node_modules/**/*.md',
+    '!node_modules/**/*.map'
+  ],
+
+  // better-sqlite3 / sharp ship compiled .node binaries — they must live
+  // outside the asar archive so Node's native module loader (dlopen) can
+  // find them. sharp's actual prebuilt binary lives in the platform-specific
+  // @img/sharp-win32-x64 package, not in node_modules/sharp itself.
+  asarUnpack: [
+    '**/node_modules/better-sqlite3/**/*',
+    '**/node_modules/sharp/**/*',
+    '**/node_modules/@img/**/*'
+  ],
+
+  // Bundled Chromium (staged by `npm run prepare:chromium`) + a writable
+  // empty "profiles" folder aren't needed here — account profiles are
+  // created at runtime under app.getPath('userData').
+  extraResources: [
+    {
+      from: 'resources/ms-playwright',
+      to: 'ms-playwright',
+      filter: ['**/*']
+    }
+  ],
+
+  win: {
+    target: [
+      { target: 'nsis', arch: ['x64'] },
+      { target: 'portable', arch: ['x64'] }
+    ],
+    icon: 'build/icon.ico',
+    artifactName: '${productName}-Setup-${version}.${ext}',
+    requestedExecutionLevel: 'asInvoker'
+  },
+
+  nsis: {
+    oneClick: false,
+    perMachine: false,
+    allowToChangeInstallationDirectory: true,
+    createDesktopShortcut: true,
+    createStartMenuShortcut: true,
+    shortcutName: 'TFACEBOOK',
+    artifactName: '${productName}-Setup-${version}.${ext}'
+  },
+
+  portable: {
+    artifactName: '${productName}-Portable-${version}.${ext}'
+  },
+
+  extraMetadata: {
+    // Surfaced in the .exe's file properties (Details tab) on Windows.
+    description: 'Desktop suite for managing, warming up, and automating large batches of Facebook accounts.'
+  }
+}

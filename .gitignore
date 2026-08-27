@@ -1,0 +1,26 @@
+node_modules/
+out/
+dist/
+resources/ms-playwright/
+*.log
+.DS_Store
+# Leftover debug screenshots from ad-hoc diagnostics, not project source.
+diag-*.png
+# Runtime account data (real photos, may carry EXIF/GPS), not project source.
+avatar_unlock/
+# Transient tool/session lock state, not project source.
+.claude/
+data.sqlite
+data.sqlite-*
+.vite/
+
+# Never commit the GitHub token electron-builder needs to publish releases
+# (GH_TOKEN / GITHUB_TOKEN) or the Firebase service account credentials
+# Cloud Sync uses (see src/main/services/firebaseConfig.ts) — set them as
+# real environment variables instead, or in a local .env file that stays
+# untracked. .env.example is the one exception: it's a secret-free template
+# meant to be committed, so it's explicitly un-ignored below.
+.env
+.env.*
+!.env.example
+firebase-service-account*.json
