@@ -177,6 +177,11 @@ export async function pushToDevice(targetMachineId: string, accountIds: number[]
   }
 }
 
+/** {userData}/firebase-service-account.json — same path resolveServiceAccount() checks as its final fallback (see firebaseConfig.ts). Checked again here, explicitly, so a pull fails with an unambiguous message up front rather than surfacing an opaque firebase-admin auth error deeper in the call stack. */
+function userDataKeyFilePath(): string {
+  return join(electronApp.getPath('userData'), 'firebase-service-account.json')
+}
+
 /**
  * Pull: reads the pointer doc at devices/{machineId}, downloads the zip from
  * Storage, extracts it, restores accounts into "Receive Account" and
@@ -185,38 +190,59 @@ export async function pushToDevice(targetMachineId: string, accountIds: number[]
  * the payload doesn't linger in the cloud past this one successful pull. A
  * failure at any point leaves the cloud data untouched, so the user can
  * retry the pull rather than losing the payload to a failed first attempt.
+ *
+ * Every failure path returns rather than throws, with an explicit `message`
+ * describing exactly what went wrong (missing key file, no pending payload,
+ * a Storage download error, a corrupt archive, etc.) — the one exception is
+ * a genuinely unexpected error, which the outer try/catch still converts to
+ * the same { success: false, message } shape rather than letting it reject.
  */
-export async function pullFromDevice(machineId: string): Promise<CloudPullResult> {
-  const { db } = getFirebase()
+export async function pullPendingPayload(targetMachineId: string): Promise<CloudPullResult> {
+  const failure = (message: string): CloudPullResult => ({
+    success: false,
+    importedCount: 0,
+    skippedCount: 0,
+    profilesRestoredCount: 0,
+    count: 0,
+    message
+  })
+
   const workDir = tempWorkDir('pull')
-  await mkdir(workDir, { recursive: true })
 
   try {
-    const docRef = db.collection('devices').doc(machineId)
+    // Only meaningful when no inline/env service account is configured
+    // either — resolveServiceAccount() already checks this same path as its
+    // last fallback, but a pull that's about to fail deep inside the
+    // firebase-admin SDK with an opaque auth error is much harder to
+    // diagnose than one that fails here with a plain, specific message.
+    if (!resolveServiceAccount() && !process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+      const keyPath = userDataKeyFilePath()
+      if (!existsSync(keyPath)) {
+        throw new Error('Firebase Key file not found in fb-account-manager directory.')
+      }
+    }
+
+    const { db } = getFirebase()
+    await mkdir(workDir, { recursive: true })
+
+    const docRef = db.collection('devices').doc(targetMachineId)
     const doc = await docRef.get()
     if (!doc.exists) {
-      return {
-        success: false,
-        importedCount: 0,
-        skippedCount: 0,
-        profilesRestoredCount: 0,
-        message: `No pending Cloud Sync payload found for Machine ID ${machineId}.`
-      }
+      return failure('No pending sync package found for this Machine ID on Cloud.')
     }
     const data = doc.data() as { storagePath?: string }
     if (!data?.storagePath) {
-      return {
-        success: false,
-        importedCount: 0,
-        skippedCount: 0,
-        profilesRestoredCount: 0,
-        message: 'Cloud Sync record is malformed (missing storage path) — not deleting it automatically.'
-      }
+      return failure('Cloud Sync record is malformed (missing storage path) — not deleting it automatically.')
     }
 
     const zipPath = join(workDir, 'payload.zip')
     const bucket = getStorage(firebaseApp!).bucket()
-    await bucket.file(data.storagePath).download({ destination: zipPath })
+    try {
+      await bucket.file(data.storagePath).download({ destination: zipPath })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      return failure(message)
+    }
 
     const extractDir = join(workDir, 'extracted')
     await mkdir(extractDir, { recursive: true })
@@ -225,13 +251,7 @@ export async function pullFromDevice(machineId: string): Promise<CloudPullResult
 
     const manifestPath = join(extractDir, 'manifest.json')
     if (!existsSync(manifestPath)) {
-      return {
-        success: false,
-        importedCount: 0,
-        skippedCount: 0,
-        profilesRestoredCount: 0,
-        message: 'Downloaded payload is invalid (manifest.json missing) — not deleting the cloud record.'
-      }
+      return failure('Downloaded payload is invalid (manifest.json missing) — not deleting the cloud record.')
     }
     const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as BackupManifest
 
@@ -302,11 +322,12 @@ export async function pullFromDevice(machineId: string): Promise<CloudPullResult
       importedCount,
       skippedCount,
       profilesRestoredCount,
+      count: importedCount,
       message: `Pulled ${importedCount} account(s) and restored ${profilesRestoredCount} profile(s) into "${RECEIVE_ACCOUNT_FOLDER_NAME}". Cloud copy deleted.`
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    return { success: false, importedCount: 0, skippedCount: 0, profilesRestoredCount: 0, message }
+    return failure(message)
   } finally {
     await rm(workDir, { recursive: true, force: true }).catch(() => void 0)
   }

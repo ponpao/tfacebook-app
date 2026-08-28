@@ -17,5 +17,7 @@ export interface CloudPullResult {
   importedCount: number
   skippedCount: number
   profilesRestoredCount: number
+  /** Same as importedCount — kept as a short alias so simple UI code can read res.count directly. */
+  count: number
   message?: string
 }

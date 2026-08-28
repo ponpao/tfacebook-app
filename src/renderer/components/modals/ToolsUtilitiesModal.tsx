@@ -228,12 +228,15 @@ export function ToolsUtilitiesModal({
     try {
       const res = await window.api.cloudSync.pull(myMachineId)
       if (res.success) {
-        showToast(res.message ?? `Pulled ${res.importedCount} account(s).`, 6000)
         await refresh()
         await refreshFolders()
+        alert(`Successfully pulled ${res.count} account(s)!`)
+        onClose()
       } else {
-        showToast(res.message ?? 'Cloud Sync pull failed.', 6000)
+        alert(res.message ?? 'Cloud Sync pull failed.')
       }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err))
     } finally {
       setPulling(false)
     }
@@ -530,7 +533,7 @@ export function ToolsUtilitiesModal({
                   onClick={() => void runCloudPull()}
                   disabled={pulling || !myMachineId}
                 >
-                  {pulling ? 'Pulling…' : 'Pull My Pending Data'}
+                  {pulling ? 'Checking Cloud...' : 'Pull My Pending Data'}
                 </button>
               </div>
             </div>

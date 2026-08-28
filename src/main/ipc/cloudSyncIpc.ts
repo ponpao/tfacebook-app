@@ -6,7 +6,7 @@
 import { ipcMain, BrowserWindow } from 'electron'
 import { IPC } from './channels'
 import { getMachineId } from '../services/machineId'
-import { pushToDevice, pullFromDevice } from '../services/cloudSync'
+import { pushToDevice, pullPendingPayload } from '../services/cloudSync'
 import type { CloudPullResult } from '../../types/cloudSync'
 
 export function registerCloudSyncIpcHandlers(): void {
@@ -17,7 +17,7 @@ export function registerCloudSyncIpcHandlers(): void {
   )
 
   ipcMain.handle(IPC.cloudSync.pull, async (_e, machineId: string) => {
-    const outcome = await pullFromDevice(machineId.trim().toUpperCase())
+    const outcome = await pullPendingPayload(machineId.trim().toUpperCase())
     if (outcome.success) {
       // Same cross-window refresh pattern as backupIpc.ts's import handler —
       // any open window's grid/folder manager should pick up the newly
