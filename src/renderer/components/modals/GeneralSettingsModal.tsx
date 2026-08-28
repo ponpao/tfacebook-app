@@ -186,6 +186,15 @@ export function GeneralSettingsModal({
             Auto-save cookies after a successful login
           </label>
 
+          <label className="flex items-center gap-1.5" title="When a queued account's saved cookie is still valid, go straight to the warm-up scenario instead of running full auto-login — credentials are only ever entered if the session turns out to be dead/logged out.">
+            <input
+              type="checkbox"
+              checked={settings.directWarmup}
+              onChange={(e) => patch({ directWarmup: e.target.checked })}
+            />
+            Direct Warm-up (Skip Login if Session/Cookie is Valid)
+          </label>
+
           <label className="flex flex-col gap-1.5">
             <span className="font-medium text-slate-700">
               Chrome Profile Storage Path <span className="text-slate-400">(optional override)</span>

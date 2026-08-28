@@ -6,7 +6,7 @@
 import { useEffect, useState } from 'react'
 import { Minus, Square, X, Copy } from 'lucide-react'
 import { AppLogo } from './AppLogo'
-import { TITLEBAR_PATTERN_URL } from '../assets/titlebarPattern'
+import { HEADER_HEX_PATTERN_URL } from '../assets/headerHexPattern'
 
 export function TitleBar(): React.JSX.Element {
   const [maximized, setMaximized] = useState(false)
@@ -24,10 +24,10 @@ export function TitleBar(): React.JSX.Element {
 
   return (
     <div
-      className="drag flex h-[38px] items-center justify-between border-b border-[#d0d0d0] bg-white pl-2 pr-0"
+      className="drag relative flex h-[38px] items-center justify-between border-b border-[#e4d8bc] bg-[#fdf9f0] pl-2 pr-0"
       style={{
-        backgroundImage: TITLEBAR_PATTERN_URL,
-        backgroundSize: '160px 160px',
+        backgroundImage: HEADER_HEX_PATTERN_URL,
+        backgroundSize: '56px 98px',
         backgroundRepeat: 'repeat'
       }}
     >

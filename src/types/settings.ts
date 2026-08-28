@@ -43,6 +43,20 @@ export interface AppSettings {
   /** Block image/media/font requests (except on checkpoint pages) to cut RAM/CPU usage across many concurrent instances. */
   blockMedia: boolean
   /**
+   * When a queued account already has a live/logged-in session (its saved
+   * cookie is still valid — checked by DOM presence of the login form, not
+   * navigating through the credential/2FA flow at all), go straight to the
+   * scenario's warm-up actions instead of running full auto-login. This is
+   * runAutoLogin's actual behavior unconditionally (there's no reason to
+   * ever force re-entering credentials on an already-valid session) — this
+   * setting instead controls whether the warm-up scenario runs at all in
+   * that fast path. Off: an already-live account is still classified/
+   * refreshed but skips the scenario's actions, useful for a pure
+   * liveness-check batch that shouldn't also act on every account it finds
+   * already logged in.
+   */
+  directWarmup: boolean
+  /**
    * This PC's persistent, human-shareable Cloud Sync identifier (format:
    * `TFA` + 5 digits, e.g. `TFA90488`) — generated once on first use and
    * never regenerated afterward, so a Machine ID printed/shared once stays
@@ -65,7 +79,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   defaultScenarioId: null,
   metadataExtractionMode: 'full',
   twoCaptchaApiKey: '',
-  blockMedia: false
+  blockMedia: false,
+  directWarmup: true
 }
 
 export const SETTINGS_KEY = 'app.generalSettings'

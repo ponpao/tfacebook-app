@@ -1,12 +1,13 @@
 // ---------------------------------------------------------------------------
 // RibbonToolbar.tsx  — single unified, draggable/floatable WinForms ribbon.
-//   All controls (run/stop, threads, scenario, search, folder management,
-//   import, and the automation action buttons) live in one merged bar.
-//   Dragging the grip handle detaches it into a free-floating panel the user
-//   can reposition anywhere on screen; "Dock" snaps it back to its normal
-//   place in the layout. Both the floating/docked state and the last
-//   floating position persist across restarts (localStorage), same pattern
-//   as this app's column-width/scenario persistence.
+//   Row 1: run controls (Start/Stop), Threads/Scenario/Search/Folder Manager
+//     fieldsets, and Import Accounts pushed to the far right.
+//   Row 2: the automation action buttons rendered as soft pastel pills.
+//   Dragging the grip handle detaches the whole ribbon into a free-floating
+//   panel the user can reposition anywhere on screen; "Dock" snaps it back
+//   to its normal place in the layout. Both the floating/docked state and
+//   the last floating position persist across restarts (localStorage), same
+//   pattern as this app's column-width/scenario persistence.
 // ---------------------------------------------------------------------------
 import { useEffect, useRef, useState } from 'react'
 import {
@@ -57,17 +58,34 @@ const STATUS_OPTIONS: (AccountStatus | 'All')[] = [
   'Unknown'
 ]
 
-const ACTION_BUTTONS = [
-  { icon: BookOpen, label: 'Auto Post' },
-  { icon: Share2, label: 'Auto Share' },
-  { icon: Video, label: 'Watch Live' },
-  { icon: UserCog, label: 'Change Info' },
-  { icon: Upload, label: 'Import Useragent' },
-  { icon: Globe, label: 'Import Proxy' },
-  { icon: FileDown, label: 'Export Accounts' },
-  { icon: Shuffle, label: 'Randomize' },
-  { icon: XCircle, label: 'Close Browsers' }
+// Soft pastel pill colors per action — background/border/text triples kept
+// light enough that the pill reads as a badge, not a solid button, matching
+// the "Studio"-style toolbar's Row 2.
+const ACTION_BUTTONS: {
+  icon: typeof BookOpen
+  label: string
+  bg: string
+  border: string
+  text: string
+}[] = [
+  { icon: BookOpen, label: 'Auto Post', bg: '#e8f2fd', border: '#bcdcf7', text: '#1a5c96' },
+  { icon: Share2, label: 'Auto Share', bg: '#e9f8ec', border: '#bfe8c8', text: '#1e7d34' },
+  { icon: Video, label: 'Watch Live', bg: '#fdeaec', border: '#f5c3c9', text: '#b8283c' },
+  { icon: UserCog, label: 'Change Info', bg: '#fdf7e3', border: '#f0e2ad', text: '#8a6d10' },
+  { icon: Upload, label: 'Import UA', bg: '#eef0f4', border: '#d3d8e2', text: '#48505e' },
+  { icon: Globe, label: 'Import Proxy', bg: '#eef0f4', border: '#d3d8e2', text: '#48505e' },
+  { icon: FileDown, label: 'Export', bg: '#eef0f4', border: '#d3d8e2', text: '#48505e' },
+  { icon: Shuffle, label: 'Randomize', bg: '#f3ecfb', border: '#ddc7f2', text: '#6b3aa0' },
+  { icon: XCircle, label: 'Close Browsers', bg: '#fbebe8', border: '#f2c9c0', text: '#a8442e' }
 ]
+
+// Action-handler lookup keys stay stable (independent of any display-label
+// wording changes above) — Import UA/Import Proxy/Export map to the same
+// underlying actions as before under their fuller original names.
+const ACTION_KEYS: Record<string, string> = {
+  'Import UA': 'Import Useragent',
+  Export: 'Export Accounts'
+}
 
 const TOOLBAR_POS_KEY = 'ui.toolbarFloatPosition'
 const TOOLBAR_DOCKED_KEY = 'ui.toolbarDocked'
@@ -260,12 +278,12 @@ export function RibbonToolbar({
         )}
       </div>
 
-      {/* ---- Unified control row (merged former Row 1 + Row 2) ---- */}
+      {/* ---- Row 1: run controls, threads/scenario/search/folder fieldsets, Import pushed far right ---- */}
       <div className="flex flex-wrap items-end gap-2 px-2 py-1.5">
         {/* Action group: Start / Run + Stop */}
         <div className="flex items-center gap-1.5">
           <button
-            className="win-btn h-[38px] justify-center px-3 font-semibold"
+            className="win-btn-start h-[38px]"
             onClick={() => void runSelectedQueue()}
             disabled={queueRunning || selectedCount === 0}
             title={
@@ -274,11 +292,11 @@ export function RibbonToolbar({
                 : `Run Auto-Login on ${selectedCount} selected account(s)`
             }
           >
-            <Play size={15} className="fill-[#1e9e4a] text-[#1e9e4a]" />
+            <Play size={15} className="fill-white text-white" />
             Start / Run{selectedCount > 0 ? ` (${selectedCount})` : ''}
           </button>
           <button
-            className="win-btn h-[38px] justify-center px-3"
+            className="win-btn-stop h-[38px]"
             onClick={() => void stopQueueRun()}
             disabled={!queueRunning}
           >
@@ -409,29 +427,29 @@ export function RibbonToolbar({
           </button>
         </fieldset>
 
-        {/* Primary Import button — same height as fieldset content */}
+        {/* Primary Import button — pushed to the far right of Row 1 via ml-auto */}
         <button
-          className="win-btn-accent h-[38px] justify-center px-4"
+          className="win-btn-accent ml-auto h-[38px] justify-center px-4"
           onClick={onImport}
         >
           <Download size={15} />
           Import Accounts
         </button>
+      </div>
 
-        {/* Automation action buttons — merged into the same unified row
-            (previously a visually separate second row) */}
-        <div className="flex flex-wrap items-center gap-1.5 self-center border-l border-slate-200 pl-2">
-          {ACTION_BUTTONS.map(({ icon: Icon, label }) => (
-            <button
-              key={label}
-              className="win-btn h-[32px] px-3"
-              onClick={actionHandlers[label]}
-            >
-              <Icon size={14} className="text-[#4a6a8a]" />
-              {label}
-            </button>
-          ))}
-        </div>
+      {/* ---- Row 2: soft pastel action pills ---- */}
+      <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 px-2 py-1.5">
+        {ACTION_BUTTONS.map(({ icon: Icon, label, bg, border, text }) => (
+          <button
+            key={label}
+            className="action-pill"
+            style={{ backgroundColor: bg, borderColor: border, color: text }}
+            onClick={actionHandlers[ACTION_KEYS[label] ?? label]}
+          >
+            <Icon size={14} />
+            {label}
+          </button>
+        ))}
       </div>
 
       <AutoPostModal open={autoPostOpen} onClose={() => setAutoPostOpen(false)} />

@@ -1775,7 +1775,14 @@ export async function runAutoLogin(
       if (res.status === 'Live') {
         metadata = await extractAllMetadata(page, context, account.uid, signal)
         checkAborted(signal)
-        if (options.onLoggedIn) {
+        // Direct Warm-up (General Settings, default on): this is the
+        // "session was already valid, no credentials were ever entered"
+        // fast path — run the queued warm-up scenario right away instead of
+        // treating this as just a liveness check. Off skips straight to
+        // returning the (still fully refreshed) result below, useful for a
+        // pure liveness-check batch that shouldn't also act on every
+        // account it finds already logged in.
+        if (options.onLoggedIn && getAppSettings().directWarmup) {
           await options.onLoggedIn(page)
         }
       }

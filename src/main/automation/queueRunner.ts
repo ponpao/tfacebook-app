@@ -241,6 +241,15 @@ export async function runQueue(
         failed += 1
         const message = err instanceof Error ? err.message : String(err)
         emit('Error', message)
+        // Persist the exact failure reason to the account's Status column —
+        // without this, a scenario/navigation error that isn't one of
+        // autoLogin's own classified outcomes (Live/Checkpoint/Die/...)
+        // would flash briefly in the progress toast and then vanish,
+        // leaving no record of why this account's run actually failed.
+        accountsRepo.updateAccount(account.id, {
+          status_detail: `Error: ${message}`,
+          last_active: new Date().toISOString().slice(0, 19).replace('T', ' ')
+        })
       }
     }
   }

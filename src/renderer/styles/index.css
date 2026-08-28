@@ -95,6 +95,28 @@ body {
     @apply rounded-[2px] border border-slate-300 bg-white px-1.5 py-[3px] text-[12px]
            text-[#1a1a1a] shadow-none outline-none ring-0 focus:border-[#0078d4] focus:shadow-none focus:ring-0;
   }
+  /* Solid green primary action (Start / Run) */
+  .win-btn-start {
+    @apply inline-flex items-center gap-1.5 rounded-[6px] border border-[#178a3e]
+           bg-[#1e9e4a] px-3 py-1 text-[12px] font-semibold text-white
+           hover:bg-[#22ab52] active:bg-[#178a3e]
+           disabled:opacity-50 disabled:pointer-events-none transition-colors;
+  }
+  /* Red-outline secondary action (Stop) */
+  .win-btn-stop {
+    @apply inline-flex items-center gap-1.5 rounded-[6px] border border-[#c81e1e]
+           bg-white px-3 py-1 text-[12px] font-semibold text-[#c81e1e]
+           hover:bg-[#fdecec] active:bg-[#fadbdb]
+           disabled:opacity-50 disabled:pointer-events-none transition-colors;
+  }
+  /* Soft pastel action pill (Auto Post / Auto Share / Watch Live / ... row).
+     Color comes from a small per-button style map, not a fixed class — this
+     just supplies the shared shape/hover behavior every pill shares. */
+  .action-pill {
+    @apply inline-flex items-center gap-1.5 rounded-full border px-3 py-1
+           text-[12px] font-medium transition-colors hover:brightness-95
+           active:brightness-90 disabled:opacity-50 disabled:pointer-events-none;
+  }
   /* Menu strip item */
   .menu-item {
     @apply inline-flex items-center gap-1 px-2.5 py-1 text-[12px] text-[#333]

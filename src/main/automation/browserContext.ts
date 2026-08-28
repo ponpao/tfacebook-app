@@ -308,6 +308,7 @@ export async function launchContext({
   const args = [
     '--disable-blink-features=AutomationControlled',
     '--no-sandbox',
+    '--disable-setuid-sandbox',
     '--disable-infobars',
     '--disable-dev-shm-usage',
     '--disable-save-password-bubble',
@@ -316,10 +317,16 @@ export async function launchContext({
   ]
 
   // MaxCare-style compact tiling — only meaningful for headed windows; a
-  // headless context has no on-screen window to position.
+  // headless context has no on-screen window to position. Headless still
+  // gets an explicit --window-size: Chromium's headless default viewport
+  // is a smaller, distinctive size some bot-detection heuristics key off
+  // of, so a normal-looking 1280x800 is worth setting even with nothing
+  // to visually show.
   if (!resolvedHeadless) {
     const { x, y } = tilePosition(slotIndex ?? 0)
     args.push(`--window-size=${TILE_WIDTH},${TILE_HEIGHT}`, `--window-position=${x},${y}`)
+  } else {
+    args.push('--window-size=1280,800')
   }
 
   const context = await chromium.launchPersistentContext(dir, {
