@@ -81,7 +81,14 @@ export const IPC = {
     runWatchLive: 'automation:runWatchLive',
     unlock282: 'automation:unlock282',
     loginWithCookieBatch: 'automation:loginWithCookieBatch',
-    onCookieLoginProgress: 'automation:onCookieLoginProgress'
+    onCookieLoginProgress: 'automation:onCookieLoginProgress',
+    addFriendsByUidList: 'automation:addFriendsByUidList',
+    addSuggestedFriends: 'automation:addSuggestedFriends',
+    unfriendAll: 'automation:unfriendAll',
+    joinGroupsByIdList: 'automation:joinGroupsByIdList',
+    joinSuggestedGroups: 'automation:joinSuggestedGroups',
+    leaveGroups: 'automation:leaveGroups',
+    onFriendsGroupsItemProgress: 'automation:onFriendsGroupsItemProgress'
   },
   utils: {
     parseSpinSyntax: 'utils:parseSpinSyntax',

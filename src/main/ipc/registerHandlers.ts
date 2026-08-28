@@ -34,6 +34,14 @@ import { batchChangeInfo } from '../automation/changeInfo'
 import { watchLive } from '../automation/watchLive'
 import { runUnlock282 } from '../automation/unlock282'
 import { loginWithCookieBatch } from '../services/browserAutomation'
+import {
+  runAddFriendsByUidList,
+  runAddSuggestedFriends,
+  runUnfriendAll,
+  runJoinGroupsByIdList,
+  runJoinSuggestedGroups,
+  runLeaveGroups
+} from '../automation/friendsGroups'
 import { resolveProfileDir } from '../automation/browserContext'
 import { cleanProfiles } from '../automation/profileOptimizer'
 import { buildExportLines } from '../utils/exportAccounts'
@@ -51,7 +59,13 @@ import type {
   ChangeInfoRequest,
   WatchLiveRequest,
   AssignProxyRequest,
-  AssignUseragentRequest
+  AssignUseragentRequest,
+  AddFriendsByUidListRequest,
+  AddSuggestedFriendsRequest,
+  UnfriendAllRequest,
+  JoinGroupsByIdListRequest,
+  JoinSuggestedGroupsRequest,
+  LeaveGroupsRequest
 } from '../../types/marketing'
 
 /** Best-effort recursive removal of each account's saved browser profile folder. */
@@ -269,8 +283,8 @@ export function registerIpcHandlers(): void {
       ...(res.cookie ? { cookie: res.cookie } : {}),
       ...(res.token ? { token: res.token } : {}),
       ...(res.name ? { name: res.name } : {}),
-      ...(res.avatar ? { avatar: res.avatar } : {}),
       ...(res.friendsCount != null ? { friends_count: res.friendsCount } : {}),
+      ...(res.groupsCount != null ? { groups_count: res.groupsCount } : {}),
       ...(res.location ? { location: res.location } : {}),
       ...(res.createdDate ? { created_date: res.createdDate } : {}),
       ...(res.notes ? { notes: res.notes } : {}),
@@ -399,6 +413,89 @@ export function registerIpcHandlers(): void {
     IPC.automation.loginWithCookieBatch,
     (_e, accountIds: number[], concurrency: number) => loginWithCookieBatch(accountIds, concurrency)
   )
+
+  // ---- Friends & Groups automation ------------------------------------------
+  // Broadcasts a per-target (not per-account) success/failure the instant it
+  // resolves — AddFriendsModal/JoinGroupsModal's "remove from list once
+  // used" checkbox listens on this to strip a line the moment ANY selected
+  // account succeeds on it, rather than waiting for the whole batch summary.
+  function broadcastItemProgress(targetId: string, outcome: { success: boolean; detail: string }): void {
+    for (const win of BrowserWindow.getAllWindows()) {
+      win.webContents.send(IPC.automation.onFriendsGroupsItemProgress, { targetId, ...outcome })
+    }
+  }
+
+  ipcMain.handle(IPC.automation.addFriendsByUidList, async (_e, req: AddFriendsByUidListRequest) => {
+    for (const id of req.accountIds) accounts.updateAccount(id, { live_status: 'Queued' })
+    return runBatch(req.accountIds, req.concurrency, async (account, emit, signal) => {
+      const res = await runAddFriendsByUidList(account, req.targetUids, {
+        signal,
+        onProgress: (detail) => emit('Adding Friends...', detail),
+        onItemDone: broadcastItemProgress
+      })
+      return { success: res.success, detail: res.detail, patch: { notes: res.detail } }
+    })
+  })
+
+  ipcMain.handle(IPC.automation.addSuggestedFriends, async (_e, req: AddSuggestedFriendsRequest) => {
+    for (const id of req.accountIds) accounts.updateAccount(id, { live_status: 'Queued' })
+    return runBatch(req.accountIds, req.concurrency, async (account, emit, signal) => {
+      const res = await runAddSuggestedFriends(account, {
+        maxCount: req.maxCount,
+        signal,
+        onProgress: (detail) => emit('Adding Suggested Friends...', detail)
+      })
+      return { success: res.success, detail: res.detail, patch: { notes: res.detail } }
+    })
+  })
+
+  ipcMain.handle(IPC.automation.unfriendAll, async (_e, req: UnfriendAllRequest) => {
+    for (const id of req.accountIds) accounts.updateAccount(id, { live_status: 'Queued' })
+    return runBatch(req.accountIds, req.concurrency, async (account, emit, signal) => {
+      const res = await runUnfriendAll(account, {
+        maxCount: req.maxCount,
+        signal,
+        onProgress: (detail) => emit('Unfriending...', detail)
+      })
+      return { success: res.success, detail: res.detail, patch: { notes: res.detail } }
+    })
+  })
+
+  ipcMain.handle(IPC.automation.joinGroupsByIdList, async (_e, req: JoinGroupsByIdListRequest) => {
+    for (const id of req.accountIds) accounts.updateAccount(id, { live_status: 'Queued' })
+    return runBatch(req.accountIds, req.concurrency, async (account, emit, signal) => {
+      const res = await runJoinGroupsByIdList(account, req.targetGroups, {
+        signal,
+        onProgress: (detail) => emit('Joining Groups...', detail),
+        onItemDone: broadcastItemProgress
+      })
+      return { success: res.success, detail: res.detail, patch: { notes: res.detail } }
+    })
+  })
+
+  ipcMain.handle(IPC.automation.joinSuggestedGroups, async (_e, req: JoinSuggestedGroupsRequest) => {
+    for (const id of req.accountIds) accounts.updateAccount(id, { live_status: 'Queued' })
+    return runBatch(req.accountIds, req.concurrency, async (account, emit, signal) => {
+      const res = await runJoinSuggestedGroups(account, {
+        maxCount: req.maxCount,
+        signal,
+        onProgress: (detail) => emit('Joining Suggested Groups...', detail)
+      })
+      return { success: res.success, detail: res.detail, patch: { notes: res.detail } }
+    })
+  })
+
+  ipcMain.handle(IPC.automation.leaveGroups, async (_e, req: LeaveGroupsRequest) => {
+    for (const id of req.accountIds) accounts.updateAccount(id, { live_status: 'Queued' })
+    return runBatch(req.accountIds, req.concurrency, async (account, emit, signal) => {
+      const res = await runLeaveGroups(account, {
+        maxCount: req.maxCount,
+        signal,
+        onProgress: (detail) => emit('Leaving Groups...', detail)
+      })
+      return { success: res.success, detail: res.detail, patch: { notes: res.detail } }
+    })
+  })
 
   // ---- Profile Optimizer (Clean Profile Storage) ---------------------------
   ipcMain.handle(IPC.profiles.clean, (_e, accountIds: number[], mode: CleanMode) => {

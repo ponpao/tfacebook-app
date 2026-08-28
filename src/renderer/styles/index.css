@@ -95,11 +95,13 @@ body {
     @apply rounded-[2px] border border-slate-300 bg-white px-1.5 py-[3px] text-[12px]
            text-[#1a1a1a] shadow-none outline-none ring-0 focus:border-[#0078d4] focus:shadow-none focus:ring-0;
   }
-  /* Solid green primary action (Start / Run) */
+  /* Solid green primary action (Start / Run) — flex-row + whitespace-nowrap
+     so a large selected-count badge never wraps the label onto a second
+     line or grows the button's height. */
   .win-btn-start {
-    @apply inline-flex items-center gap-1.5 rounded-[6px] border border-[#178a3e]
-           bg-[#1e9e4a] px-3 py-1 text-[12px] font-semibold text-white
-           hover:bg-[#22ab52] active:bg-[#178a3e]
+    @apply inline-flex flex-row items-center gap-1.5 whitespace-nowrap rounded-[6px]
+           border border-[#178a3e] bg-[#1e9e4a] px-3 py-1 text-[12px] font-semibold
+           text-white hover:bg-[#22ab52] active:bg-[#178a3e]
            disabled:opacity-50 disabled:pointer-events-none transition-colors;
   }
   /* Red-outline secondary action (Stop) */

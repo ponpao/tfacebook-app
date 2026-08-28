@@ -25,7 +25,13 @@ import {
   Eraser,
   RotateCcw,
   Sparkles,
-  ImageDown
+  ImageDown,
+  Users,
+  UserPlus,
+  UserMinus,
+  UsersRound,
+  DoorOpen,
+  ListChecks
 } from 'lucide-react'
 import type { Account } from '../../../types/account'
 import { useAccountStore } from '../../store/useAccountStore'
@@ -107,13 +113,6 @@ function Item({
 
 const Sep = (): React.JSX.Element => <div className="my-1 h-px bg-slate-200" />
 
-/** Non-interactive section header (e.g. "⚡ Run & Automation") — groups the menu into clearly-labeled clusters instead of one long flat list. */
-const GroupLabel = ({ label }: { label: string }): React.JSX.Element => (
-  <div className="px-2.5 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-    {label}
-  </div>
-)
-
 const SUBMENU_CLOSE_DELAY_MS = 150
 
 /**
@@ -167,16 +166,48 @@ function Submenu({
   }
   useEffect(() => () => cancelClose(), [])
 
+  // Two-pass positioning: the panel must actually be in the DOM (mounted via
+  // the portal below) before panelRef.current.offsetHeight is real — on the
+  // very first render after `open` flips true, the portal hasn't painted
+  // yet, so offsetHeight reads 0 and any height-dependent flip decision
+  // would be wrong. This effect re-runs once panelPos itself changes (i.e.
+  // once the panel has mounted with a real, measurable height) so the
+  // second pass corrects position using the panel's true height instead of
+  // guessing from an unbounded max-height clamp.
   useLayoutEffect(() => {
     if (!open) return
     const parent = parentRef.current
     if (!parent) return
     const rect = parent.getBoundingClientRect()
-    const overflowsRight = rect.right + width > window.innerWidth
-    const left = overflowsRight ? rect.left - width : rect.right
-    const maxTop = window.innerHeight - (panelRef.current?.offsetHeight ?? 0) - 6
-    setPanelPos({ left: Math.max(4, left), top: Math.min(rect.top, Math.max(4, maxTop)) })
-  }, [open, width])
+    const panelHeight = panelRef.current?.offsetHeight ?? 0
+    const panelWidth = panelRef.current?.offsetWidth ?? width
+
+    // Flip to the LEFT of the parent item once the panel would cross the
+    // right edge (with a 20px safety margin, matching the vertical check).
+    const overflowsRight = rect.right + panelWidth > window.innerWidth - 20
+    // A small overlap into the parent item (rather than a flush/zero-gap
+    // edge) so the pointer is still "inside" one of the two elements at
+    // every point along a diagonal move from the parent row to the panel —
+    // without this overlap a fast diagonal move can cross a hairline gap
+    // where neither side's onMouseEnter has fired yet, letting the close
+    // timer started by the parent's onMouseLeave win the race.
+    const left = overflowsRight ? rect.left - panelWidth + 4 : rect.right - 4
+
+    // Flip UPWARD (anchored to the parent's bottom edge, growing above it)
+    // once the panel would cross the bottom edge — rather than merely
+    // clamping the top and letting a tall panel's bottom still overflow.
+    const overflowsBottom = rect.top + panelHeight > window.innerHeight - 20
+    const top = overflowsBottom ? rect.bottom - panelHeight : rect.top
+
+    setPanelPos({
+      left: Math.max(4, left),
+      top: Math.max(4, Math.min(top, window.innerHeight - panelHeight - 4))
+    })
+    // Re-run once the panel has actually mounted (panelPos goes from null to
+    // a value) so the height-dependent flip above uses the real,
+    // just-measured height instead of the 0 it read before first paint.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, width, panelPos === null])
 
   return (
     <div
@@ -197,7 +228,7 @@ function Submenu({
               panelRef.current = el
               registerPortalNode(el)
             }}
-            className="fixed z-50 max-h-64 overflow-auto rounded border border-slate-400 bg-white py-1 shadow-2xl"
+            className="fixed z-[999999] max-h-[80vh] overflow-auto rounded border border-slate-400 bg-white py-1 shadow-2xl"
             style={{ left: panelPos.left, top: panelPos.top, width }}
             onMouseEnter={cancelClose}
             onMouseLeave={scheduleClose}
@@ -244,10 +275,13 @@ export function AccountContextMenu({ x, y, account, onClose }: Props): React.JSX
   const applyAccountUpdate = useAccountStore((s) => s.applyAccountUpdate)
   const threadCount = useAccountStore((s) => s.threadCount)
   const runSingleLogin = useAccountStore((s) => s.runSingleLogin)
+  const withQueueRunning = useAccountStore((s) => s.withQueueRunning)
   const openExportModal = useAccountStore((s) => s.openExportModal)
   const openEditAccount = useAccountStore((s) => s.openEditAccount)
   const openSetNotes = useAccountStore((s) => s.openSetNotes)
   const openCleanProfile = useAccountStore((s) => s.openCleanProfile)
+  const openAddFriends = useAccountStore((s) => s.openAddFriends)
+  const openJoinGroups = useAccountStore((s) => s.openJoinGroups)
   const rowSelection = useAccountStore((s) => s.rowSelection)
   const setRowSelection = useAccountStore((s) => s.setRowSelection)
 
@@ -367,21 +401,87 @@ export function AccountContextMenu({ x, y, account, onClose }: Props): React.JSX
 
   const loginWithCookie = async (): Promise<void> => {
     const targets = ids()
-    showToast(`Logging in with saved cookie for ${targets.length} account(s)…`)
-    const offProgress = window.api.automation.onCookieLoginProgress((event) => {
-      void window.api.accounts.get(event.accountId).then((acc) => {
-        if (acc) applyAccountUpdate(acc)
+    await withQueueRunning(async () => {
+      showToast(`Logging in with saved cookie for ${targets.length} account(s)…`)
+      const offProgress = window.api.automation.onCookieLoginProgress((event) => {
+        void window.api.accounts.get(event.accountId).then((acc) => {
+          if (acc) applyAccountUpdate(acc)
+        })
       })
+      try {
+        const summary = await window.api.automation.loginWithCookieBatch(targets, threadCount)
+        showToast(
+          `Cookie Login: ${summary.succeeded}/${summary.total} succeeded${summary.failed ? `, ${summary.failed} failed` : ''}.`,
+          6000
+        )
+      } finally {
+        offProgress()
+      }
     })
-    try {
-      const summary = await window.api.automation.loginWithCookieBatch(targets, threadCount)
+  }
+
+  const addSuggestedFriends = async (): Promise<void> => {
+    const targets = ids()
+    await withQueueRunning(async () => {
+      showToast(`Adding suggested friends across ${targets.length} account(s)…`)
+      const summary = await window.api.automation.addSuggestedFriends({
+        accountIds: targets,
+        concurrency: threadCount
+      })
       showToast(
-        `Cookie Login: ${summary.succeeded}/${summary.total} succeeded${summary.failed ? `, ${summary.failed} failed` : ''}.`,
+        `Add Suggested Friends: ${summary.succeeded}/${summary.total} account(s) succeeded${summary.failed ? `, ${summary.failed} failed` : ''}.`,
         6000
       )
-    } finally {
-      offProgress()
-    }
+      await refresh()
+    })
+  }
+
+  const unfriendAll = async (): Promise<void> => {
+    const targets = ids()
+    await withQueueRunning(async () => {
+      showToast(`Unfriending / cancelling requests across ${targets.length} account(s)…`)
+      const summary = await window.api.automation.unfriendAll({
+        accountIds: targets,
+        concurrency: threadCount
+      })
+      showToast(
+        `Unfriend: ${summary.succeeded}/${summary.total} account(s) succeeded${summary.failed ? `, ${summary.failed} failed` : ''}.`,
+        6000
+      )
+      await refresh()
+    })
+  }
+
+  const joinSuggestedGroups = async (): Promise<void> => {
+    const targets = ids()
+    await withQueueRunning(async () => {
+      showToast(`Joining suggested groups across ${targets.length} account(s)…`)
+      const summary = await window.api.automation.joinSuggestedGroups({
+        accountIds: targets,
+        concurrency: threadCount
+      })
+      showToast(
+        `Join Suggested Groups: ${summary.succeeded}/${summary.total} account(s) succeeded${summary.failed ? `, ${summary.failed} failed` : ''}.`,
+        6000
+      )
+      await refresh()
+    })
+  }
+
+  const leaveGroups = async (): Promise<void> => {
+    const targets = ids()
+    await withQueueRunning(async () => {
+      showToast(`Leaving groups across ${targets.length} account(s)…`)
+      const summary = await window.api.automation.leaveGroups({
+        accountIds: targets,
+        concurrency: threadCount
+      })
+      showToast(
+        `Leave Groups: ${summary.succeeded}/${summary.total} account(s) succeeded${summary.failed ? `, ${summary.failed} failed` : ''}.`,
+        6000
+      )
+      await refresh()
+    })
   }
 
   const checkLiveDie = async (): Promise<void> => {
@@ -505,48 +605,41 @@ export function AccountContextMenu({ x, y, account, onClose }: Props): React.JSX
       style={{ left: pos.x, top: pos.y, width: MENU_W }}
       onContextMenu={(e) => e.preventDefault()}
     >
-      <GroupLabel label="⚡ Run & Automation" />
-      <Item
-        icon={LogIn}
-        label="Run Auto Login (Single)"
-        onClick={run(() => runSingleLogin(account.id))}
-      />
-      <Item
-        icon={KeyRound}
-        label={`Login with Cookie (${targetCount > 1 ? `${targetCount} Selected` : 'Selected'}) 🔑`}
-        onClick={run(loginWithCookie)}
-      />
-      <Item
-        icon={Globe}
-        label={targetCount > 1 ? `Open Chrome Profiles (${targetCount})` : 'Open Chrome Profile'}
-        onClick={run(openChromeProfile)}
-      />
-      <Item
-        icon={Zap}
-        label="Check Live / Die Status"
-        onClick={run(checkLiveDie)}
-      />
+      {/* 1. Run & Browser Actions */}
+      <Submenu label="⚡ Run & Browser Actions" icon={Zap} width={230} registerPortalNode={registerPortalNode}>
+        <Item
+          icon={LogIn}
+          label="Run Auto Login"
+          onClick={run(() => runSingleLogin(account.id))}
+        />
+        <Item
+          icon={KeyRound}
+          label={`Login with Cookie (${targetCount > 1 ? `${targetCount} Selected` : 'Selected'}) 🔑`}
+          onClick={run(loginWithCookie)}
+        />
+        <Item
+          icon={Globe}
+          label={targetCount > 1 ? `Open Chrome Profiles (${targetCount})` : 'Open Chrome Profile'}
+          onClick={run(openChromeProfile)}
+        />
+        <Item
+          icon={Zap}
+          label="Check Live / Die Status"
+          onClick={run(checkLiveDie)}
+        />
+      </Submenu>
 
-      <Sep />
-
-      <GroupLabel label="👤 Account Profile & Assets" />
-      <Item
-        icon={ImageDown}
-        label="Download Avatar (Fast / No Browser)"
-        onClick={run(downloadAvatarFast)}
-      />
-      {/* Always shown regardless of the account's current status — a
-          checkpoint isn't always reflected accurately in status_detail (a
-          stale/manual status edit, or a check that hasn't run since it
-          happened), so gating this on status === 'Checkpoint' could hide it
-          exactly when it's needed. Facebook itself decides whether there's
-          actually anything to resolve when the account is opened. */}
-      <Submenu
-        label="Unlock / Checkpoint Tools"
-        icon={Unlock}
-        width={260}
-        registerPortalNode={registerPortalNode}
-      >
+      {/* 2. Profile, Avatar & Checkpoint — Unlock/Resolve 282 are always
+          shown regardless of the account's current status, since status_detail
+          isn't always an accurate reflection of whether Facebook still has a
+          checkpoint pending (stale/manual edits, or a check that hasn't run
+          since it happened) — Facebook itself decides when the account opens. */}
+      <Submenu label="🖼️ Profile, Avatar & Checkpoint" icon={ImageDown} width={260} registerPortalNode={registerPortalNode}>
+        <Item
+          icon={ImageDown}
+          label="Download Avatar (Fast / No Browser)"
+          onClick={run(downloadAvatarFast)}
+        />
         <Item
           icon={Unlock}
           label="Unlock Checkpoint 282 (Auto)"
@@ -554,106 +647,135 @@ export function AccountContextMenu({ x, y, account, onClose }: Props): React.JSX
         />
         <Item
           icon={Globe}
-          label="Resolve Checkpoint 282 (Manual Browser)"
+          label="Resolve Checkpoint 282 (Manual)"
           onClick={run(openChromeProfile)}
         />
-      </Submenu>
-
-      <Sep />
-
-      <GroupLabel label="🔑 Security & 2FA / OTP" />
-      <Item
-        icon={KeyRound}
-        label="Get 2FA Code (Copy)"
-        onClick={run(copy2FACode)}
-      />
-      <Item icon={Mail} label="Get Mail OTP (IMAP)" onClick={run(getMailOtp)} />
-
-      <Sep />
-
-      <GroupLabel label="📋 Data & Organization" />
-      {/* Copy Data submenu — every entry maps over targetAccounts (the full
-          checked/selected set, or just the right-clicked row if nothing else
-          is checked) and joins with newlines, so copying with multiple rows
-          selected pastes one value per line in row order. */}
-      <Submenu label="Copy Data" icon={Copy} width={168} registerPortalNode={registerPortalNode}>
-        <Item icon={Copy} label="Copy UID" onClick={run(() => copyField((a) => a.uid))} />
-        <Item icon={Copy} label="Copy Pass" onClick={run(() => copyField((a) => a.password))} />
-        <Item icon={Copy} label="Copy 2FA Code" onClick={run(copy2FACode)} />
-        <Item icon={Copy} label="Copy Email" onClick={run(() => copyField((a) => a.email))} />
         <Item
-          icon={Copy}
-          label="Copy Full Line"
-          onClick={run(() => copyField((a) => fullLineFor(a)))}
+          icon={Sparkles}
+          label="Clean Profile Storage..."
+          onClick={run(() => openCleanProfile(targetIds))}
         />
       </Submenu>
 
-      {/* Move to Folder submenu */}
-      <Submenu
-        label="Move to Folder..."
-        icon={FolderInput}
-        width={200}
-        registerPortalNode={registerPortalNode}
-      >
-        {folders.length === 0 && (
-          <div className="px-2.5 py-1.5 text-[12px] text-slate-400">No folders</div>
-        )}
-        {folders.map((f) => (
-          <Item
-            key={f.id}
-            icon={FolderInput}
-            label={`${f.name} [${f.account_count}]`}
-            onClick={run(async () => {
-              await moveToFolder(targetIds, f.id)
-              showToast(`Moved ${targetIds.length} account(s) to ${f.name}`)
-            })}
-          />
-        ))}
+      {/* 3. Friends & Interaction Tools */}
+      <Submenu label="👥 Friends & Interaction Tools" icon={Users} width={260} registerPortalNode={registerPortalNode}>
+        <Item
+          icon={UserPlus}
+          label="Add Friends (By UID List / Manual Input)"
+          onClick={run(() => openAddFriends(ids()))}
+        />
+        <Item
+          icon={UserPlus}
+          label="Add Suggested Friends"
+          onClick={run(addSuggestedFriends)}
+        />
+        <Item
+          icon={UserMinus}
+          label="Unfriend / Cancel Requests"
+          onClick={run(unfriendAll)}
+        />
       </Submenu>
 
-      <Item
-        icon={Pencil}
-        label="Edit Account Info"
-        onClick={run(() => openEditAccount(account))}
-      />
-      <Item
-        icon={Download}
-        label="Export Accounts..."
-        onClick={run(openExportModal)}
-      />
+      {/* 4. Group Interaction Tools */}
+      <Submenu label="🏢 Group Interaction Tools" icon={UsersRound} width={260} registerPortalNode={registerPortalNode}>
+        <Item
+          icon={UsersRound}
+          label="Join Groups (By Group ID / URL List)"
+          onClick={run(() => openJoinGroups(ids()))}
+        />
+        <Item
+          icon={UsersRound}
+          label="Join Suggested Groups"
+          onClick={run(joinSuggestedGroups)}
+        />
+        <Item icon={DoorOpen} label="Leave Groups" onClick={run(leaveGroups)} />
+      </Submenu>
+
+      {/* 5. Security & 2FA / OTP */}
+      <Submenu label="🔐 Security & 2FA / OTP" icon={KeyRound} width={220} registerPortalNode={registerPortalNode}>
+        <Item
+          icon={KeyRound}
+          label="Get 2FA Code (Copy)"
+          onClick={run(copy2FACode)}
+        />
+        <Item icon={Mail} label="Get Mail OTP (IMAP)" onClick={run(getMailOtp)} />
+      </Submenu>
+
+      {/* 6. Data & Batch Management — Copy Data / Move to Folder / Batch
+          Selection & Status are nested submenus one level deeper; Submenu is
+          fully self-contained (own portal, own position measurement against
+          its own parent row) so nesting it inside another Submenu's children
+          needs no changes to the component itself. */}
+      <Submenu label="📁 Data & Batch Management" icon={FolderInput} width={230} registerPortalNode={registerPortalNode}>
+        <Submenu label="Copy Data" icon={Copy} width={180} registerPortalNode={registerPortalNode}>
+          <Item icon={Copy} label="Copy UID" onClick={run(() => copyField((a) => a.uid))} />
+          <Item icon={Copy} label="Copy Cookie" onClick={run(() => copyField((a) => a.cookie))} />
+          <Item icon={Copy} label="Copy 2FA Code" onClick={run(copy2FACode)} />
+          <Item
+            icon={Copy}
+            label="Copy Email|Pass"
+            onClick={run(() => copyField((a) => [a.email, a.password].map((v) => v ?? '').join('|')))}
+          />
+          <Item
+            icon={Copy}
+            label="Copy All Info"
+            onClick={run(() => copyField((a) => fullLineFor(a)))}
+          />
+        </Submenu>
+        <Submenu label="Move to Folder..." icon={FolderInput} width={200} registerPortalNode={registerPortalNode}>
+          {folders.length === 0 && (
+            <div className="px-2.5 py-1.5 text-[12px] text-slate-400">No folders</div>
+          )}
+          {folders.map((f) => (
+            <Item
+              key={f.id}
+              icon={FolderInput}
+              label={`${f.name} [${f.account_count}]`}
+              onClick={run(async () => {
+                await moveToFolder(targetIds, f.id)
+                showToast(`Moved ${targetIds.length} account(s) to ${f.name}`)
+              })}
+            />
+          ))}
+        </Submenu>
+        <Item
+          icon={Pencil}
+          label="Edit Account Info"
+          onClick={run(() => openEditAccount(account))}
+        />
+        <Item
+          icon={Download}
+          label="Export Accounts..."
+          onClick={run(openExportModal)}
+        />
+        <Submenu label="Batch Selection & Status" icon={ListChecks} width={230} registerPortalNode={registerPortalNode}>
+          <Item
+            icon={CheckSquare}
+            label="Check Selected"
+            onClick={run(checkSelected)}
+          />
+          <Item
+            icon={Square}
+            label="Uncheck Selected"
+            onClick={run(uncheckSelected)}
+          />
+          <Item
+            icon={StickyNote}
+            label="Set Notes"
+            onClick={run(() => openSetNotes(ids()))}
+          />
+          <Item icon={Eraser} label="Clear Notes" onClick={run(clearNotes)} />
+          <Item
+            icon={RotateCcw}
+            label="Clear Activity Status"
+            onClick={run(clearActivityStatus)}
+          />
+        </Submenu>
+      </Submenu>
 
       <Sep />
 
-      <GroupLabel label="☑️ Selection & Batch Tools" />
-      <Item
-        icon={CheckSquare}
-        label="Check Selected Rows (from Highlight)"
-        onClick={run(checkSelected)}
-      />
-      <Item
-        icon={Square}
-        label="Uncheck Selected Rows (from Highlight)"
-        onClick={run(uncheckSelected)}
-      />
-      <Item
-        icon={StickyNote}
-        label="Set Notes (Batch)"
-        onClick={run(() => openSetNotes(ids()))}
-      />
-      <Item icon={Eraser} label="Clear Notes (Batch)" onClick={run(clearNotes)} />
-      <Item
-        icon={RotateCcw}
-        label="Clear Activity Status (Batch)"
-        onClick={run(clearActivityStatus)}
-      />
-
-      <Sep />
-
-      <Item
-        icon={Sparkles}
-        label="🧹 Clean Profile Storage..."
-        onClick={run(() => openCleanProfile(targetIds))}
-      />
+      {/* 7. Standalone danger action, kept flat at the root per spec. */}
       <Item
         icon={Trash2}
         label={`🗑️ Move to Recycle Bin (${ids().length})`}

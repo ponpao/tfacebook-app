@@ -26,6 +26,7 @@ export interface Account {
   location: string | null
   gender: string | null
   friends_count: number
+  groups_count: number
   cookie: string | null
   token: string | null
   proxy: string | null

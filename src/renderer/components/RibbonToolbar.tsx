@@ -297,8 +297,13 @@ export function RibbonToolbar({
                 : `Run Auto-Login on ${selectedCount} selected account(s)`
             }
           >
-            <Play size={15} className="fill-white text-white" />
-            Start / Run{selectedCount > 0 ? ` (${selectedCount})` : ''}
+            <Play size={15} className="fill-white text-white shrink-0" />
+            <span>Start / Run</span>
+            {selectedCount > 0 && (
+              <span className="ml-1.5 rounded-full bg-emerald-800 px-1.5 py-0.5 text-xs font-bold text-white">
+                {selectedCount}
+              </span>
+            )}
           </button>
           <button
             className="win-btn-stop h-[38px]"

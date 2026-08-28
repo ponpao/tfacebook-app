@@ -102,6 +102,11 @@ interface AccountState {
   // the target account ids (selection at the time it was opened).
   cleanProfileTargetIds: number[] | null
 
+  // Add Friends (By UID List) / Join Groups (By Group ID / URL List) modals —
+  // opened from the row context menu; carry the target account ids.
+  addFriendsTargetIds: number[] | null
+  joinGroupsTargetIds: number[] | null
+
   // actions
   showToast: (msg: string, ttlMs?: number) => void
   setThreadCount: (n: number) => void
@@ -117,11 +122,17 @@ interface AccountState {
   closeSetNotes: () => void
   openCleanProfile: (ids: number[]) => void
   closeCleanProfile: () => void
+  openAddFriends: (ids: number[]) => void
+  closeAddFriends: () => void
+  openJoinGroups: (ids: number[]) => void
+  closeJoinGroups: () => void
   applyAccountUpdate: (account: Account) => void
   dismissShutdownPrompt: () => void
   runSelectedQueue: () => Promise<void>
   stopQueueRun: () => Promise<void>
   runSingleLogin: (accountId: number) => Promise<void>
+  /** Wraps `fn` with queueRunning=true/false (Run/Stop button + Execution Timer sync) for any execution path outside runSelectedQueue's own runQueue pipeline — e.g. Login with Cookie. Shows a toast and no-ops if a queue is already running. */
+  withQueueRunning: (fn: () => Promise<void>) => Promise<void>
   initQueueListeners: () => () => void
   setSearch: (s: string) => void
   setSearchField: (f: SearchField) => void
@@ -180,6 +191,8 @@ export const useAccountStore = create<AccountState>((set, get) => ({
   editAccountTarget: null,
   setNotesTargetIds: null,
   cleanProfileTargetIds: null,
+  addFriendsTargetIds: null,
+  joinGroupsTargetIds: null,
 
   openExportModal: () => set({ exportModalOpen: true }),
   closeExportModal: () => set({ exportModalOpen: false }),
@@ -191,6 +204,10 @@ export const useAccountStore = create<AccountState>((set, get) => ({
   closeSetNotes: () => set({ setNotesTargetIds: null }),
   openCleanProfile: (ids) => set({ cleanProfileTargetIds: ids }),
   closeCleanProfile: () => set({ cleanProfileTargetIds: null }),
+  openAddFriends: (ids) => set({ addFriendsTargetIds: ids }),
+  closeAddFriends: () => set({ addFriendsTargetIds: null }),
+  openJoinGroups: (ids) => set({ joinGroupsTargetIds: ids }),
+  closeJoinGroups: () => set({ joinGroupsTargetIds: null }),
   applyAccountUpdate: (account) =>
     set((state) => ({
       accounts: state.accounts.map((a) => (a.id === account.id ? account : a))
@@ -328,6 +345,31 @@ export const useAccountStore = create<AccountState>((set, get) => ({
     const res = await window.api.automation.autoLogin(accountId)
     get().showToast(`Auto Login: ${res.status} — ${res.detail}`, 6000)
     await get().refresh()
+  },
+
+  // Login with Cookie is a separate pipeline from runQueue (browserAutomation.ts's
+  // loginWithCookieBatch vs queueRunner.ts's runQueue), but it's still an
+  // execution that opens browsers and can run for a while — the Run/Stop
+  // toolbar buttons and Execution Timer badge only watch `queueRunning`, so
+  // without this the Stop button stayed disabled and Run stayed clickable
+  // (allowing an overlapping second batch) for the whole duration of a
+  // cookie-login run. Stop's IPC (stopQueue -> closeAllBrowserWindows)
+  // already closes cookie-login-tracked contexts too since they share the
+  // same trackContext() registry — only the renderer-side button state was
+  // never wired up to this pipeline. AccountContextMenu.tsx calls
+  // withQueueRunning() around its existing loginWithCookieBatch call/progress
+  // listener/toast logic rather than duplicating that here.
+  withQueueRunning: async (fn) => {
+    if (get().queueRunning) {
+      get().showToast('A queue is already running.')
+      return
+    }
+    set({ queueRunning: true })
+    try {
+      await fn()
+    } finally {
+      set({ queueRunning: false })
+    }
   },
 
   initQueueListeners: () => {

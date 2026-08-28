@@ -22,7 +22,13 @@ import type {
   AssignProxyRequest,
   AssignUseragentRequest,
   AssignResult,
-  BatchSummary as MarketingBatchSummary
+  BatchSummary as MarketingBatchSummary,
+  AddFriendsByUidListRequest,
+  AddSuggestedFriendsRequest,
+  UnfriendAllRequest,
+  JoinGroupsByIdListRequest,
+  JoinSuggestedGroupsRequest,
+  LeaveGroupsRequest
 } from './marketing'
 import type { ExportAccountsRequest, ExportPreviewResult } from './export'
 import type { AppSettings } from './settings'
@@ -193,6 +199,20 @@ export interface AutomationApi {
   /** Opens a headed, cookie-authenticated browser per account (no password/2FA re-entry) — concurrency is the current Threads setting, same convention as runQueue. */
   loginWithCookieBatch(accountIds: number[], concurrency: number): Promise<CookieLoginSummary>
   onCookieLoginProgress(cb: (event: CookieLoginEvent) => void): () => void
+  addFriendsByUidList(req: AddFriendsByUidListRequest): Promise<MarketingBatchSummary>
+  addSuggestedFriends(req: AddSuggestedFriendsRequest): Promise<MarketingBatchSummary>
+  unfriendAll(req: UnfriendAllRequest): Promise<MarketingBatchSummary>
+  joinGroupsByIdList(req: JoinGroupsByIdListRequest): Promise<MarketingBatchSummary>
+  joinSuggestedGroups(req: JoinSuggestedGroupsRequest): Promise<MarketingBatchSummary>
+  leaveGroups(req: LeaveGroupsRequest): Promise<MarketingBatchSummary>
+  /** Fires the instant any one target UID/Group ID resolves (success or failure), across any account in the running batch — used to strip a used entry from a saved list live. */
+  onFriendsGroupsItemProgress(cb: (event: FriendsGroupsItemProgressEvent) => void): () => void
+}
+
+export interface FriendsGroupsItemProgressEvent {
+  targetId: string
+  success: boolean
+  detail: string
 }
 
 export interface CookieLoginEvent {

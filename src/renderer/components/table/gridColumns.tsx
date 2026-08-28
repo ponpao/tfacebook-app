@@ -48,17 +48,26 @@ const AVATAR_PLACEHOLDER =
  * account's updated_at, bumped by a DB trigger on any row change including
  * the avatar-download IPC's updateAccount() call) is appended as a query
  * string so the browser re-fetches instead of reusing the previous
- * 404/placeholder response it cached under the same avatar://{uid} URL —
- * deliberately NOT Date.now(), which would defeat caching entirely and
+ * 404/placeholder response it cached under the same avatar://local/{uid}
+ * URL — deliberately NOT Date.now(), which would defeat caching entirely and
  * re-fetch on every render for no reason; updated_at only changes exactly
  * when the avatar actually does.
+ *
+ * The URL uses a fixed "local" hostname with the uid in the PATHNAME, not
+ * avatar://{uid} with the uid as the hostname: Chromium's URL parser applies
+ * IPv4 special-casing to any purely-numeric hostname on a `standard: true`
+ * custom scheme (real Facebook UIDs always are). A short numeric hostname
+ * gets silently rewritten to dotted-decimal notation, and one too large to
+ * fit in 32 bits (every real UID) makes the URL rejected before
+ * protocol.handle ever runs — the avatar never loads, silently, for every
+ * account. See avatarProtocol.ts's handler for the matching parse side.
  */
 function AvatarCell({ uid, cacheBust }: { uid: string | null; cacheBust: string }): React.ReactNode {
   return (
     <div className="mx-auto flex h-7 w-7 items-center justify-center overflow-hidden rounded-full border border-slate-300 bg-slate-100">
       {uid ? (
         <img
-          src={`avatar://${encodeURIComponent(uid)}?v=${encodeURIComponent(cacheBust)}`}
+          src={`avatar://local/${encodeURIComponent(uid)}?v=${encodeURIComponent(cacheBust)}`}
           alt=""
           className="h-full w-full object-cover"
           onError={(e) => {
@@ -142,6 +151,13 @@ export const GRID_COLUMNS: GridColumn[] = [
     width: 80,
     align: 'right',
     render: (a) => a.friends_count ?? 0
+  },
+  {
+    key: 'groups_count',
+    header: 'Groups',
+    width: 80,
+    align: 'right',
+    render: (a) => a.groups_count ?? 0
   },
   { key: 'proxy', header: 'Proxy', width: 150, render: (a) => a.proxy ?? '' },
   {

@@ -73,6 +73,42 @@ export interface BatchSummary {
   cancelled: boolean
 }
 
+export interface AddFriendsByUidListRequest {
+  accountIds: number[]
+  concurrency: number
+  targetUids: string[]
+}
+
+export interface AddSuggestedFriendsRequest {
+  accountIds: number[]
+  concurrency: number
+  maxCount?: number
+}
+
+export interface UnfriendAllRequest {
+  accountIds: number[]
+  concurrency: number
+  maxCount?: number
+}
+
+export interface JoinGroupsByIdListRequest {
+  accountIds: number[]
+  concurrency: number
+  targetGroups: string[]
+}
+
+export interface JoinSuggestedGroupsRequest {
+  accountIds: number[]
+  concurrency: number
+  maxCount?: number
+}
+
+export interface LeaveGroupsRequest {
+  accountIds: number[]
+  concurrency: number
+  maxCount?: number
+}
+
 export type ProxyAssignMode = 'sequential' | 'random' | 'shared'
 
 export interface AssignProxyRequest {

@@ -16,7 +16,13 @@ import type {
   ChangeInfoRequest,
   WatchLiveRequest,
   AssignProxyRequest,
-  AssignUseragentRequest
+  AssignUseragentRequest,
+  AddFriendsByUidListRequest,
+  AddSuggestedFriendsRequest,
+  UnfriendAllRequest,
+  JoinGroupsByIdListRequest,
+  JoinSuggestedGroupsRequest,
+  LeaveGroupsRequest
 } from '../types/marketing'
 import type { ExportAccountsRequest } from '../types/export'
 import type { AppSettings } from '../types/settings'
@@ -136,6 +142,21 @@ const api: AppApi = {
       const listener = (_e: unknown, payload: unknown): void => cb(payload as Parameters<typeof cb>[0])
       ipcRenderer.on(IPC.automation.onCookieLoginProgress, listener)
       return () => ipcRenderer.removeListener(IPC.automation.onCookieLoginProgress, listener)
+    },
+    addFriendsByUidList: (req: AddFriendsByUidListRequest) =>
+      ipcRenderer.invoke(IPC.automation.addFriendsByUidList, req),
+    addSuggestedFriends: (req: AddSuggestedFriendsRequest) =>
+      ipcRenderer.invoke(IPC.automation.addSuggestedFriends, req),
+    unfriendAll: (req: UnfriendAllRequest) => ipcRenderer.invoke(IPC.automation.unfriendAll, req),
+    joinGroupsByIdList: (req: JoinGroupsByIdListRequest) =>
+      ipcRenderer.invoke(IPC.automation.joinGroupsByIdList, req),
+    joinSuggestedGroups: (req: JoinSuggestedGroupsRequest) =>
+      ipcRenderer.invoke(IPC.automation.joinSuggestedGroups, req),
+    leaveGroups: (req: LeaveGroupsRequest) => ipcRenderer.invoke(IPC.automation.leaveGroups, req),
+    onFriendsGroupsItemProgress: (cb) => {
+      const listener = (_e: unknown, payload: unknown): void => cb(payload as Parameters<typeof cb>[0])
+      ipcRenderer.on(IPC.automation.onFriendsGroupsItemProgress, listener)
+      return () => ipcRenderer.removeListener(IPC.automation.onFriendsGroupsItemProgress, listener)
     }
   },
   utils: {

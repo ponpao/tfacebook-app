@@ -4,7 +4,7 @@
 // A small `schema_version` row in `settings` allows future migrations.
 // ---------------------------------------------------------------------------
 
-export const SCHEMA_VERSION = 5
+export const SCHEMA_VERSION = 6
 
 /** ID of the auto-seeded default folder. */
 export const DEFAULT_FOLDER_ID = 1
@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS accounts (
   location      TEXT,
   gender        TEXT,
   friends_count INTEGER DEFAULT 0,
+  groups_count  INTEGER DEFAULT 0,
   cookie        TEXT,
   token         TEXT,
   proxy         TEXT,
@@ -142,5 +143,10 @@ export const MIGRATION_COLUMNS: { table: string; column: string; ddl: string }[]
   // cookie & location back the Cookie / Primary Location grid columns — added
   // to migrations so databases created before these columns existed get them.
   { table: 'accounts', column: 'cookie', ddl: 'ALTER TABLE accounts ADD COLUMN cookie TEXT' },
-  { table: 'accounts', column: 'location', ddl: 'ALTER TABLE accounts ADD COLUMN location TEXT' }
+  { table: 'accounts', column: 'location', ddl: 'ALTER TABLE accounts ADD COLUMN location TEXT' },
+  {
+    table: 'accounts',
+    column: 'groups_count',
+    ddl: 'ALTER TABLE accounts ADD COLUMN groups_count INTEGER DEFAULT 0'
+  }
 ]

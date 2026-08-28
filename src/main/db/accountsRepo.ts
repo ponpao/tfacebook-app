@@ -27,6 +27,7 @@ const WRITABLE_COLUMNS = [
   'location',
   'gender',
   'friends_count',
+  'groups_count',
   'cookie',
   'token',
   'proxy',
@@ -67,7 +68,7 @@ export function insertAccounts(accounts: NewAccount[]): number {
       const params: Record<string, unknown> = {}
       for (const c of cols) {
         const v = (row as Record<string, unknown>)[c]
-        params[c] = v === undefined ? (c === 'friends_count' ? 0 : null) : v
+        params[c] = v === undefined ? (c === 'friends_count' || c === 'groups_count' ? 0 : null) : v
       }
       if (params.status == null) params.status = 'Unknown'
       // New accounts land in the default folder unless told otherwise.

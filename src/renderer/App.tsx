@@ -22,6 +22,8 @@ import { EditAccountModal } from './components/modals/EditAccountModal'
 import { HelpAboutModal } from './components/modals/HelpAboutModal'
 import { SetNotesModal } from './components/modals/SetNotesModal'
 import { CleanProfileModal } from './components/modals/CleanProfileModal'
+import { AddFriendsModal } from './components/modals/AddFriendsModal'
+import { JoinGroupsModal } from './components/modals/JoinGroupsModal'
 import { UpdateNotificationModal } from './components/modals/UpdateNotificationModal'
 import { AutoShutdownDialog } from './components/modals/AutoShutdownDialog'
 import { useAccountStore } from './store/useAccountStore'
@@ -87,6 +89,10 @@ function Dashboard({
   const closeSetNotes = useAccountStore((s) => s.closeSetNotes)
   const cleanProfileTargetIds = useAccountStore((s) => s.cleanProfileTargetIds)
   const closeCleanProfile = useAccountStore((s) => s.closeCleanProfile)
+  const addFriendsTargetIds = useAccountStore((s) => s.addFriendsTargetIds)
+  const closeAddFriends = useAccountStore((s) => s.closeAddFriends)
+  const joinGroupsTargetIds = useAccountStore((s) => s.joinGroupsTargetIds)
+  const closeJoinGroups = useAccountStore((s) => s.closeJoinGroups)
 
   useEffect(() => {
     void refreshFolders()
@@ -186,6 +192,8 @@ function Dashboard({
       <EditAccountModal />
       <SetNotesModal accountIds={setNotesTargetIds} onClose={closeSetNotes} />
       <CleanProfileModal accountIds={cleanProfileTargetIds} onClose={closeCleanProfile} />
+      <AddFriendsModal accountIds={addFriendsTargetIds} onClose={closeAddFriends} />
+      <JoinGroupsModal accountIds={joinGroupsTargetIds} onClose={closeJoinGroups} />
       <UpdateNotificationModal />
       <AutoShutdownDialog open={shutdownPending} onCancelled={dismissShutdownPrompt} />
       <FolderDialogs

@@ -15,9 +15,17 @@ import { getAppSettings } from '../db/settingsRepo'
 import { buildStealthScript } from './stealthEngine'
 
 /**
- * Parses a "name=value; name2=value2; ..." cookie string (this app's stored
- * format — see extractCookiesAndToken() in autoLogin.ts) into Playwright
- * cookie objects addCookies() accepts, targeting Facebook's cookie domain.
+ * Parses this app's saved cookie value into Playwright cookie objects
+ * addCookies() accepts, targeting Facebook's cookie domain. Accepts either
+ * shape a saved cookie may be in:
+ *   - a JSON array of {name, value, ...} objects (e.g. exported from a
+ *     browser extension), OR
+ *   - the plain "name=value; name2=value2; ..." string this app has
+ *     historically stored (see extractCookiesAndToken() in autoLogin.ts)
+ * Every required Facebook-session attribute is enforced explicitly
+ * regardless of what the source data did or didn't specify, so an
+ * incomplete/loosely-typed import can't silently produce a cookie the
+ * browser refuses to send back on the next request.
  *
  * This exists because Chrome/Chromium encrypts a profile's on-disk Cookies
  * SQLite file with Windows DPAPI, keyed to the specific Windows user account
@@ -32,52 +40,91 @@ import { buildStealthScript } from './stealthEngine'
  * other cookie regardless of which machine set it.
  */
 function parseCookieString(raw: string): Cookie[] {
-  const cookies: Cookie[] = []
-  for (const part of raw.split(';')) {
-    const eq = part.indexOf('=')
-    if (eq === -1) continue
-    const name = part.slice(0, eq).trim()
-    const value = part.slice(eq + 1).trim()
-    if (!name || !value) continue
-    cookies.push({
-      name,
-      value,
-      domain: '.facebook.com',
-      path: '/',
-      // Facebook's real cookies are a mix of session and long-lived
-      // (xs/c_user/datr survive well past a year) — expires: -1 marks this
-      // a session cookie in Playwright's API, but since Facebook's own
-      // Set-Cookie response on any subsequent request will re-issue proper
-      // expiries anyway, matching that exactly here isn't worth the
-      // complexity of parsing per-cookie attributes this app never stored
-      // in the first place (the DB only ever kept name=value pairs).
-      expires: -1,
-      httpOnly: false,
-      secure: true,
-      sameSite: 'None'
-    })
+  const pairs: { name: string; value: string }[] = []
+
+  const trimmed = raw.trim()
+  if (trimmed.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(trimmed) as Array<{ name?: unknown; value?: unknown }>
+      for (const entry of parsed) {
+        const name = typeof entry?.name === 'string' ? entry.name.trim() : ''
+        const value = typeof entry?.value === 'string' ? entry.value.trim() : ''
+        if (name && value) pairs.push({ name, value })
+      }
+    } catch {
+      /* not valid JSON despite the leading "[" — fall through to empty result */
+    }
+  } else {
+    for (const part of trimmed.split(';')) {
+      const eq = part.indexOf('=')
+      if (eq === -1) continue
+      const name = part.slice(0, eq).trim()
+      const value = part.slice(eq + 1).trim()
+      if (name && value) pairs.push({ name, value })
+    }
   }
-  return cookies
+
+  // Facebook's real cookies are a mix of session and long-lived (xs/c_user/
+  // datr survive well past a year) — expires: -1 marks this a session
+  // cookie in Playwright's API, but since Facebook's own Set-Cookie
+  // response on any subsequent request will re-issue proper expiries
+  // anyway, matching that exactly here isn't worth the complexity of
+  // parsing per-cookie attributes this app never stored in the first place.
+  // domain/path/secure/sameSite are force-set on every cookie regardless of
+  // source, rather than trusting whatever (if anything) a JSON import
+  // supplied for them — a cookie missing `secure` or scoped to the wrong
+  // domain/path is silently dropped by the browser instead of sent back.
+  return pairs.map(({ name, value }) => ({
+    name,
+    value,
+    domain: '.facebook.com',
+    path: '/',
+    expires: -1,
+    httpOnly: false,
+    secure: true,
+    sameSite: 'Lax' as const
+  }))
+}
+
+/** True if a parsed cookie set has both session-identifying cookies Facebook requires to consider a browser logged in. */
+export function hasRequiredSessionCookies(cookies: Cookie[]): boolean {
+  const names = new Set(cookies.map((c) => c.name))
+  return names.has('c_user') && names.has('xs')
+}
+
+/**
+ * Parses `raw` (JSON array or "name=value;" string) and reports whether it
+ * contains the two cookies Facebook actually requires to treat a browser as
+ * logged in (c_user, xs) — used by callers that must distinguish a real,
+ * usable session from a saved value that only has incidental cookies like
+ * _GRECAPTCHA or datr, which alone never produce a logged-in session no
+ * matter how well-formed the string otherwise is.
+ */
+export function validateCookieString(raw: string): { cookies: Cookie[]; valid: boolean } {
+  const cookies = parseCookieString(raw)
+  return { cookies, valid: hasRequiredSessionCookies(cookies) }
 }
 
 /**
  * Injects the account's saved cookie string into a freshly-launched
  * context, before any navigation — restoring a cross-machine session that
- * Chromium's own DPAPI-encrypted profile storage cannot. A quick sanity
- * check (session-identifying cookie names) avoids wasting a CDP round trip
- * or polluting the cookie jar with garbage on a blank/never-logged-in
- * account's empty cookie field. Best-effort: a malformed cookie string
- * should never prevent the browser from opening.
+ * Chromium's own DPAPI-encrypted profile storage cannot. Best-effort: a
+ * malformed cookie string should never prevent the browser from opening.
+ * Returns whether the injected set actually included both required
+ * session cookies (c_user, xs) — callers that need to report a real
+ * pass/fail (e.g. Login with Cookie) should check this rather than assume
+ * success just because addCookies() didn't throw.
  */
-async function injectSavedCookies(context: BrowserContext, account: Account): Promise<void> {
+async function injectSavedCookies(context: BrowserContext, account: Account): Promise<boolean> {
   const raw = account.cookie?.trim()
-  if (!raw) return
-  if (!/\bc_user=|\bxs=|\bdatr=/.test(raw)) return
+  if (!raw) return false
   try {
-    const cookies = parseCookieString(raw)
+    const { cookies, valid } = validateCookieString(raw)
     if (cookies.length > 0) await context.addCookies(cookies)
+    return valid
   } catch {
     /* malformed cookie string — proceed with whatever the on-disk profile already has */
+    return false
   }
 }
 
