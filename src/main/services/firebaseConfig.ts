@@ -156,17 +156,30 @@ export function resolveServiceAccount(): ServiceAccountConfig | null {
 }
 
 /**
+ * This app's Firebase project (data-store-b5b9c) uses the newer
+ * `{projectId}.firebasestorage.app` bucket naming rather than the legacy
+ * `{projectId}.appspot.com` convention — guessing the latter from the
+ * resolved service account's project_id (the previous fallback here) picked
+ * the wrong bucket and every Storage call failed with "bucket does not
+ * exist" whenever FIREBASE_STORAGE_BUCKET wasn't also set explicitly (e.g.
+ * a packaged build configured via a bare key file with no .env). Hardcoded
+ * here as the known-correct default for this project; still overridable via
+ * FIREBASE_STORAGE_BUCKET for a different Firebase project.
+ */
+const DEFAULT_STORAGE_BUCKET = 'data-store-b5b9c.firebasestorage.app'
+
+/**
  * The project's Storage bucket. Prefers an explicit FIREBASE_STORAGE_BUCKET
- * override (needed when the real bucket name doesn't match the default
- * guess below — e.g. it's `{projectId}.firebasestorage.app` instead), but
- * falls back to deriving `{projectId}.appspot.com` from a resolved service
- * account so a key-file-only setup (no .env at all) still works without any
- * separate bucket configuration step.
+ * override, falling back to this project's known bucket (see
+ * DEFAULT_STORAGE_BUCKET) once a service account has actually been
+ * resolved — so a key-file-only setup (no .env at all) still works without
+ * any separate bucket configuration step, and so an unconfigured Firebase
+ * (no service account resolvable) correctly reports as not configured
+ * rather than returning a bucket name nothing can authenticate against.
  */
 export function resolveStorageBucket(): string | null {
   if (process.env.FIREBASE_STORAGE_BUCKET) return process.env.FIREBASE_STORAGE_BUCKET
-  const serviceAccount = resolveServiceAccount()
-  return serviceAccount ? `${serviceAccount.projectId}.appspot.com` : null
+  return resolveServiceAccount() ? DEFAULT_STORAGE_BUCKET : null
 }
 
 /**

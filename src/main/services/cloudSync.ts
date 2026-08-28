@@ -156,7 +156,11 @@ export async function pushToDevice(targetMachineId: string, accountIds: number[]
     const { accountCount } = await buildBackupZip(accountIds, zipPath)
 
     const storagePath = `devices/${targetMachineId}/payload.zip`
-    const bucket = getStorage(firebaseApp!).bucket()
+    // Passed explicitly rather than relying on the app-level default bucket
+    // set in getFirebase()'s initializeApp() call — belt-and-suspenders
+    // against ever hitting the wrong bucket (see resolveStorageBucket()'s
+    // comments in firebaseConfig.ts for why that default was wrong before).
+    const bucket = getStorage(firebaseApp!).bucket(resolveStorageBucket() ?? undefined)
     await bucket.upload(zipPath, { destination: storagePath })
 
     await db
@@ -228,7 +232,11 @@ export async function pullPendingPayload(targetMachineId: string): Promise<Cloud
     }
 
     const zipPath = join(workDir, 'payload.zip')
-    const bucket = getStorage(firebaseApp!).bucket()
+    // Passed explicitly rather than relying on the app-level default bucket
+    // set in getFirebase()'s initializeApp() call — belt-and-suspenders
+    // against ever hitting the wrong bucket (see resolveStorageBucket()'s
+    // comments in firebaseConfig.ts for why that default was wrong before).
+    const bucket = getStorage(firebaseApp!).bucket(resolveStorageBucket() ?? undefined)
     try {
       await bucket.file(data.storagePath).download({ destination: zipPath })
     } catch (err) {
