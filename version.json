@@ -1,18 +1,16 @@
 {
-  "version": "1.1.0",
+  "version": "1.1.1",
   "releaseDate": "2026-08-28",
   "changelog": {
     "en": [
-      "Added high-speed direct avatar downloader (no browser launch) using Facebook's public Graph picture endpoint + sharp for resize/compression",
-      "Added a configurable Avatar Download Directory in General Settings with a folder picker",
-      "Added an Avatar preview column in the accounts table, between No. and UID",
-      "Added a 'Download Avatar (Fast / No Browser)' action to the right-click context menu for selected/checked accounts"
+      "Fixed avatar downloads returning Facebook's default silhouette instead of the real profile photo — now uses each account's saved cookie to fetch the actual current photo from mbasic.facebook.com, falling back to the public endpoint only when no cookie exists or the authenticated fetch fails",
+      "Added a true in-place updater for the Portable build: downloads the new Portable exe and swaps it in on disk directly, with no NSIS installer involved",
+      "The Setup (installed) build continues to use its existing update flow unchanged"
     ],
     "km": [
-      "បន្ថែមមុខងារទាញយករូបភាពប្រវត្តិរូប (Avatar) ល្បឿនលឿន ដោយមិនចាំបាច់បើកកម្មវិធីរុករក (browser) ដោយប្រើ Facebook Graph API ជាមួយនឹង sharp សម្រាប់កែច្នៃទំហំរូបភាព",
-      "បន្ថែមការកំណត់ថត (folder) សម្រាប់រក្សាទុករូបភាព Avatar នៅក្នុងផ្នែក General Settings ព្រមទាំងប៊ូតុងជ្រើសរើសថត",
-      "បន្ថែមជួរឈរបង្ហាញរូបភាព Avatar នៅក្នុងតារាងគណនី ដាក់នៅចន្លោះជួរឈរលេខរៀង (No.) និង UID",
-      "បន្ថែមមុខងារ 'ទាញយករូបភាព (លឿន / មិនប្រើ Browser)' នៅក្នុងម៉ឺនុយចុចខាងស្ដាំ សម្រាប់គណនីដែលបានជ្រើសរើស"
+      "កែតម្រូវបញ្ហាទាញយករូបភាព Avatar ដែលបង្ហាញរូបភាពលំនាំដើមរបស់ Facebook ជំនួសរូបភាពពិត — ឥឡូវប្រើ cookie ដែលបានរក្សាទុករបស់គណនីនីមួយៗ ដើម្បីទាញយករូបភាពពិតបច្ចុប្បន្នពី mbasic.facebook.com ហើយប្រើប្រាស់មធ្យោបាយសាធារណៈវិញលុះត្រាតែគ្មាន cookie ឬការទាញយកជាមួយ cookie បរាជ័យ",
+      "បន្ថែមប្រព័ន្ធអាប់ដេត (updater) ពិតប្រាកដសម្រាប់កំណែ Portable ដោយផ្ទាល់នៅលើថាស ដោយមិនចាំបាច់ប្រើកម្មវិធីតំឡើង NSIS ឡើយ",
+      "កំណែ Setup (បានតំឡើង) នៅតែប្រើប្រព័ន្ធអាប់ដេតដដែលដោយគ្មានការផ្លាស់ប្តូរ"
     ]
   }
 }

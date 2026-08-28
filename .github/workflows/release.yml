@@ -55,6 +55,7 @@ jobs:
             dist/*.exe
             dist/latest.yml
             dist/*.blockmap
+            version.json
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

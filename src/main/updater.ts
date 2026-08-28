@@ -30,6 +30,12 @@
 import { ipcMain, BrowserWindow } from 'electron'
 import type { AppUpdater } from 'electron-updater'
 import { IPC } from './ipc/channels'
+import {
+  isPortableBuild,
+  checkForPortableUpdate,
+  downloadAndInstallPortableUpdate,
+  cleanupStalePortableUpdateFiles
+} from './customUpdater'
 
 function broadcast(channel: string, payload?: unknown): void {
   for (const win of BrowserWindow.getAllWindows()) {
@@ -40,13 +46,29 @@ function broadcast(channel: string, payload?: unknown): void {
 let initialized = false
 
 /**
- * Wire up autoUpdater event forwarding + the three IPC handlers. Safe to
- * call once at app startup; a second call is a no-op (guards against
- * double-registration if this were ever imported from more than one place).
+ * Wire up the update-check/download/install IPC handlers used by
+ * UpdateNotificationModal.tsx — the same three channels (check,
+ * startDownload, quitAndInstall) and the same four broadcast events
+ * (onUpdateAvailable, onDownloadProgress, onUpdateDownloaded, onError)
+ * regardless of which build is running, so that UI stays entirely unaware
+ * of which mechanism is actually behind it:
+ *   - Portable build (PORTABLE_EXECUTABLE_FILE set): routed to
+ *     customUpdater.ts's version.json-based check + in-place file-swap
+ *     install — there is no installer to hand off to for a portable exe.
+ *   - NSIS-installed build: electron-updater's autoUpdater, driven by
+ *     latest.yml, exactly as before this module gained the branch above.
+ * Safe to call once at app startup; a second call is a no-op (guards
+ * against double-registration if this were ever imported from more than
+ * one place).
  */
 export function initAutoUpdater(): void {
   if (initialized) return
   initialized = true
+
+  if (isPortableBuild()) {
+    initPortableUpdater()
+    return
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const autoUpdater: AppUpdater = (require('electron-updater') as typeof import('electron-updater'))
@@ -115,6 +137,74 @@ export function initAutoUpdater(): void {
 
   ipcMain.handle(IPC.updater.quitAndInstall, () => {
     autoUpdater.quitAndInstall()
+    return { ok: true }
+  })
+}
+
+/** The portable-build branch of initAutoUpdater() — see that function's doc comment for why this exists as a separate mechanism from electron-updater. */
+function initPortableUpdater(): void {
+  void cleanupStalePortableUpdateFiles()
+
+  // Remembers the version check() last confirmed was available, so
+  // startDownload() (which only receives no arguments, per the shared IPC
+  // contract with the NSIS flow) knows which version to actually fetch.
+  let pendingVersion: string | null = null
+
+  ipcMain.handle(IPC.updater.check, async () => {
+    const result = await checkForPortableUpdate()
+    if (result.error) {
+      broadcast(IPC.updater.onError, { message: result.error })
+      return { ok: false, error: result.error }
+    }
+    if (result.updateAvailable && result.remoteVersion) {
+      pendingVersion = result.remoteVersion
+      broadcast(IPC.updater.onUpdateAvailable, {
+        version: result.remoteVersion,
+        releaseNotes: result.changelog?.join('\n') ?? null,
+        releaseDate: null
+      })
+    } else {
+      broadcast(IPC.updater.onUpdateNotAvailable, { version: result.currentVersion })
+    }
+    return { ok: true }
+  })
+
+  ipcMain.handle(IPC.updater.startDownload, async () => {
+    if (!pendingVersion) {
+      const message = 'No update was found to download — run a check first.'
+      broadcast(IPC.updater.onError, { message })
+      return { ok: false, error: message }
+    }
+    try {
+      await downloadAndInstallPortableUpdate(pendingVersion, (progress) => {
+        broadcast(IPC.updater.onDownloadProgress, {
+          percent: progress.percent,
+          transferred: progress.transferred,
+          total: progress.total,
+          bytesPerSecond: 0
+        })
+      })
+      // downloadAndInstallPortableUpdate() calls app.quit() once the
+      // detached .bat is spawned — nothing after that point in this
+      // process actually runs, but a well-formed return keeps the
+      // handler's shape consistent with the NSIS branch's in case that
+      // quit is ever made conditional in the future.
+      broadcast(IPC.updater.onUpdateDownloaded, { version: pendingVersion })
+      return { ok: true }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      broadcast(IPC.updater.onError, { message })
+      return { ok: false, error: message }
+    }
+  })
+
+  // quitAndInstall has nothing extra to do here — downloadAndInstallPortableUpdate()
+  // (invoked by startDownload above) already quits the app itself once the
+  // detached .bat script is spawned, since a portable exe update needs this
+  // process to fully exit before the .bat can overwrite its file. The UI's
+  // "Restart & Update Now" button calling this after startDownload succeeds
+  // is effectively a no-op by the time it would run.
+  ipcMain.handle(IPC.updater.quitAndInstall, () => {
     return { ok: true }
   })
 }
