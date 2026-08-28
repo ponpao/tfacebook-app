@@ -33,6 +33,7 @@ import { sharePostOrVideo } from '../automation/shareActions'
 import { batchChangeInfo } from '../automation/changeInfo'
 import { watchLive } from '../automation/watchLive'
 import { runUnlock282 } from '../automation/unlock282'
+import { loginWithCookieBatch } from '../services/browserAutomation'
 import { resolveProfileDir } from '../automation/browserContext'
 import { cleanProfiles } from '../automation/profileOptimizer'
 import { buildExportLines } from '../utils/exportAccounts'
@@ -392,6 +393,12 @@ export function registerIpcHandlers(): void {
       }
     })
   })
+
+  // ---- Login with Cookie (batch, headed, no credential re-entry) -----------
+  ipcMain.handle(
+    IPC.automation.loginWithCookieBatch,
+    (_e, accountIds: number[], concurrency: number) => loginWithCookieBatch(accountIds, concurrency)
+  )
 
   // ---- Profile Optimizer (Clean Profile Storage) ---------------------------
   ipcMain.handle(IPC.profiles.clean, (_e, accountIds: number[], mode: CleanMode) => {

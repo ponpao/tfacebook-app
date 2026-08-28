@@ -48,28 +48,28 @@ const AVATAR_PLACEHOLDER =
  * account's updated_at, bumped by a DB trigger on any row change including
  * the avatar-download IPC's updateAccount() call) is appended as a query
  * string so the browser re-fetches instead of reusing the previous
- * 404/placeholder response it cached under the same avatar://{uid} URL.
+ * 404/placeholder response it cached under the same avatar://{uid} URL —
+ * deliberately NOT Date.now(), which would defeat caching entirely and
+ * re-fetch on every render for no reason; updated_at only changes exactly
+ * when the avatar actually does.
  */
 function AvatarCell({ uid, cacheBust }: { uid: string | null; cacheBust: string }): React.ReactNode {
-  if (!uid) {
-    return (
-      <img
-        src={AVATAR_PLACEHOLDER}
-        alt=""
-        className="h-[28px] w-[28px] rounded-full ring-1 ring-slate-200 object-cover"
-      />
-    )
-  }
   return (
-    <img
-      src={`avatar://${encodeURIComponent(uid)}?v=${encodeURIComponent(cacheBust)}`}
-      alt=""
-      className="h-[28px] w-[28px] rounded-full ring-1 ring-slate-200 object-cover"
-      onError={(e) => {
-        e.currentTarget.onerror = null
-        e.currentTarget.src = AVATAR_PLACEHOLDER
-      }}
-    />
+    <div className="mx-auto flex h-7 w-7 items-center justify-center overflow-hidden rounded-full border border-slate-300 bg-slate-100">
+      {uid ? (
+        <img
+          src={`avatar://${encodeURIComponent(uid)}?v=${encodeURIComponent(cacheBust)}`}
+          alt=""
+          className="h-full w-full object-cover"
+          onError={(e) => {
+            e.currentTarget.onerror = null
+            e.currentTarget.src = AVATAR_PLACEHOLDER
+          }}
+        />
+      ) : (
+        <img src={AVATAR_PLACEHOLDER} alt="" className="h-4 w-4" />
+      )}
+    </div>
   )
 }
 

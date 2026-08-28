@@ -1,18 +1,18 @@
 {
-  "version": "1.1.2",
+  "version": "1.1.3",
   "releaseDate": "2026-08-28",
   "changelog": {
     "en": [
-      "Fixed avatar downloads for real: the cookie-authenticated fetch() approach from 1.1.1 was blocked by Facebook's non-browser client fingerprinting even with a fully valid session cookie — confirmed live against a real account",
-      "Avatar downloads now route through a real stealth headless Playwright Chromium context per account (reusing this app's existing cookie-injection/launch machinery), which gets past that block",
-      "Fixed a second bug found during live testing: the extracted nav-bar avatar URL carries a crop-to-40px parameter that silently saved a 40x40 icon as the 'HD avatar' — this parameter is now stripped before downloading, unlocking the genuine 1024x1024 source photo (verified live: 977 bytes -> 219KB on the same underlying image)",
-      "Avatar batch downloads now run 3 real browser contexts concurrently (down from the previous 6 bare-fetch workers, since real browsers are heavier) to keep RAM/CPU usage smooth on a typical machine"
+      "Added 'Login with Cookie' batch action: opens a headed browser per selected account using its already-saved session cookie, with no password/2FA re-entry — respects the current Threads setting for concurrency",
+      "Reorganized the right-click context menu into clearly labeled groups (Run & Automation, Account Profile & Assets, Security & 2FA/OTP, Data & Organization, Selection & Batch Tools) instead of one long flat list",
+      "Fixed avatars downloading successfully but not displaying in the table: a user-configured Avatar Download Directory typed as a relative path (e.g. 'Pictures/Profile') could resolve to two different real folders between the download and display steps — relative paths are now anchored to a fixed, stable location",
+      "Avatar photos now appear in the table as soon as each individual download finishes during a batch, instead of only after every selected account is done"
     ],
     "km": [
-      "កែតម្រូវការទាញយករូបភាព Avatar ជាការពិតប្រាកដ៖ វិធីសាស្ត្រ fetch() ដោយប្រើ cookie ក្នុងកំណែ 1.1.1 ត្រូវបានទប់ស្កាត់ដោយប្រព័ន្ធរបស់ Facebook ដែលរកឃើញថាការស្នើសុំមិនមែនមកពី browser ពិត ទោះបីជា cookie មានសុពលភាពពេញលេញក៏ដោយ — បានផ្ទៀងផ្ទាត់ជាមួយគណនីពិត",
-      "ការទាញយករូបភាព Avatar ឥឡូវប្រើកម្មវិធីរុករក Chromium ក្នុងទម្រង់ headless ពិតប្រាកដសម្រាប់គណនីនីមួយៗ (ប្រើប្រាស់ប្រព័ន្ធចាក់ cookie/បើកកម្មវិធីរបស់កម្មវិធីនេះដដែល) ដែលអាចឆ្លងកាត់ការទប់ស្កាត់នោះបាន",
-      "កែតម្រូវបញ្ហាទីពីរដែលរកឃើញកំឡុងពេលសាកល្បង៖ URL រូបភាព Avatar ដែលទាញយកមកមានប៉ារ៉ាម៉ែត្រកាត់ទំហំត្រឹម 40x40 ភីកសែល ដែលធ្វើឲ្យរក្សាទុករូបភាពតូចជំនួសរូបភាពគុណភាពខ្ពស់ — ឥឡូវប៉ារ៉ាម៉ែត្រនេះត្រូវបានដកចេញ ដើម្បីទទួលបានរូបភាពប្រភពពិត 1024x1024",
-      "ការទាញយករូបភាព Avatar ជាបាច់ឥឡូវដំណើរការកម្មវិធីរុករក 3 ក្នុងពេលតែមួយ (ពីមុន 6 សម្រាប់វិធីសាស្ត្រ fetch() សាមញ្ញ) ដើម្បីរក្សាការប្រើប្រាស់ RAM/CPU ឲ្យរលូន"
+      "បន្ថែមមុខងារ 'ចូលគណនីដោយប្រើ Cookie' ជាបាច់៖ បើកកម្មវិធីរុករកសម្រាប់គណនីដែលបានជ្រើសរើសនីមួយៗ ដោយប្រើ cookie ដែលបានរក្សាទុករួចហើយ ដោយមិនចាំបាច់វាយពាក្យសម្ងាត់ ឬ 2FA ម្តងទៀត — គោរពតាមការកំណត់ចំនួន Threads បច្ចុប្បន្ន",
+      "រៀបចំម៉ឺនុយចុចខាងស្ដាំឡើងវិញជាក្រុមៗច្បាស់លាស់ (ដំណើរការ & ស្វ័យប្រវត្តិកម្ម, ប្រវត្តិរូបគណនី & ទ្រព្យសម្បត្តិ, សុវត្ថិភាព & 2FA/OTP, ទិន្នន័យ & ការរៀបចំ, ការជ្រើសរើស & ឧបករណ៍ជាបាច់) ជំនួសបញ្ជីវែងមួយ",
+      "កែតម្រូវបញ្ហារូបភាព Avatar ទាញយកបានជោគជ័យ ប៉ុន្តែមិនបង្ហាញនៅលើតារាង៖ ថតកំណត់ដោយអ្នកប្រើសម្រាប់ទាញយករូបភាព ប្រសិនបើវាយបញ្ចូលជាផ្លូវទំនាក់ទំនង (ឧទាហរណ៍ 'Pictures/Profile') អាចដោះស្រាយទៅជាថតពិតពីរផ្សេងគ្នារវាងជំហានទាញយក និងជំហានបង្ហាញ — ផ្លូវទំនាក់ទំនងឥឡូវត្រូវបានកំណត់ទៅទីតាំងថេរតែមួយ",
+      "រូបភាព Avatar ឥឡូវបង្ហាញនៅលើតារាងភ្លាមៗនៅពេលការទាញយកនីមួយៗបញ្ចប់ក្នុងអំឡុងពេលទាញយកជាបាច់ ជំនួសឲ្យរង់ចាំរហូតដល់គណនីទាំងអស់បញ្ចប់"
     ]
   }
 }

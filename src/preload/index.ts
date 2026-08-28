@@ -129,7 +129,14 @@ const api: AppApi = {
       ipcRenderer.invoke(IPC.automation.runChangeInfo, req),
     runWatchLive: (req: WatchLiveRequest) =>
       ipcRenderer.invoke(IPC.automation.runWatchLive, req),
-    unlock282: (accountIds: number[]) => ipcRenderer.invoke(IPC.automation.unlock282, accountIds)
+    unlock282: (accountIds: number[]) => ipcRenderer.invoke(IPC.automation.unlock282, accountIds),
+    loginWithCookieBatch: (accountIds: number[], concurrency: number) =>
+      ipcRenderer.invoke(IPC.automation.loginWithCookieBatch, accountIds, concurrency),
+    onCookieLoginProgress: (cb) => {
+      const listener = (_e: unknown, payload: unknown): void => cb(payload as Parameters<typeof cb>[0])
+      ipcRenderer.on(IPC.automation.onCookieLoginProgress, listener)
+      return () => ipcRenderer.removeListener(IPC.automation.onCookieLoginProgress, listener)
+    }
   },
   utils: {
     parseSpinSyntax: (text: string) => ipcRenderer.invoke(IPC.utils.parseSpinSyntax, text),

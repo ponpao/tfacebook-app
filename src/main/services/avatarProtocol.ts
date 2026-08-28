@@ -35,13 +35,28 @@ export function registerAvatarProtocolScheme(): void {
  * appends — parsed via URL rather than a manual string replace so it's
  * correctly excluded from the uid regardless of scheme host-vs-pathname
  * quirks or future query params.
+ *
+ * getLocalAvatarPath() (avatarService.ts) resolves the CURRENT
+ * avatarStoragePath from settings fresh on every call — not cached at
+ * registration time — so a user changing the setting mid-session is
+ * reflected on the very next avatar load, and (as of the fix in
+ * browserContext.ts's avatarsRoot()) resolves a relative configured path
+ * against userData rather than an unpredictable process.cwd(), which was
+ * the actual root cause of avatars downloading successfully but then never
+ * displaying: the download and the protocol-serve calls could each resolve
+ * the same relative setting string to two different real directories.
  */
 export function registerAvatarProtocolHandler(): void {
   protocol.handle(AVATAR_PROTOCOL, (request) => {
     const url = new URL(request.url)
     // A standard-privileged custom scheme parses "avatar://123456" with the
     // uid as the host, not the pathname (there's no path segment at all).
-    const uid = decodeURIComponent(url.hostname || url.pathname.replace(/^\/+/, ''))
+    // Also strips a stray ".jpg" suffix if the caller ever sends
+    // avatar://{uid}.jpg instead of avatar://{uid} — getLocalAvatarPath()
+    // already appends the real extension itself, so an extension in the
+    // request would otherwise get treated as part of the uid and 404.
+    const rawId = decodeURIComponent(url.hostname || url.pathname.replace(/^\/+/, ''))
+    const uid = rawId.replace(/\.jpe?g$|\.png$/i, '')
     const filePath = getLocalAvatarPath(uid)
     if (!existsSync(filePath)) {
       return new Response(null, { status: 404 })

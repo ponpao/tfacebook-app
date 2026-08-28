@@ -107,6 +107,13 @@ function Item({
 
 const Sep = (): React.JSX.Element => <div className="my-1 h-px bg-slate-200" />
 
+/** Non-interactive section header (e.g. "⚡ Run & Automation") — groups the menu into clearly-labeled clusters instead of one long flat list. */
+const GroupLabel = ({ label }: { label: string }): React.JSX.Element => (
+  <div className="px-2.5 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+    {label}
+  </div>
+)
+
 const SUBMENU_CLOSE_DELAY_MS = 150
 
 /**
@@ -234,6 +241,8 @@ export function AccountContextMenu({ x, y, account, onClose }: Props): React.JSX
   const moveToFolder = useAccountStore((s) => s.moveToFolder)
   const showToast = useAccountStore((s) => s.showToast)
   const refresh = useAccountStore((s) => s.refresh)
+  const applyAccountUpdate = useAccountStore((s) => s.applyAccountUpdate)
+  const threadCount = useAccountStore((s) => s.threadCount)
   const runSingleLogin = useAccountStore((s) => s.runSingleLogin)
   const openExportModal = useAccountStore((s) => s.openExportModal)
   const openEditAccount = useAccountStore((s) => s.openEditAccount)
@@ -356,6 +365,25 @@ export function AccountContextMenu({ x, y, account, onClose }: Props): React.JSX
     await refresh()
   }
 
+  const loginWithCookie = async (): Promise<void> => {
+    const targets = ids()
+    showToast(`Logging in with saved cookie for ${targets.length} account(s)…`)
+    const offProgress = window.api.automation.onCookieLoginProgress((event) => {
+      void window.api.accounts.get(event.accountId).then((acc) => {
+        if (acc) applyAccountUpdate(acc)
+      })
+    })
+    try {
+      const summary = await window.api.automation.loginWithCookieBatch(targets, threadCount)
+      showToast(
+        `Cookie Login: ${summary.succeeded}/${summary.total} succeeded${summary.failed ? `, ${summary.failed} failed` : ''}.`,
+        6000
+      )
+    } finally {
+      offProgress()
+    }
+  }
+
   const checkLiveDie = async (): Promise<void> => {
     showToast('Checking Live / Die status…')
     const res = await window.api.automation.checkLive(account.id)
@@ -376,12 +404,27 @@ export function AccountContextMenu({ x, y, account, onClose }: Props): React.JSX
   const downloadAvatarFast = async (): Promise<void> => {
     const targets = ids()
     showToast(`Downloading ${targets.length} avatar(s) (fast, no browser)…`)
-    const summary = await window.api.avatars.downloadBatch(targets)
-    showToast(
-      `Avatars: ${summary.succeeded}/${summary.total} downloaded${summary.failed ? `, ${summary.failed} failed` : ''}.`,
-      6000
-    )
-    await refresh()
+    // Patch each account into the grid the moment its own download finishes
+    // (avatars:onProgress fires per-account, not just once at the end of
+    // the batch) instead of waiting for the whole batch and calling the
+    // much heavier full-table refresh() — this is what actually makes a
+    // freshly downloaded photo "appear instantly" rather than only once
+    // every selected account in a large batch has finished.
+    const offProgress = window.api.avatars.onProgress((event) => {
+      if (!event.ok) return
+      void window.api.accounts.get(event.accountId).then((acc) => {
+        if (acc) applyAccountUpdate(acc)
+      })
+    })
+    try {
+      const summary = await window.api.avatars.downloadBatch(targets)
+      showToast(
+        `Avatars: ${summary.succeeded}/${summary.total} downloaded${summary.failed ? `, ${summary.failed} failed` : ''}.`,
+        6000
+      )
+    } finally {
+      offProgress()
+    }
   }
 
   const getMailOtp = async (): Promise<void> => {
@@ -462,10 +505,16 @@ export function AccountContextMenu({ x, y, account, onClose }: Props): React.JSX
       style={{ left: pos.x, top: pos.y, width: MENU_W }}
       onContextMenu={(e) => e.preventDefault()}
     >
+      <GroupLabel label="⚡ Run & Automation" />
       <Item
         icon={LogIn}
         label="Run Auto Login (Single)"
         onClick={run(() => runSingleLogin(account.id))}
+      />
+      <Item
+        icon={KeyRound}
+        label={`Login with Cookie (${targetCount > 1 ? `${targetCount} Selected` : 'Selected'}) 🔑`}
+        onClick={run(loginWithCookie)}
       />
       <Item
         icon={Globe}
@@ -477,6 +526,10 @@ export function AccountContextMenu({ x, y, account, onClose }: Props): React.JSX
         label="Check Live / Die Status"
         onClick={run(checkLiveDie)}
       />
+
+      <Sep />
+
+      <GroupLabel label="👤 Account Profile & Assets" />
       <Item
         icon={ImageDown}
         label="Download Avatar (Fast / No Browser)"
@@ -501,10 +554,14 @@ export function AccountContextMenu({ x, y, account, onClose }: Props): React.JSX
         />
         <Item
           icon={Globe}
-          label="Resolve Checkpoint 282 (Open Browser / Manual)"
+          label="Resolve Checkpoint 282 (Manual Browser)"
           onClick={run(openChromeProfile)}
         />
       </Submenu>
+
+      <Sep />
+
+      <GroupLabel label="🔑 Security & 2FA / OTP" />
       <Item
         icon={KeyRound}
         label="Get 2FA Code (Copy)"
@@ -514,6 +571,7 @@ export function AccountContextMenu({ x, y, account, onClose }: Props): React.JSX
 
       <Sep />
 
+      <GroupLabel label="📋 Data & Organization" />
       {/* Copy Data submenu — every entry maps over targetAccounts (the full
           checked/selected set, or just the right-clicked row if nothing else
           is checked) and joins with newlines, so copying with multiple rows
@@ -553,26 +611,20 @@ export function AccountContextMenu({ x, y, account, onClose }: Props): React.JSX
         ))}
       </Submenu>
 
-      <Sep />
-
-      <Item
-        icon={Download}
-        label="Export Accounts..."
-        onClick={run(openExportModal)}
-      />
       <Item
         icon={Pencil}
         label="Edit Account Info"
         onClick={run(() => openEditAccount(account))}
       />
       <Item
-        icon={Sparkles}
-        label="🧹 Clean Profile Storage..."
-        onClick={run(() => openCleanProfile(targetIds))}
+        icon={Download}
+        label="Export Accounts..."
+        onClick={run(openExportModal)}
       />
 
       <Sep />
 
+      <GroupLabel label="☑️ Selection & Batch Tools" />
       <Item
         icon={CheckSquare}
         label="Check Selected Rows (from Highlight)"
@@ -598,8 +650,13 @@ export function AccountContextMenu({ x, y, account, onClose }: Props): React.JSX
       <Sep />
 
       <Item
+        icon={Sparkles}
+        label="🧹 Clean Profile Storage..."
+        onClick={run(() => openCleanProfile(targetIds))}
+      />
+      <Item
         icon={Trash2}
-        label={`Move to Recycle Bin (${ids().length})`}
+        label={`🗑️ Move to Recycle Bin (${ids().length})`}
         danger
         onClick={run(() => {
           const targets = ids()

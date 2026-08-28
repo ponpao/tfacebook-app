@@ -7,7 +7,7 @@
 //   * a registry of tracked contexts so "Close Browsers" / Stop can close them
 // ---------------------------------------------------------------------------
 import { app, screen } from 'electron'
-import { join } from 'path'
+import { join, resolve } from 'path'
 import { mkdirSync, existsSync, writeFileSync, readFileSync, readdirSync } from 'fs'
 import { chromium, type BrowserContext, type Cookie } from 'playwright'
 import type { Account } from '../../types/account'
@@ -143,10 +143,25 @@ function profileDir(uid: string): string {
  * set, falling back to the default {userData}/avatars otherwise — same
  * pattern as profilesRoot()'s Custom Profile Directory override. Read fresh
  * each call (not cached) so a settings change takes effect immediately.
+ *
+ * resolve()d rather than used as-is: the settings field is a plain text
+ * input, not Browse-only, so a user can type a relative path (e.g.
+ * "Pictures/Profile", exactly the kind of value this was found broken
+ * against). A relative path resolves against process.cwd(), which for a
+ * packaged Electron app's main process is NOT guaranteed to be stable or
+ * even the same directory across separate calls — the avatar-download path
+ * and the avatar:// protocol-serve path could each independently resolve
+ * the identical setting string to two different real directories, making
+ * the avatar disappear from the UI (protocol handler 404s) despite having
+ * downloaded successfully moments earlier. Anchoring every relative path to
+ * userData (a fixed, known-stable directory) instead of leaving it to
+ * whatever cwd() happens to be eliminates that.
  */
 function avatarsRoot(): string {
   const configured = getAppSettings().avatarStoragePath?.trim()
-  const root = configured ? configured : join(app.getPath('userData'), 'avatars')
+  const root = configured
+    ? resolve(app.getPath('userData'), configured)
+    : join(app.getPath('userData'), 'avatars')
   mkdirSync(root, { recursive: true })
   return root
 }

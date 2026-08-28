@@ -79,7 +79,9 @@ export const IPC = {
     runAutoShare: 'automation:runAutoShare',
     runChangeInfo: 'automation:runChangeInfo',
     runWatchLive: 'automation:runWatchLive',
-    unlock282: 'automation:unlock282'
+    unlock282: 'automation:unlock282',
+    loginWithCookieBatch: 'automation:loginWithCookieBatch',
+    onCookieLoginProgress: 'automation:onCookieLoginProgress'
   },
   utils: {
     parseSpinSyntax: 'utils:parseSpinSyntax',

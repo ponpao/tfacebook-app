@@ -190,6 +190,24 @@ export interface AutomationApi {
   runChangeInfo(req: ChangeInfoRequest): Promise<MarketingBatchSummary>
   runWatchLive(req: WatchLiveRequest): Promise<MarketingBatchSummary>
   unlock282(accountIds: number[]): Promise<MarketingBatchSummary>
+  /** Opens a headed, cookie-authenticated browser per account (no password/2FA re-entry) — concurrency is the current Threads setting, same convention as runQueue. */
+  loginWithCookieBatch(accountIds: number[], concurrency: number): Promise<CookieLoginSummary>
+  onCookieLoginProgress(cb: (event: CookieLoginEvent) => void): () => void
+}
+
+export interface CookieLoginEvent {
+  accountId: number
+  uid: string | null
+  index: number
+  total: number
+  ok: boolean
+  detail: string
+}
+
+export interface CookieLoginSummary {
+  total: number
+  succeeded: number
+  failed: number
 }
 
 export interface UtilsApi {
