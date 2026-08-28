@@ -70,10 +70,21 @@
     requestedExecutionLevel: 'asInvoker'
   },
 
+  // deleteAppDataOnUninstall MUST stay false: this app's entire database
+  // (data.sqlite — every managed account's credentials/cookies/tokens),
+  // Chrome profile folders (active login sessions), and the Cloud Sync
+  // Firebase key all live under {userData} (%AppData%/fb-account-manager),
+  // never inside the install directory. An update reinstall overwrites the
+  // install directory but never touches {userData} — deleteAppDataOnUninstall
+  // only matters for an explicit uninstall, and even then this must be false
+  // so an uninstall/reinstall cycle (e.g. troubleshooting a broken install)
+  // can never silently wipe every managed account's data.
   nsis: {
-    oneClick: false,
+    oneClick: true,
     perMachine: false,
-    allowToChangeInstallationDirectory: true,
+    allowToChangeInstallationDirectory: false,
+    deleteAppDataOnUninstall: false,
+    differentialPackage: true,
     createDesktopShortcut: true,
     createStartMenuShortcut: true,
     shortcutName: 'TFACEBOOK',
