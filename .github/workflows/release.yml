@@ -1,0 +1,49 @@
+name: Release Build
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Check out Git repository
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci || npm install
+
+      # prepare:chromium (invoked by build:win below) stages Chromium from
+      # the local Playwright cache into resources/ms-playwright for
+      # electron-builder to ship as an extraResource — that cache is empty
+      # on a fresh runner, so it has to be populated here first or the build
+      # fails at that step with "Playwright cache not found".
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium
+
+      - name: Build Electron App for Windows
+        run: npm run build:win
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.exe
+            dist/latest.yml
+            dist/*.blockmap
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
