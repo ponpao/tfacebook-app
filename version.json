@@ -1,16 +1,18 @@
 {
-  "version": "1.1.1",
+  "version": "1.1.2",
   "releaseDate": "2026-08-28",
   "changelog": {
     "en": [
-      "Fixed avatar downloads returning Facebook's default silhouette instead of the real profile photo — now uses each account's saved cookie to fetch the actual current photo from mbasic.facebook.com, falling back to the public endpoint only when no cookie exists or the authenticated fetch fails",
-      "Added a true in-place updater for the Portable build: downloads the new Portable exe and swaps it in on disk directly, with no NSIS installer involved",
-      "The Setup (installed) build continues to use its existing update flow unchanged"
+      "Fixed avatar downloads for real: the cookie-authenticated fetch() approach from 1.1.1 was blocked by Facebook's non-browser client fingerprinting even with a fully valid session cookie — confirmed live against a real account",
+      "Avatar downloads now route through a real stealth headless Playwright Chromium context per account (reusing this app's existing cookie-injection/launch machinery), which gets past that block",
+      "Fixed a second bug found during live testing: the extracted nav-bar avatar URL carries a crop-to-40px parameter that silently saved a 40x40 icon as the 'HD avatar' — this parameter is now stripped before downloading, unlocking the genuine 1024x1024 source photo (verified live: 977 bytes -> 219KB on the same underlying image)",
+      "Avatar batch downloads now run 3 real browser contexts concurrently (down from the previous 6 bare-fetch workers, since real browsers are heavier) to keep RAM/CPU usage smooth on a typical machine"
     ],
     "km": [
-      "កែតម្រូវបញ្ហាទាញយករូបភាព Avatar ដែលបង្ហាញរូបភាពលំនាំដើមរបស់ Facebook ជំនួសរូបភាពពិត — ឥឡូវប្រើ cookie ដែលបានរក្សាទុករបស់គណនីនីមួយៗ ដើម្បីទាញយករូបភាពពិតបច្ចុប្បន្នពី mbasic.facebook.com ហើយប្រើប្រាស់មធ្យោបាយសាធារណៈវិញលុះត្រាតែគ្មាន cookie ឬការទាញយកជាមួយ cookie បរាជ័យ",
-      "បន្ថែមប្រព័ន្ធអាប់ដេត (updater) ពិតប្រាកដសម្រាប់កំណែ Portable ដោយផ្ទាល់នៅលើថាស ដោយមិនចាំបាច់ប្រើកម្មវិធីតំឡើង NSIS ឡើយ",
-      "កំណែ Setup (បានតំឡើង) នៅតែប្រើប្រព័ន្ធអាប់ដេតដដែលដោយគ្មានការផ្លាស់ប្តូរ"
+      "កែតម្រូវការទាញយករូបភាព Avatar ជាការពិតប្រាកដ៖ វិធីសាស្ត្រ fetch() ដោយប្រើ cookie ក្នុងកំណែ 1.1.1 ត្រូវបានទប់ស្កាត់ដោយប្រព័ន្ធរបស់ Facebook ដែលរកឃើញថាការស្នើសុំមិនមែនមកពី browser ពិត ទោះបីជា cookie មានសុពលភាពពេញលេញក៏ដោយ — បានផ្ទៀងផ្ទាត់ជាមួយគណនីពិត",
+      "ការទាញយករូបភាព Avatar ឥឡូវប្រើកម្មវិធីរុករក Chromium ក្នុងទម្រង់ headless ពិតប្រាកដសម្រាប់គណនីនីមួយៗ (ប្រើប្រាស់ប្រព័ន្ធចាក់ cookie/បើកកម្មវិធីរបស់កម្មវិធីនេះដដែល) ដែលអាចឆ្លងកាត់ការទប់ស្កាត់នោះបាន",
+      "កែតម្រូវបញ្ហាទីពីរដែលរកឃើញកំឡុងពេលសាកល្បង៖ URL រូបភាព Avatar ដែលទាញយកមកមានប៉ារ៉ាម៉ែត្រកាត់ទំហំត្រឹម 40x40 ភីកសែល ដែលធ្វើឲ្យរក្សាទុករូបភាពតូចជំនួសរូបភាពគុណភាពខ្ពស់ — ឥឡូវប៉ារ៉ាម៉ែត្រនេះត្រូវបានដកចេញ ដើម្បីទទួលបានរូបភាពប្រភពពិត 1024x1024",
+      "ការទាញយករូបភាព Avatar ជាបាច់ឥឡូវដំណើរការកម្មវិធីរុករក 3 ក្នុងពេលតែមួយ (ពីមុន 6 សម្រាប់វិធីសាស្ត្រ fetch() សាមញ្ញ) ដើម្បីរក្សាការប្រើប្រាស់ RAM/CPU ឲ្យរលូន"
     ]
   }
 }

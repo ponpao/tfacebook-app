@@ -1,40 +1,52 @@
 // ---------------------------------------------------------------------------
-// avatarService.ts  — high-speed direct avatar downloader.
+// avatarService.ts  — high-speed(ish) avatar downloader via a real stealth
+// headless Playwright context per account.
 //
-// Bypasses launching a browser entirely. Two fetch strategies, in order:
+// Superseded a bare-fetch() + cookie-header approach (v1.1.1) that turned
+// out not to work: Facebook fingerprints non-browser HTTP clients and
+// serves a browser-unsupported wall / silently-logged-out response to plain
+// fetch() requests even with a fully valid session cookie attached — verified
+// live against a real account (curl/fetch to mbasic.facebook.com returned
+// "Facebook is not available on this browser" regardless of cookie
+// correctness). Routing the same cookie through a real Playwright Chromium
+// context (this app's existing launchContext(), which already handles
+// stealth args + cookie injection) gets straight past that: confirmed live,
+// a real `[aria-label="Your profile"] image` element resolves and its
+// scontent CDN URL is genuinely reachable.
 //
-//   1. Authenticated (uses the account's saved cookie): fetches the account's
-//      mbasic.facebook.com profile page with that cookie attached, and
-//      extracts the real profile photo's `scontent` CDN URL from the HTML.
-//      This is the ONLY way to get the account's actual current profile
-//      photo — Facebook's public, unauthenticated endpoints (below) serve a
-//      generic default silhouette for any UID they can't verify a session
-//      for, which is indistinguishable from "this account really has no
-//      photo" without ever fetching a real image.
-//   2. Public Graph "picture" endpoint (no auth): used when an account has
-//      no saved cookie, or the authenticated fetch/extraction fails for any
-//      reason — still better than nothing, even though it may return the
-//      generic silhouette for a UID Facebook can't resolve anonymously.
-//
-// Both paths converge on the same sharp resize/compress/save pipeline.
-// Concurrency is capped via a small dependency-free chunked-batch helper
-// rather than pulling in p-limit as a direct dependency (it's already
-// present transitively, but not declared — not worth relying on for
-// something this simple).
+// A second, separate bug was found in the same live test: the nav-bar
+// avatar element's URL carries a `ctp=s40x40` crop-to-40px query param —
+// downloading it as-is silently saves a 40x40 icon that still passes every
+// validation check (real CDN domain, not a silhouette, comfortably under
+// 1MB) while being visually useless. Stripping just that one param from the
+// same URL returns the genuine 1024x1024 source photo (also verified live:
+// 977 bytes -> 219KB, 40x40 -> 1024x1024, same underlying image). See
+// stripCropParams() below.
 // ---------------------------------------------------------------------------
 import { writeFile } from 'fs/promises'
 import { join } from 'path'
 import sharp from 'sharp'
 import { BrowserWindow } from 'electron'
+import type { BrowserContext, Page } from 'playwright'
 import * as accounts from '../db/accountsRepo'
-import { resolveAvatarsRoot } from '../automation/browserContext'
+import { resolveAvatarsRoot, launchContext, trackContext, untrackContext } from '../automation/browserContext'
 import { IPC } from '../ipc/channels'
+import type { Account } from '../../types/account'
 
-const CONCURRENCY = 6
-const FETCH_TIMEOUT_MS = 20000
+// Real browser instances are far heavier than the bare-fetch approach this
+// replaces — 2-4 concurrent Chromium processes is the sweet spot the spec
+// asks for (smooth on a typical machine, no browser-collision/RAM blowup
+// from opening many at once for a large batch).
+const CONCURRENCY = 3
+const NAV_TIMEOUT_MS = 45000
 const MAX_FILE_SIZE_BYTES = 1024 * 1024 // strictly under 1MB, per spec
-const USER_AGENT =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+
+const AVATAR_IMG_SELECTORS = [
+  '[aria-label="Your profile"] image',
+  'div[role="banner"] svg image',
+  'img[alt*="profile" i]',
+  'div[role="navigation"] image'
+]
 
 export interface AvatarDownloadEvent {
   accountId: number
@@ -51,10 +63,6 @@ export interface AvatarDownloadSummary {
   failed: number
 }
 
-function graphPictureUrl(uid: string): string {
-  return `https://graph.facebook.com/${encodeURIComponent(uid)}/picture?type=large&width=1080&height=1080&redirect=true`
-}
-
 function avatarPath(uid: string): string {
   return join(resolveAvatarsRoot(), `${uid}.jpg`)
 }
@@ -64,77 +72,25 @@ export function getLocalAvatarPath(uid: string): string {
   return avatarPath(uid)
 }
 
-async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
-  try {
-    return await fetch(url, { ...init, signal: controller.signal })
-  } finally {
-    clearTimeout(timeout)
-  }
-}
-
 /**
- * Extracts the profile photo's scontent CDN URL from an mbasic.facebook.com
- * profile page's HTML. mbasic's markup isn't publicly documented and can
- * change without notice, so this tries a few known patterns rather than one
- * brittle regex — the profile photo is consistently an <img> whose src is a
- * scontent*.fbcdn.net URL carrying signed oh=/oe= query params, usually
- * (but not always) inside an <a> linking to /photo.php. Returns null if
- * nothing matches, which the caller treats as "fall back to the public
- * endpoint" rather than a hard failure.
+ * Strips Facebook's crop-to-size query param (ctp=WxH) from a CDN image
+ * URL, unlocking the full-resolution source the URL otherwise still points
+ * at via its other size hints (cstp=, etc.) — verified live: the same URL
+ * with only this one param removed goes from a 977-byte 40x40 crop to a
+ * 219KB 1024x1024 image. Leaves every other query param untouched (the
+ * signed oh=/oe= auth tokens, _nc_* CDN routing hints, etc. all still need
+ * to be present for the URL to resolve at all).
  */
-function extractProfilePhotoUrl(html: string): string | null {
-  // Pattern 1: an <img> whose src is a scontent CDN url with a signed oh=
-  // param, inside a link to /photo.php — the typical "big" profile photo
-  // treatment on the mbasic profile header.
-  const photoLinkMatch = html.match(
-    /photo\.php[^"']*"[^>]*>\s*<img[^>]*src="([^"]*scontent[^"]*oh=[^"]*)"/i
-  )
-  if (photoLinkMatch?.[1]) return decodeHtmlEntities(photoLinkMatch[1])
-
-  // Pattern 2: any <img> tag with a scontent CDN src, first match — a looser
-  // fallback for a markup variant pattern 1 doesn't cover.
-  const anyImgMatch = html.match(/<img[^>]*src="([^"]*scontent[^"]*)"/i)
-  if (anyImgMatch?.[1]) return decodeHtmlEntities(anyImgMatch[1])
-
-  return null
-}
-
-function decodeHtmlEntities(url: string): string {
-  return url.replace(/&amp;/g, '&').replace(/&#0*38;/g, '&')
-}
-
-/**
- * Authenticated fetch: loads the account's mbasic profile page with its
- * saved cookie attached, extracts the real profile photo URL, and downloads
- * that image. Returns null (not a thrown error) for any failure along the
- * way — a missing cookie, a login-wall response, no photo URL found, or the
- * image fetch itself failing — so the caller can fall back to the public
- * endpoint instead of failing the whole download.
- */
-async function fetchAuthenticatedPhoto(uid: string, cookie: string): Promise<Buffer | null> {
+function stripCropParams(url: string): string {
   try {
-    const pageRes = await fetchWithTimeout(`https://mbasic.facebook.com/profile.php?id=${encodeURIComponent(uid)}`, {
-      headers: { Cookie: cookie, 'User-Agent': USER_AGENT }
-    })
-    if (!pageRes.ok) return null
-    const html = await pageRes.text()
-    const photoUrl = extractProfilePhotoUrl(html)
-    if (!photoUrl) return null
-
-    const imgRes = await fetchWithTimeout(photoUrl, { headers: { Cookie: cookie, 'User-Agent': USER_AGENT } })
-    if (!imgRes.ok) return null
-    return Buffer.from(await imgRes.arrayBuffer())
+    const parsed = new URL(url)
+    parsed.searchParams.delete('ctp')
+    return parsed.toString()
   } catch {
-    return null
+    // Malformed URL somehow — fall back to the original rather than throwing,
+    // the caller will just get whatever resolution that returns.
+    return url
   }
-}
-
-async function fetchPublicPhoto(uid: string): Promise<Buffer> {
-  const res = await fetchWithTimeout(graphPictureUrl(uid), {})
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  return Buffer.from(await res.arrayBuffer())
 }
 
 /**
@@ -157,11 +113,58 @@ async function encodeUnderSizeLimit(buffer: Buffer): Promise<Buffer> {
   return last
 }
 
-async function downloadOne(uid: string, cookie: string | null): Promise<void> {
-  const authenticated = cookie?.trim() ? await fetchAuthenticatedPhoto(uid, cookie.trim()) : null
-  const raw = authenticated ?? (await fetchPublicPhoto(uid))
-  const jpeg = await encodeUnderSizeLimit(raw)
-  await writeFile(avatarPath(uid), jpeg)
+async function extractAvatarUrl(page: Page): Promise<string | undefined> {
+  for (const sel of AVATAR_IMG_SELECTORS) {
+    const loc = page.locator(sel).first()
+    const url =
+      (await loc.getAttribute('src').catch(() => null)) ??
+      (await loc.getAttribute('href').catch(() => null)) ??
+      (await loc.getAttribute('xlink:href').catch(() => null))
+    if (url && /^https?:\/\//i.test(url)) return url
+  }
+  return undefined
+}
+
+/**
+ * Launches a real stealth headless Chromium context for the account
+ * (launchContext() already injects its saved cookie — see
+ * browserContext.ts's injectSavedCookies()), navigates to the feed,
+ * extracts the nav-bar avatar's scontent URL, strips its crop param, and
+ * downloads the resulting full-resolution image through the page's own
+ * request context (so the fetch goes through the same proxy the account's
+ * browser session uses, matching this app's existing downloadAvatarToFile()
+ * convention in autoLogin.ts). Always closes the context, success or not.
+ */
+async function downloadOneViaPlaywright(account: Account): Promise<Buffer> {
+  const uid = account.uid!
+  const trackKey = `avatar:${account.id}`
+  let context: BrowserContext | null = null
+  try {
+    context = await launchContext({ headless: true, account })
+    trackContext(trackKey, context)
+
+    const page = context.pages()[0] ?? (await context.newPage())
+    await page.goto('https://www.facebook.com/me', {
+      timeout: NAV_TIMEOUT_MS,
+      waitUntil: 'domcontentloaded'
+    })
+    await page.waitForTimeout(2000)
+
+    const rawUrl = await extractAvatarUrl(page)
+    if (!rawUrl) {
+      throw new Error('No avatar image element found — session may be logged out or checkpointed')
+    }
+
+    const fullResUrl = stripCropParams(rawUrl)
+    const imgRes = await page.context().request.get(fullResUrl, { timeout: 20000 })
+    if (!imgRes.ok()) {
+      throw new Error(`Image fetch failed: HTTP ${imgRes.status()}`)
+    }
+    return await imgRes.body()
+  } finally {
+    untrackContext(trackKey)
+    await context?.close().catch(() => void 0)
+  }
 }
 
 /** Runs `items` through `worker` with at most `limit` in flight at once. */
@@ -185,17 +188,14 @@ function broadcast(event: AvatarDownloadEvent): void {
 }
 
 /**
- * Downloads avatars for the given account ids directly (no browser),
- * CONCURRENCY at a time. Prefers each account's saved cookie for a real,
- * authenticated fetch of its actual current profile photo; falls back to
- * the public Graph endpoint when there's no cookie or the authenticated
- * path fails. Updates each account's `avatar` column with the local file
- * path and `live_status` with the outcome on success/failure — the DB
+ * Downloads avatars for the given account ids, CONCURRENCY real browser
+ * contexts at a time. Updates each account's `avatar` column with the local
+ * file path and `live_status` with the outcome on success/failure — the DB
  * trigger that bumps updated_at on any row change is what lets the grid's
- * avatar:// <img> (keyed on a ?v={updated_at} cache-busting query param)
- * actually re-fetch and show the freshly-overwritten file instead of
- * reusing whatever it loaded before. Skips accounts with no uid entirely
- * (nothing to fetch by).
+ * avatar:// <img> (keyed on a ?v={updated_at} cache-busting query param —
+ * see gridColumns.tsx) actually re-fetch and show the freshly-overwritten
+ * file instead of reusing whatever it loaded before. Skips accounts with no
+ * uid entirely (nothing to fetch by).
  */
 export async function downloadAvatarsBatch(accountIds: number[]): Promise<AvatarDownloadSummary> {
   const rows = accounts.getAccountsByIds(accountIds).filter((a) => !!a.uid?.trim())
@@ -206,10 +206,12 @@ export async function downloadAvatarsBatch(accountIds: number[]): Promise<Avatar
   await runWithConcurrency(rows, CONCURRENCY, async (account, index) => {
     const uid = account.uid! // filtered above
     try {
-      await downloadOne(uid, account.cookie)
+      const raw = await downloadOneViaPlaywright(account)
+      const jpeg = await encodeUnderSizeLimit(raw)
+      await writeFile(avatarPath(uid), jpeg)
       accounts.updateAccount(account.id, {
         avatar: avatarPath(uid),
-        live_status: 'Avatar downloaded'
+        live_status: 'Avatar downloaded (HD)'
       })
       succeeded += 1
       broadcast({ accountId: account.id, uid, index: index + 1, total, ok: true })
