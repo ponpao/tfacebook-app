@@ -5,7 +5,10 @@
 export const IPC = {
   system: {
     clipboardWriteText: 'clipboard:writeText',
-    getAppVersion: 'system:getAppVersion'
+    getAppVersion: 'system:getAppVersion',
+    onNetworkStatus: 'system:onNetworkStatus',
+    scheduleShutdown: 'system:scheduleShutdown',
+    cancelShutdown: 'system:cancelShutdown'
   },
   accounts: {
     list: 'accounts:list',

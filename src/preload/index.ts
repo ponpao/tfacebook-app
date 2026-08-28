@@ -25,7 +25,14 @@ import type { CleanMode } from '../types/profileOptimizer'
 const api: AppApi = {
   system: {
     clipboardWriteText: (text: string) => ipcRenderer.invoke(IPC.system.clipboardWriteText, text),
-    getAppVersion: () => ipcRenderer.invoke(IPC.system.getAppVersion)
+    getAppVersion: () => ipcRenderer.invoke(IPC.system.getAppVersion),
+    onNetworkStatus: (cb) => {
+      const listener = (_e: unknown, payload: unknown): void => cb(payload as Parameters<typeof cb>[0])
+      ipcRenderer.on(IPC.system.onNetworkStatus, listener)
+      return () => ipcRenderer.removeListener(IPC.system.onNetworkStatus, listener)
+    },
+    scheduleShutdown: (seconds: number) => ipcRenderer.invoke(IPC.system.scheduleShutdown, seconds),
+    cancelShutdown: () => ipcRenderer.invoke(IPC.system.cancelShutdown)
   },
   accounts: {
     list: (query: AccountQuery) => ipcRenderer.invoke(IPC.accounts.list, query),

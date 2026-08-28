@@ -6,6 +6,18 @@
 export type BrowserMode = 'headless' | 'headed'
 
 /**
+ * Chromium hardware acceleration policy for every launched profile:
+ *   'cpu'  — force software rendering (--disable-gpu --disable-software-rasterizer).
+ *            Most compatible/lowest-risk option when running many concurrent
+ *            instances on a machine without a capable/stable GPU driver.
+ *   'gpu'  — force GPU rasterization/WebGL/hardware acceleration on
+ *            (--ignore-gpu-blocklist --enable-gpu-rasterization
+ *            --enable-webgl), for a machine with a real GPU to spare.
+ *   'auto' — Chromium's own default hybrid behavior; no extra flags either way.
+ */
+export type HardwareMode = 'cpu' | 'gpu' | 'auto'
+
+/**
  * 'full' runs every post-login enrichment step (cookies, name, avatar,
  * primary location, created date). 'fast' skips the two steps that each
  * require a full navigation + page interaction (primary_location/info, and
@@ -56,6 +68,17 @@ export interface AppSettings {
    * already logged in.
    */
   directWarmup: boolean
+  /** Chromium hardware acceleration policy for every launched profile — see HardwareMode. */
+  hardwareMode: HardwareMode
+  /**
+   * When enabled, once a login-queue run finishes (completes fully or is
+   * stopped) with no other batch left running, prompt to shut down this PC
+   * — a 60-second countdown dialog the user can cancel, matching
+   * `shutdown /s /t 60`'s own grace period. Off by default: this shuts down
+   * the whole machine, not just the app, so it needs to be an explicit
+   * opt-in rather than something that could surprise a user mid-session.
+   */
+  autoShutdownAfterQueue: boolean
   /**
    * This PC's persistent, human-shareable Cloud Sync identifier (format:
    * `TFA` + 5 digits, e.g. `TFA90488`) — generated once on first use and
@@ -80,7 +103,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   metadataExtractionMode: 'full',
   twoCaptchaApiKey: '',
   blockMedia: false,
-  directWarmup: true
+  directWarmup: true,
+  hardwareMode: 'auto',
+  autoShutdownAfterQueue: false
 }
 
 export const SETTINGS_KEY = 'app.generalSettings'

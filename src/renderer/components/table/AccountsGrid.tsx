@@ -12,6 +12,7 @@ import type { Account } from '../../../types/account'
 import { useAccountStore } from '../../store/useAccountStore'
 import { GRID_COLUMNS, ROW_NUMBER_COLUMN, RESIZE_MIN_WIDTH, RESIZE_MAX_WIDTH } from './gridColumns'
 import { AccountContextMenu } from './AccountContextMenu'
+import { HEADER_HEX_PATTERN_URL } from '../../assets/headerHexPattern'
 
 const ROW_HEIGHT = 26
 const CHECKBOX_W = 34
@@ -229,11 +230,22 @@ export function AccountsGrid(): React.JSX.Element {
       <div ref={parentRef} className="relative flex-1 overflow-auto">
         {/* Inner width = at least the window width, expanding to fit all columns */}
         <div className="w-full" style={{ minWidth: totalWidth }}>
-          {/* Header */}
-          <div className="sticky top-0 z-10 flex w-full bg-mc-headbg">
+          {/* Header — subtle hexagon pattern (matching the title bar/menu
+              bar/modal headers) instead of the flat mc-headbg fill; text
+              force-centered + bold regardless of each column's own data
+              alignment (left-aligned data cells still read naturally below
+              a centered header label). */}
+          <div
+            className="sticky top-0 z-10 flex w-full bg-[#fdf9f0]"
+            style={{
+              backgroundImage: HEADER_HEX_PATTERN_URL,
+              backgroundSize: '56px 98px',
+              backgroundRepeat: 'repeat'
+            }}
+          >
             {/* Checkbox + row number — fixed width, never resizable, but scrolls horizontally with everything else (not pinned/frozen). */}
             <div
-              className={`flex shrink-0 items-center bg-mc-headbg ${stickyLeft}`}
+              className={`flex shrink-0 items-center ${stickyLeft}`}
               style={{ width: LEFT_EDGE_W, height: ROW_HEIGHT }}
             >
               <div
@@ -251,7 +263,7 @@ export function AccountsGrid(): React.JSX.Element {
                 />
               </div>
               <div
-                className={`flex h-full shrink-0 items-center justify-center text-2xs font-semibold text-slate-900 ${headBorder}`}
+                className={`flex h-full shrink-0 items-center justify-center text-center text-2xs font-bold text-slate-900 ${headBorder}`}
                 style={{ width: ROW_NUMBER_COLUMN.width }}
               >
                 {ROW_NUMBER_COLUMN.header}
@@ -262,13 +274,8 @@ export function AccountsGrid(): React.JSX.Element {
             {columns.map((c) => (
               <div
                 key={c.key}
-                className={`group relative flex shrink-0 items-center bg-mc-headbg px-1.5 text-2xs font-semibold text-slate-900 ${headBorder}`}
-                style={{
-                  width: c.width,
-                  height: ROW_HEIGHT,
-                  justifyContent:
-                    c.align === 'center' ? 'center' : c.align === 'right' ? 'flex-end' : 'flex-start'
-                }}
+                className={`group relative flex shrink-0 items-center justify-center bg-transparent px-1.5 text-center text-2xs font-bold text-slate-900 ${headBorder}`}
+                style={{ width: c.width, height: ROW_HEIGHT }}
               >
                 <span className="truncate">{c.header}</span>
                 {/* Drag handle — a thin hit-zone straddling the header's right border. */}
@@ -281,7 +288,7 @@ export function AccountsGrid(): React.JSX.Element {
 
             {/* Flexible filler so a short column set doesn't leave a gap of
                 bare background after the last middle column. */}
-            <div className={`flex-1 bg-mc-headbg ${headBorder}`} />
+            <div className={`flex-1 bg-transparent ${headBorder}`} />
           </div>
 
           {/* Body (virtualized) */}

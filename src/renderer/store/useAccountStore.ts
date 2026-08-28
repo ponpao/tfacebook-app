@@ -76,6 +76,8 @@ interface AccountState {
   threadCount: number
   queueRunning: boolean
   queueProgress: Record<number, QueueProgressEvent> // accountId -> latest event
+  /** True right after a queue run finishes with "Auto Shutdown PC after queue completes" enabled — App.tsx shows the countdown dialog while this is true. */
+  shutdownPending: boolean
 
   // scenario builder / warm-up
   scenarios: Scenario[]
@@ -116,6 +118,7 @@ interface AccountState {
   openCleanProfile: (ids: number[]) => void
   closeCleanProfile: () => void
   applyAccountUpdate: (account: Account) => void
+  dismissShutdownPrompt: () => void
   runSelectedQueue: () => Promise<void>
   stopQueueRun: () => Promise<void>
   runSingleLogin: (accountId: number) => Promise<void>
@@ -160,6 +163,7 @@ export const useAccountStore = create<AccountState>((set, get) => ({
   threadCount: loadThreadCount(),
   queueRunning: false,
   queueProgress: {},
+  shutdownPending: false,
 
   scenarios: [],
   activeScenarioId: (() => {
@@ -191,6 +195,7 @@ export const useAccountStore = create<AccountState>((set, get) => ({
     set((state) => ({
       accounts: state.accounts.map((a) => (a.id === account.id ? account : a))
     })),
+  dismissShutdownPrompt: () => set({ shutdownPending: false }),
 
   showToast: (msg, ttlMs = 4000) => {
     set({ toast: msg })
@@ -300,6 +305,13 @@ export const useAccountStore = create<AccountState>((set, get) => ({
           : `Done: ${succeeded}/${total} succeeded, ${failed} failed.`,
         6000
       )
+      // Auto Shutdown PC after queue completes (General Settings). Only one
+      // batch runs at a time app-wide (activeRun.ts), so reaching this point
+      // at all already means nothing else is running.
+      const appSettings = await window.api.settings.getAppSettings()
+      if (appSettings.autoShutdownAfterQueue) {
+        set({ shutdownPending: true })
+      }
     } finally {
       set({ queueRunning: false })
       await get().refresh()

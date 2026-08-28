@@ -87,7 +87,7 @@ export function FolderDialogs({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/25">
-      <div className="w-[420px] rounded-[4px] border border-[#999] bg-mc-bg shadow-2xl">
+      <div className="w-[420px] rounded-[4px] border border-[#999] border-t-4 border-t-indigo-600 bg-mc-bg shadow-2xl">
         {/* Title bar */}
         <div
           className="flex items-center justify-between border-b border-[#e4d8bc] bg-[#fdf9f0] px-3 py-1.5"

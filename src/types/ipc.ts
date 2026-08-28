@@ -222,6 +222,12 @@ export interface SystemApi {
   clipboardWriteText(text: string): Promise<boolean>
   /** Electron's app.getVersion() — reads the packaged app's package.json, so the UI never needs its own hardcoded version string. */
   getAppVersion(): Promise<string>
+  /** Fires whenever the connectivity heartbeat (networkWatchdog.ts) detects an online<->offline transition — used to surface a "network lost, run halted" banner/toast. */
+  onNetworkStatus(cb: (status: { online: boolean }) => void): () => void
+  /** Schedules a real OS shutdown in `seconds` (Windows' `shutdown /s /t <seconds>`) — the countdown/cancel UI lives in the renderer. */
+  scheduleShutdown(seconds: number): Promise<{ ok: boolean; message?: string }>
+  /** Cancels a previously scheduled shutdown (`shutdown /a`). */
+  cancelShutdown(): Promise<{ ok: boolean }>
 }
 
 export interface UpdateAvailableInfo {

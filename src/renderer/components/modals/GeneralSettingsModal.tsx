@@ -7,7 +7,7 @@ import { useEffect, useState } from 'react'
 import { Settings, FolderOpen, Eye, EyeOff } from 'lucide-react'
 import { ModalShell } from './ModalShell'
 import { useAccountStore } from '../../store/useAccountStore'
-import { DEFAULT_SETTINGS, type AppSettings, type BrowserMode } from '../../../types/settings'
+import { DEFAULT_SETTINGS, type AppSettings, type BrowserMode, type HardwareMode } from '../../../types/settings'
 
 export function GeneralSettingsModal({
   open,
@@ -133,6 +133,39 @@ export function GeneralSettingsModal({
             </div>
           </fieldset>
 
+          <fieldset className="win-fieldset">
+            <legend>Hardware Running Mode</legend>
+            <div className="flex gap-4 py-1">
+              <label className="flex items-center gap-1.5" title="Forces software rendering — most compatible when running many concurrent instances without a capable/stable GPU driver.">
+                <input
+                  type="radio"
+                  name="hardware-mode"
+                  checked={settings.hardwareMode === 'cpu'}
+                  onChange={() => patch({ hardwareMode: 'cpu' as HardwareMode })}
+                />
+                CPU Only
+              </label>
+              <label className="flex items-center gap-1.5" title="Forces GPU rasterization, WebGL, and hardware acceleration on.">
+                <input
+                  type="radio"
+                  name="hardware-mode"
+                  checked={settings.hardwareMode === 'gpu'}
+                  onChange={() => patch({ hardwareMode: 'gpu' as HardwareMode })}
+                />
+                GPU Acceleration
+              </label>
+              <label className="flex items-center gap-1.5" title="Chromium's own default hybrid behavior — no extra flags either way.">
+                <input
+                  type="radio"
+                  name="hardware-mode"
+                  checked={settings.hardwareMode === 'auto'}
+                  onChange={() => patch({ hardwareMode: 'auto' as HardwareMode })}
+                />
+                Auto / Both
+              </label>
+            </div>
+          </fieldset>
+
           <label className="flex flex-col gap-1.5">
             <span className="font-medium text-slate-700">
               Custom Chromium Path <span className="text-slate-400">(optional override)</span>
@@ -193,6 +226,15 @@ export function GeneralSettingsModal({
               onChange={(e) => patch({ directWarmup: e.target.checked })}
             />
             Direct Warm-up (Skip Login if Session/Cookie is Valid)
+          </label>
+
+          <label className="flex items-center gap-1.5" title="Once a login-queue run finishes with no other batch running, shows a 60-second countdown you can cancel before this PC actually shuts down. Windows only.">
+            <input
+              type="checkbox"
+              checked={settings.autoShutdownAfterQueue}
+              onChange={(e) => patch({ autoShutdownAfterQueue: e.target.checked })}
+            />
+            Auto Shutdown PC after queue completes
           </label>
 
           <label className="flex flex-col gap-1.5">

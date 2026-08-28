@@ -9,6 +9,7 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { initDatabase, closeDatabase } from './db/database'
 import { registerIpcHandlers } from './ipc/registerHandlers'
 import { initAutoUpdater } from './updater'
+import { startNetworkWatchdog } from './services/networkWatchdog'
 
 // Load project-root .env (dev only — a packaged build ships no .env, and
 // Cloud Sync falls back to a key file under app.getPath('userData') instead;
@@ -42,14 +43,13 @@ process.on('unhandledRejection', (reason) => logFatal('unhandledRejection', reas
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
-    width: 1440,
-    height: 900,
-    // Below ~1200px the toolbar's Row 1 fieldsets (Threads/Scenario/Search/
-    // Folder Manager) no longer fit alongside Import Accounts without
-    // wrapping into an unwanted 3rd row — 1200x700 is the smallest size
-    // that keeps the whole toolbar on its intended two rows.
-    minWidth: 1200,
-    minHeight: 700,
+    // Fixed, non-resizable window — the redesigned toolbar/table layout is
+    // tuned to this exact size, so locking it out avoids ever needing to
+    // reflow around an arbitrary window size again. resizable: false also
+    // implies non-maximizable on Windows.
+    width: 1280,
+    height: 780,
+    resizable: false,
     show: false,
     frame: false, // custom WinForms-style title bar
     autoHideMenuBar: true,
@@ -90,6 +90,7 @@ app.whenReady().then(() => {
   initDatabase()
   registerIpcHandlers()
   initAutoUpdater()
+  startNetworkWatchdog()
 
   createWindow()
 

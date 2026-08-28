@@ -432,21 +432,21 @@ export function RibbonToolbar({
           </button>
         </fieldset>
 
-        {/* Primary Import button — pushed to the far right and pinned there
-            (sticky, not just ml-auto) so it stays visible/reachable even
-            once Row 1's fieldsets overflow into horizontal scroll on a
-            narrow window, rather than scrolling out of view with them. */}
-        <button
-          className="win-btn-accent sticky right-0 ml-auto h-[38px] shrink-0 justify-center px-4"
-          onClick={onImport}
-        >
-          <Download size={15} />
-          Import Accounts
-        </button>
       </div>
 
       {/* ---- Row 2: soft pastel action pills ---- */}
       <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 px-2 py-1.5">
+        {/* Import Accounts — moved here from Row 1, styled as the same
+            amber/yellow accent pill it always was, just in pill shape to
+            match its new row. */}
+        <button
+          className="action-pill font-semibold"
+          style={{ backgroundColor: '#ffe9a8', borderColor: '#e8c15c', color: '#5a4300' }}
+          onClick={onImport}
+        >
+          <Download size={14} />
+          Import Accounts
+        </button>
         {ACTION_BUTTONS.map(({ icon: Icon, label, bg, border, text }) => (
           <button
             key={label}

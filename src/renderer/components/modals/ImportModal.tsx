@@ -151,7 +151,7 @@ export function ImportModal({
         if (e.target === e.currentTarget) onClose()
       }}
     >
-      <div className="flex h-full max-h-[88vh] w-full max-w-6xl flex-col overflow-hidden rounded border border-slate-400 bg-[#f0f2f5] shadow-2xl">
+      <div className="flex h-full max-h-[88vh] w-full max-w-6xl flex-col overflow-hidden rounded border border-slate-400 border-t-4 border-t-indigo-600 bg-[#f0f2f5] shadow-2xl">
         {/* Header */}
         <div
           className="flex items-center justify-between border-b border-[#e4d8bc] bg-[#fdf9f0] px-4 py-2"

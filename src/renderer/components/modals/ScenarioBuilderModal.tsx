@@ -55,10 +55,15 @@ function NumberField({
 }): React.JSX.Element {
   return (
     <label className="flex items-center gap-1.5 text-[11px] text-slate-600">
-      {label}
+      {/* Fixed label width so every NumberField's input starts at the same
+          x-offset regardless of label text length ("Min (s)" vs "Min
+          count" vs "Min dur (s)") — this is what actually keeps every step
+          type's inputs aligned into clean columns when stacked in the list,
+          not just the input's own fixed width. */}
+      <span className="w-[62px] shrink-0 text-right">{label}</span>
       <input
         type="number"
-        className="win-input w-16 py-0.5 text-center"
+        className="win-input w-16 shrink-0 py-0.5 text-center"
         value={value}
         min={min}
         max={max}
@@ -308,7 +313,7 @@ export function ScenarioBuilderModal({
         if (e.target === e.currentTarget) onClose()
       }}
     >
-      <div className="flex h-full max-h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded border border-slate-400 bg-[#f0f2f5] shadow-2xl">
+      <div className="flex h-full max-h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded border border-slate-400 border-t-4 border-t-indigo-600 bg-[#f0f2f5] shadow-2xl">
         {/* Header */}
         <div
           className="flex items-center justify-between border-b border-[#e4d8bc] bg-[#fdf9f0] px-4 py-2"
@@ -406,7 +411,13 @@ export function ScenarioBuilderModal({
                 return (
                   <div
                     key={step.id}
-                    className={`mb-1.5 flex items-center gap-2 rounded border border-slate-300 bg-white px-2 py-1.5 ${
+                    // Strict grid, not flex — a fixed track per column (checkbox,
+                    // icon, title, params, actions) means every step type's
+                    // columns line up in exactly the same place regardless of
+                    // how many NumberFields a given step type has, instead of
+                    // flex's content-driven sizing letting each row's layout
+                    // drift independently.
+                    className={`mb-1.5 grid grid-cols-[20px_18px_190px_1fr_88px] items-center gap-2 rounded border border-slate-300 bg-white px-2 py-2 ${
                       step.enabled ? '' : 'opacity-50'
                     }`}
                   >
@@ -418,13 +429,13 @@ export function ScenarioBuilderModal({
                       title="Enabled"
                     />
                     <Icon size={14} className="shrink-0 text-[#4a6a8a]" />
-                    <span className="w-[190px] shrink-0 truncate text-[12px] text-slate-800">
+                    <span className="truncate text-[12px] font-medium text-slate-800">
                       {STEP_LABELS[step.type]}
                     </span>
-                    <div className="flex flex-1 flex-wrap items-center gap-x-3 gap-y-1">
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                       <StepParams step={step} onChange={updateStep} />
                     </div>
-                    <div className="flex shrink-0 items-center gap-0.5">
+                    <div className="flex shrink-0 items-center justify-end gap-0.5">
                       <button
                         className="win-btn-sq h-6 w-6"
                         disabled={i === 0}

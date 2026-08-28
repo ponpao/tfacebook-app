@@ -23,6 +23,7 @@ import { HelpAboutModal } from './components/modals/HelpAboutModal'
 import { SetNotesModal } from './components/modals/SetNotesModal'
 import { CleanProfileModal } from './components/modals/CleanProfileModal'
 import { UpdateNotificationModal } from './components/modals/UpdateNotificationModal'
+import { AutoShutdownDialog } from './components/modals/AutoShutdownDialog'
 import { useAccountStore } from './store/useAccountStore'
 import { ALL_FOLDERS } from '../types/folder'
 import type { LicenseStatus } from '../types/license'
@@ -75,6 +76,9 @@ function Dashboard({
   const rowSelection = useAccountStore((s) => s.rowSelection)
 
   const initQueueListeners = useAccountStore((s) => s.initQueueListeners)
+  const showToast = useAccountStore((s) => s.showToast)
+  const shutdownPending = useAccountStore((s) => s.shutdownPending)
+  const dismissShutdownPrompt = useAccountStore((s) => s.dismissShutdownPrompt)
   const exportModalOpen = useAccountStore((s) => s.exportModalOpen)
   const closeExportModal = useAccountStore((s) => s.closeExportModal)
   const recycleBinOpen = useAccountStore((s) => s.recycleBinOpen)
@@ -93,6 +97,24 @@ function Dashboard({
   // Subscribe once for the app's lifetime — the queue can outlive any single
   // component that triggered it.
   useEffect(() => initQueueListeners(), [initQueueListeners])
+
+  // Network Disconnect Failsafe (networkWatchdog.ts, main process): surfaces
+  // the online<->offline transitions it detects. Going offline mid-run
+  // already halted the queue and closed every browser on the main-process
+  // side by the time this fires — this toast is purely informational, so
+  // the user understands why their run stopped.
+  useEffect(
+    () =>
+      window.api.system.onNetworkStatus(({ online }) => {
+        showToast(
+          online
+            ? 'Internet connection restored.'
+            : 'Internet connection lost — active run stopped and browsers closed to prevent account flagging.',
+          online ? 4000 : 10000
+        )
+      }),
+    [showToast]
+  )
 
   const activeFolder =
     folderId === ALL_FOLDERS ? null : folders.find((f) => f.id === folderId) ?? null
@@ -165,6 +187,7 @@ function Dashboard({
       <SetNotesModal accountIds={setNotesTargetIds} onClose={closeSetNotes} />
       <CleanProfileModal accountIds={cleanProfileTargetIds} onClose={closeCleanProfile} />
       <UpdateNotificationModal />
+      <AutoShutdownDialog open={shutdownPending} onCancelled={dismissShutdownPrompt} />
       <FolderDialogs
         mode={folderMode}
         folders={folders}

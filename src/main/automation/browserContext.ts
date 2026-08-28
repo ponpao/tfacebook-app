@@ -316,6 +316,14 @@ export async function launchContext({
     '--no-default-browser-check'
   ]
 
+  // Hardware Running Mode (General Settings) — 'auto' adds nothing, letting
+  // Chromium's own default hybrid GPU/software behavior apply.
+  if (settings.hardwareMode === 'cpu') {
+    args.push('--disable-gpu', '--disable-software-rasterizer')
+  } else if (settings.hardwareMode === 'gpu') {
+    args.push('--ignore-gpu-blocklist', '--enable-gpu-rasterization', '--enable-webgl')
+  }
+
   // MaxCare-style compact tiling — only meaningful for headed windows; a
   // headless context has no on-screen window to position. Headless still
   // gets an explicit --window-size: Chromium's headless default viewport
