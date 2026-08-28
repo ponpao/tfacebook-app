@@ -46,6 +46,11 @@ export function GeneralSettingsModal({
     if (path) patch({ customProfileDirectory: path })
   }
 
+  const browseAvatarDirectory = async (): Promise<void> => {
+    const path = await window.api.utils.selectAvatarDirectory()
+    if (path) patch({ avatarStoragePath: path })
+  }
+
   const save = async (): Promise<void> => {
     setSaving(true)
     try {
@@ -249,6 +254,24 @@ export function GeneralSettingsModal({
                 onChange={(e) => patch({ customProfileDirectory: e.target.value })}
               />
               <button className="win-btn" onClick={() => void browseProfileDirectory()}>
+                <FolderOpen size={13} className="text-[#4a6a8a]" />
+                Browse…
+              </button>
+            </div>
+          </label>
+
+          <label className="flex flex-col gap-1.5">
+            <span className="font-medium text-slate-700">
+              Avatar Download Directory <span className="text-slate-400">(optional override)</span>
+            </span>
+            <div className="flex gap-1.5">
+              <input
+                className="win-input flex-1"
+                placeholder="Leave empty to use the default userData/avatars folder"
+                value={settings.avatarStoragePath}
+                onChange={(e) => patch({ avatarStoragePath: e.target.value })}
+              />
+              <button className="win-btn" onClick={() => void browseAvatarDirectory()}>
                 <FolderOpen size={13} className="text-[#4a6a8a]" />
                 Browse…
               </button>

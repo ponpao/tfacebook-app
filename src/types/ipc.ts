@@ -203,6 +203,7 @@ export interface UtilsApi {
   ): Promise<{ ok: boolean; filePath?: string }>
   selectChromiumExecutable(): Promise<string | null>
   selectProfileDirectory(): Promise<string | null>
+  selectAvatarDirectory(): Promise<string | null>
 }
 
 export interface ToolsApi {
@@ -267,6 +268,29 @@ export interface ProfilesApi {
   clean(accountIds: number[], mode: CleanMode): Promise<CleanSummary>
 }
 
+export interface AvatarDownloadEvent {
+  accountId: number
+  uid: string | null
+  index: number
+  total: number
+  ok: boolean
+  detail?: string
+}
+
+export interface AvatarDownloadSummary {
+  total: number
+  succeeded: number
+  failed: number
+}
+
+export interface AvatarsApi {
+  /** High-speed direct (no browser) avatar downloader — Facebook's public Graph picture endpoint, resized/compressed via sharp, saved as {avatarStoragePath}/{uid}.jpg. */
+  downloadBatch(accountIds: number[]): Promise<AvatarDownloadSummary>
+  /** The local file path an account's avatar would be saved to/read from, without triggering a download. */
+  getLocalPath(uid: string): Promise<string>
+  onProgress(cb: (event: AvatarDownloadEvent) => void): () => void
+}
+
 export interface LicenseApi {
   getStatus(): Promise<LicenseStatus>
   activate(licenseKey: string): Promise<ActivateLicenseResult>
@@ -309,6 +333,7 @@ export interface AppApi {
   profiles: ProfilesApi
   backup: BackupApi
   cloudSync: CloudSyncApi
+  avatars: AvatarsApi
 }
 
 // Convenience re-exports so callers can import everything from '@types'

@@ -10,6 +10,7 @@ import { registerSystemIpcHandlers } from './systemIpc'
 import { registerLicenseIpcHandlers } from './licenseIpc'
 import { registerBackupIpcHandlers } from './backupIpc'
 import { registerCloudSyncIpcHandlers } from './cloudSyncIpc'
+import { registerAvatarIpcHandlers } from './avatarIpc'
 import * as accounts from '../db/accountsRepo'
 import * as folders from '../db/foldersRepo'
 import * as proxies from '../db/proxiesRepo'
@@ -65,6 +66,7 @@ export function registerIpcHandlers(): void {
   registerLicenseIpcHandlers()
   registerBackupIpcHandlers()
   registerCloudSyncIpcHandlers()
+  registerAvatarIpcHandlers()
 
   // ---- accounts -----------------------------------------------------------
   ipcMain.handle(IPC.accounts.list, (_e, query: AccountQuery) =>
@@ -461,6 +463,15 @@ export function registerIpcHandlers(): void {
     const win = BrowserWindow.fromWebContents(e.sender) ?? undefined
     const result = await dialog.showOpenDialog(win as BrowserWindow, {
       title: 'Select Chrome Profile Storage folder',
+      properties: ['openDirectory', 'createDirectory']
+    })
+    return result.canceled ? null : (result.filePaths[0] ?? null)
+  })
+
+  ipcMain.handle(IPC.utils.selectAvatarDirectory, async (e) => {
+    const win = BrowserWindow.fromWebContents(e.sender) ?? undefined
+    const result = await dialog.showOpenDialog(win as BrowserWindow, {
+      title: 'Select Avatar Download folder',
       properties: ['openDirectory', 'createDirectory']
     })
     return result.canceled ? null : (result.filePaths[0] ?? null)

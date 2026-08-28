@@ -87,7 +87,8 @@ export const IPC = {
     selectFolder: 'utils:selectFolder',
     saveTextFile: 'utils:saveTextFile',
     selectChromiumExecutable: 'utils:selectChromiumExecutable',
-    selectProfileDirectory: 'utils:selectProfileDirectory'
+    selectProfileDirectory: 'utils:selectProfileDirectory',
+    selectAvatarDirectory: 'utils:selectAvatarDirectory'
   },
   tools: {
     checkUidsLive: 'tools:checkUidsLive',
@@ -114,6 +115,11 @@ export const IPC = {
   },
   profiles: {
     clean: 'profiles:clean'
+  },
+  avatars: {
+    downloadBatch: 'avatars:download-batch',
+    getLocalPath: 'avatars:get-local-path',
+    onProgress: 'avatars:onProgress'
   },
   backup: {
     export: 'backup:export',

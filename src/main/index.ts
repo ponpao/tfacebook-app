@@ -10,14 +10,20 @@ import { initDatabase, closeDatabase } from './db/database'
 import { registerIpcHandlers } from './ipc/registerHandlers'
 import { initAutoUpdater } from './updater'
 import { startNetworkWatchdog } from './services/networkWatchdog'
+import { registerAvatarProtocolScheme, registerAvatarProtocolHandler } from './services/avatarProtocol'
+
+// Must run at module load, before app.whenReady() — Electron only accepts
+// privileged scheme registration (avatar://) at that point, not inside the
+// ready callback. Doesn't read process.env, so its position relative to
+// loadDotenv() below doesn't matter.
+registerAvatarProtocolScheme()
 
 // Load project-root .env (dev only — a packaged build ships no .env, and
 // Cloud Sync falls back to a key file under app.getPath('userData') instead;
 // see firebaseConfig.ts). Must run before any other module reads
-// process.env, so this stays the very first thing this file does.
-// quiet: true suppresses dotenv's own console output (including its
-// rotating self-promotional "tip" messages) — this is a GUI app with no
-// visible console in a packaged build, so that output has no audience.
+// process.env — quiet: true suppresses dotenv's own console output
+// (including its rotating self-promotional "tip" messages), since this is a
+// GUI app with no visible console in a packaged build.
 loadDotenv({ path: join(__dirname, '../../.env'), quiet: true })
 
 // Packaged builds pick up build/icon.ico via electron-builder's `win.icon`
@@ -91,6 +97,7 @@ app.whenReady().then(() => {
   registerIpcHandlers()
   initAutoUpdater()
   startNetworkWatchdog()
+  registerAvatarProtocolHandler()
 
   createWindow()
 

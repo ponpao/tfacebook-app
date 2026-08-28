@@ -37,6 +37,42 @@ export const STATUS_COLOR: Record<string, string> = {
   Unknown: 'text-[#6b7280]'
 }
 
+/** Inline SVG user-silhouette placeholder — shown until a real avatar exists locally, or if the load fails (avatar:// 404s for a UID with no downloaded file yet). */
+const AVATAR_PLACEHOLDER =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23cbd5e1'%3E%3Ccircle cx='12' cy='8' r='4'/%3E%3Cpath d='M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8'/%3E%3C/svg%3E"
+
+/**
+ * 28x28 circular avatar preview — avatar:// custom protocol serves the
+ * local {uid}.jpg if one exists (see avatarProtocol.ts), falling back to a
+ * silhouette placeholder on 404/no-uid/load error. `cacheBust` (the
+ * account's updated_at, bumped by a DB trigger on any row change including
+ * the avatar-download IPC's updateAccount() call) is appended as a query
+ * string so the browser re-fetches instead of reusing the previous
+ * 404/placeholder response it cached under the same avatar://{uid} URL.
+ */
+function AvatarCell({ uid, cacheBust }: { uid: string | null; cacheBust: string }): React.ReactNode {
+  if (!uid) {
+    return (
+      <img
+        src={AVATAR_PLACEHOLDER}
+        alt=""
+        className="h-[28px] w-[28px] rounded-full ring-1 ring-slate-200 object-cover"
+      />
+    )
+  }
+  return (
+    <img
+      src={`avatar://${encodeURIComponent(uid)}?v=${encodeURIComponent(cacheBust)}`}
+      alt=""
+      className="h-[28px] w-[28px] rounded-full ring-1 ring-slate-200 object-cover"
+      onError={(e) => {
+        e.currentTarget.onerror = null
+        e.currentTarget.src = AVATAR_PLACEHOLDER
+      }}
+    />
+  )
+}
+
 /** Masked, click-to-copy cell for the (long, sensitive) cookie string. */
 function CookieCell({ cookie }: { cookie: string | null }): React.ReactNode {
   if (!cookie) return ''
@@ -80,6 +116,15 @@ export const ROW_NUMBER_COLUMN: GridColumn = {
 // (twoFactorSecret, mailPassword, primaryLocation, createdAt,
 // activityStatus) are descriptive labels, not actual schema fields.
 export const GRID_COLUMNS: GridColumn[] = [
+  {
+    key: 'avatar',
+    header: 'Avatar',
+    width: 48,
+    align: 'center',
+    minWidth: 48,
+    maxWidth: 80,
+    render: (a) => <AvatarCell uid={a.uid} cacheBust={a.updated_at} />
+  },
   { key: 'uid', header: 'UID', width: 140, render: (a) => a.uid ?? '' },
   { key: 'password', header: 'Password', width: 120, render: (a) => a.password ?? '' },
   { key: 'two_fa', header: '2FA', width: 140, render: (a) => a.two_fa ?? '' },

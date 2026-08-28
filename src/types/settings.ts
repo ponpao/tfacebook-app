@@ -35,6 +35,8 @@ export interface AppSettings {
   autoSaveCookies: boolean
   /** Empty string = use the default {userData}/profiles directory. */
   customProfileDirectory: string
+  /** Empty string = use the default {userData}/avatars directory. Downloaded/scraped avatar .jpg files are saved here, named {uid}.jpg. */
+  avatarStoragePath: string
   /** Scenario id to preselect on startup; null = "No scenario (login only)". */
   defaultScenarioId: number | null
   /**
@@ -99,6 +101,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   delayMaxSeconds: 6,
   autoSaveCookies: true,
   customProfileDirectory: '',
+  avatarStoragePath: '',
   defaultScenarioId: null,
   metadataExtractionMode: 'full',
   twoCaptchaApiKey: '',

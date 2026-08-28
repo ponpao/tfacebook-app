@@ -138,7 +138,8 @@ const api: AppApi = {
     saveTextFile: (content, defaultName, kind) =>
       ipcRenderer.invoke(IPC.utils.saveTextFile, content, defaultName, kind),
     selectChromiumExecutable: () => ipcRenderer.invoke(IPC.utils.selectChromiumExecutable),
-    selectProfileDirectory: () => ipcRenderer.invoke(IPC.utils.selectProfileDirectory)
+    selectProfileDirectory: () => ipcRenderer.invoke(IPC.utils.selectProfileDirectory),
+    selectAvatarDirectory: () => ipcRenderer.invoke(IPC.utils.selectAvatarDirectory)
   },
   tools: {
     checkUidsLive: (accountIds: number[]) =>
@@ -222,6 +223,15 @@ const api: AppApi = {
       const listener = (_e: unknown, payload: unknown): void => cb(payload as Parameters<typeof cb>[0])
       ipcRenderer.on(IPC.cloudSync.onPulled, listener)
       return () => ipcRenderer.removeListener(IPC.cloudSync.onPulled, listener)
+    }
+  },
+  avatars: {
+    downloadBatch: (accountIds: number[]) => ipcRenderer.invoke(IPC.avatars.downloadBatch, accountIds),
+    getLocalPath: (uid: string) => ipcRenderer.invoke(IPC.avatars.getLocalPath, uid),
+    onProgress: (cb) => {
+      const listener = (_e: unknown, payload: unknown): void => cb(payload as Parameters<typeof cb>[0])
+      ipcRenderer.on(IPC.avatars.onProgress, listener)
+      return () => ipcRenderer.removeListener(IPC.avatars.onProgress, listener)
     }
   }
 }

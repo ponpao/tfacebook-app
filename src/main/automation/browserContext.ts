@@ -137,11 +137,23 @@ function profileDir(uid: string): string {
   return dir
 }
 
-/** Root directory for downloaded avatar images, one .jpg per account UID. */
+/**
+ * Root directory for downloaded avatar images, one .jpg per account UID.
+ * Uses the configured "Avatar Download Directory" (General Settings) when
+ * set, falling back to the default {userData}/avatars otherwise — same
+ * pattern as profilesRoot()'s Custom Profile Directory override. Read fresh
+ * each call (not cached) so a settings change takes effect immediately.
+ */
 function avatarsRoot(): string {
-  const root = join(app.getPath('userData'), 'avatars')
+  const configured = getAppSettings().avatarStoragePath?.trim()
+  const root = configured ? configured : join(app.getPath('userData'), 'avatars')
   mkdirSync(root, { recursive: true })
   return root
+}
+
+/** Exported for avatarService.ts (the direct-HTTP batch downloader) — same directory profileDir()-style helpers here already resolve avatars into. */
+export function resolveAvatarsRoot(): string {
+  return avatarsRoot()
 }
 
 /** Local on-disk path an account's avatar is saved to/read from — always `{uid}.jpg`. */

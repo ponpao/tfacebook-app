@@ -24,7 +24,8 @@ import {
   StickyNote,
   Eraser,
   RotateCcw,
-  Sparkles
+  Sparkles,
+  ImageDown
 } from 'lucide-react'
 import type { Account } from '../../../types/account'
 import { useAccountStore } from '../../store/useAccountStore'
@@ -372,6 +373,17 @@ export function AccountContextMenu({ x, y, account, onClose }: Props): React.JSX
     await refresh()
   }
 
+  const downloadAvatarFast = async (): Promise<void> => {
+    const targets = ids()
+    showToast(`Downloading ${targets.length} avatar(s) (fast, no browser)…`)
+    const summary = await window.api.avatars.downloadBatch(targets)
+    showToast(
+      `Avatars: ${summary.succeeded}/${summary.total} downloaded${summary.failed ? `, ${summary.failed} failed` : ''}.`,
+      6000
+    )
+    await refresh()
+  }
+
   const getMailOtp = async (): Promise<void> => {
     showToast('Fetching Mail OTP (Inbox + Spam)…', 8000)
     const res = await window.api.automation.getMailOtp(account.id)
@@ -464,6 +476,11 @@ export function AccountContextMenu({ x, y, account, onClose }: Props): React.JSX
         icon={Zap}
         label="Check Live / Die Status"
         onClick={run(checkLiveDie)}
+      />
+      <Item
+        icon={ImageDown}
+        label="Download Avatar (Fast / No Browser)"
+        onClick={run(downloadAvatarFast)}
       />
       {/* Always shown regardless of the account's current status — a
           checkpoint isn't always reflected accurately in status_detail (a
