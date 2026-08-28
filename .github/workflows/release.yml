@@ -24,26 +24,29 @@ jobs:
       - name: Install dependencies
         run: npm ci || npm install
 
-      # prepare:chromium (invoked by build:win below) stages Chromium from
-      # the local Playwright cache into resources/ms-playwright for
+      # prepare:chromium (invoked in the build step below) stages Chromium
+      # from the local Playwright cache into resources/ms-playwright for
       # electron-builder to ship as an extraResource — that cache is empty
       # on a fresh runner, so it has to be populated here first or the build
       # fails at that step with "Playwright cache not found".
       - name: Install Playwright Chromium
         run: npx playwright install chromium
 
-      # Deliberately no GH_TOKEN here even though build:win never passes
-      # --publish: electron-builder.json5 has a publish:{provider:'github',...}
-      # block, and electron-builder auto-detects + publishes to that provider
-      # whenever a GitHub token is present in its environment regardless of
-      # --publish. With GH_TOKEN set here, electron-builder created its own
-      # GitHub Release for this tag at the same time the separate "Publish
-      # GitHub Release" step below tried to, and the two raced — one created
-      # the release, the other then failed with "already_exists" trying to
-      # create/update the same tag_name. softprops/action-gh-release below is
-      # the single, explicit publisher for this workflow.
+      # electron-builder.json5 has a publish:{provider:'github',...} block,
+      # and electron-builder implicitly triggers a publish attempt just from
+      # detecting a v* git tag in CI — regardless of whether --publish was
+      # passed (build:win doesn't) and regardless of GH_TOKEN being present.
+      # Without a token that implicit attempt hard-fails the whole build
+      # ("GitHub Personal Access Token is not set"); with one (as in an
+      # earlier version of this workflow), it races against the separate
+      # "Publish GitHub Release" step below and both try to create/update
+      # the same release, so one fails with "already_exists". `--publish
+      # never` explicitly overrides the implicit tag-triggered publish so
+      # electron-builder only ever produces local files in dist/ —
+      # softprops/action-gh-release below is this workflow's single,
+      # explicit publisher.
       - name: Build Electron App for Windows
-        run: npm run build:win
+        run: npm run build && npm run prepare:chromium && npx electron-builder --win --x64 --publish never
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
