@@ -9,13 +9,23 @@
 //   2. Individual FIREBASE_PROJECT_ID / FIREBASE_CLIENT_EMAIL /
 //      FIREBASE_PRIVATE_KEY env vars (also settable via .env).
 //   3. A JSON key file dropped at {userData}/firebase-service-account.json
-//      — this is the path a packaged/distributed build should use, since it
-//      ships no .env and nothing under the install directory is meant to be
-//      writable/secret-holding. {userData} is Electron's per-app data folder
-//      (%APPDATA%\TFACEBOOK on Windows), well outside source control and
-//      outside the installed program files tree.
-//   4. GOOGLE_APPLICATION_CREDENTIALS (left to firebase-admin itself via
+//      — {userData} is Electron's per-app data folder
+//      (%APPDATA%\fb-account-manager on Windows), well outside source
+//      control and outside the installed program files tree.
+//   4. A JSON key file placed next to the packaged install (either the
+//      folder above resources/app.asar, or the app's own root as reported
+//      by app.getAppPath()) — for a packaged build where dropping a file
+//      into %APPDATA% isn't convenient, e.g. an installer that bundles the
+//      key file as an extra resource next to the .exe.
+//   5. GOOGLE_APPLICATION_CREDENTIALS (left to firebase-admin itself via
 //      applicationDefault()) if none of the above are set.
+//
+// A key file found via (3) or (4) fully configures Firebase by itself: its
+// own project_id/client_email/private_key fields are all firebase-admin
+// needs, so isFirebaseConfigured() does NOT also require
+// FIREBASE_STORAGE_BUCKET to be set in that case — it derives the bucket
+// from the key file's project_id (`{projectId}.appspot.com`) unless
+// FIREBASE_STORAGE_BUCKET is explicitly set to override that guess.
 //
 // index.ts loads the project-root .env (via dotenv) before anything else
 // runs, so process.env is already populated by the time this module is
@@ -31,11 +41,15 @@
 //        (b) Copy .env.example to .env and fill in FIREBASE_PROJECT_ID /
 //            FIREBASE_CLIENT_EMAIL / FIREBASE_PRIVATE_KEY from the JSON's
 //            matching fields.
-//        (c) Drop the downloaded file at
-//            %APPDATA%\TFACEBOOK\firebase-service-account.json (this is
-//            the option for a packaged build, with no .env present).
-//   3. Set FIREBASE_STORAGE_BUCKET (in .env) to the project's bucket name
-//      (usually `{projectId}.appspot.com` or `{projectId}.firebasestorage.app`).
+//        (c) Drop the downloaded file, renamed to
+//            firebase-service-account.json, at
+//            %APPDATA%\fb-account-manager\firebase-service-account.json
+//            (this is the option for a packaged build, with no .env
+//            present) — no other configuration is needed once this file
+//            exists there.
+//   3. Optional: set FIREBASE_STORAGE_BUCKET (in .env) if the project's
+//      bucket name doesn't match the default `{projectId}.appspot.com`
+//      guess (e.g. it's `{projectId}.firebasestorage.app` instead).
 //   4. Make sure Cloud Firestore and Cloud Storage are enabled for the
 //      project (Firestore holds the small `devices/{machineId}` metadata
 //      document; Storage holds the zipped account+profile bundle, since
@@ -60,9 +74,37 @@ interface RawServiceAccountJson {
   private_key?: string
 }
 
+const KEY_FILE_NAME = 'firebase-service-account.json'
+
 /** {userData}/firebase-service-account.json — the drop-in path for a packaged build (no .env available). */
 function userDataKeyFilePath(): string {
-  return join(app.getPath('userData'), 'firebase-service-account.json')
+  return join(app.getPath('userData'), KEY_FILE_NAME)
+}
+
+/**
+ * Other places a packaged build might reasonably have the key file dropped
+ * next to it, for setups where writing into %APPDATA% isn't how the key
+ * gets distributed (e.g. it ships as an extra resource alongside the
+ * installed app instead). Wrapped in try/catch: process.resourcesPath is
+ * undefined outside a packaged Electron app (e.g. under ts-node in a
+ * script), and app.getAppPath() can throw before the app is ready in rare
+ * startup orderings — neither should ever crash a credentials lookup.
+ */
+function packagedInstallKeyFilePaths(): string[] {
+  const paths: string[] = []
+  try {
+    if (process.resourcesPath) {
+      paths.push(join(process.resourcesPath, '..', KEY_FILE_NAME))
+    }
+  } catch {
+    /* process.resourcesPath not meaningful here — not a packaged build */
+  }
+  try {
+    paths.push(join(app.getAppPath(), KEY_FILE_NAME))
+  } catch {
+    /* app.getAppPath() unavailable this early — ignore */
+  }
+  return paths
 }
 
 function loadFromKeyFile(path: string): ServiceAccountConfig | null {
@@ -102,21 +144,41 @@ export function resolveServiceAccount(): ServiceAccountConfig | null {
   const fromEnvFields = loadFromEnvFields()
   if (fromEnvFields) return fromEnvFields
 
-  return loadFromKeyFile(userDataKeyFilePath())
+  const fromUserData = loadFromKeyFile(userDataKeyFilePath())
+  if (fromUserData) return fromUserData
+
+  for (const path of packagedInstallKeyFilePaths()) {
+    const fromPackagedInstall = loadFromKeyFile(path)
+    if (fromPackagedInstall) return fromPackagedInstall
+  }
+
+  return null
 }
 
-/** The project's Storage bucket, e.g. 'your-project-id.firebasestorage.app'. Set via FIREBASE_STORAGE_BUCKET in .env. */
+/**
+ * The project's Storage bucket. Prefers an explicit FIREBASE_STORAGE_BUCKET
+ * override (needed when the real bucket name doesn't match the default
+ * guess below — e.g. it's `{projectId}.firebasestorage.app` instead), but
+ * falls back to deriving `{projectId}.appspot.com` from a resolved service
+ * account so a key-file-only setup (no .env at all) still works without any
+ * separate bucket configuration step.
+ */
 export function resolveStorageBucket(): string | null {
-  return process.env.FIREBASE_STORAGE_BUCKET || null
+  if (process.env.FIREBASE_STORAGE_BUCKET) return process.env.FIREBASE_STORAGE_BUCKET
+  const serviceAccount = resolveServiceAccount()
+  return serviceAccount ? `${serviceAccount.projectId}.appspot.com` : null
 }
 
-/** True once a service account (from any source above) and a storage bucket are both resolvable. */
+/**
+ * True once Firebase can actually be initialized: either a service account
+ * was resolved from any source above (a key file alone is enough — its
+ * project_id derives a usable storage bucket automatically, see
+ * resolveStorageBucket()), or GOOGLE_APPLICATION_CREDENTIALS is set for
+ * firebase-admin's applicationDefault() to pick up (in which case an
+ * explicit FIREBASE_STORAGE_BUCKET is required, since there's no key file
+ * here to derive a bucket name from).
+ */
 export function isFirebaseConfigured(): boolean {
-  if (!resolveStorageBucket()) return false
-  // A null service account is still "configured" if GOOGLE_APPLICATION_CREDENTIALS
-  // is set, since applicationDefault() will pick it up — but if neither an
-  // explicit service account NOR that env var is present, there's nothing
-  // for firebase-admin to authenticate with at all.
-  if (!resolveServiceAccount() && !process.env.GOOGLE_APPLICATION_CREDENTIALS) return false
-  return true
+  if (resolveServiceAccount()) return true
+  return !!process.env.GOOGLE_APPLICATION_CREDENTIALS && !!process.env.FIREBASE_STORAGE_BUCKET
 }

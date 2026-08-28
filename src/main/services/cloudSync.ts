@@ -177,11 +177,6 @@ export async function pushToDevice(targetMachineId: string, accountIds: number[]
   }
 }
 
-/** {userData}/firebase-service-account.json — same path resolveServiceAccount() checks as its final fallback (see firebaseConfig.ts). Checked again here, explicitly, so a pull fails with an unambiguous message up front rather than surfacing an opaque firebase-admin auth error deeper in the call stack. */
-function userDataKeyFilePath(): string {
-  return join(electronApp.getPath('userData'), 'firebase-service-account.json')
-}
-
 /**
  * Pull: reads the pointer doc at devices/{machineId}, downloads the zip from
  * Storage, extracts it, restores accounts into "Receive Account" and
@@ -210,16 +205,13 @@ export async function pullPendingPayload(targetMachineId: string): Promise<Cloud
   const workDir = tempWorkDir('pull')
 
   try {
-    // Only meaningful when no inline/env service account is configured
-    // either — resolveServiceAccount() already checks this same path as its
-    // last fallback, but a pull that's about to fail deep inside the
-    // firebase-admin SDK with an opaque auth error is much harder to
-    // diagnose than one that fails here with a plain, specific message.
-    if (!resolveServiceAccount() && !process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-      const keyPath = userDataKeyFilePath()
-      if (!existsSync(keyPath)) {
-        throw new Error('Firebase Key file not found in fb-account-manager directory.')
-      }
+    // Fail here with a plain, specific message rather than deeper inside
+    // the firebase-admin SDK with an opaque auth error. isFirebaseConfigured()
+    // is the single source of truth for every place a service account key
+    // can come from (see firebaseConfig.ts) — checking it directly here
+    // keeps this in lock-step with that logic instead of duplicating it.
+    if (!isFirebaseConfigured()) {
+      throw new Error('Firebase Key file not found in fb-account-manager directory.')
     }
 
     const { db } = getFirebase()

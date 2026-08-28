@@ -14,7 +14,10 @@ import { initAutoUpdater } from './updater'
 // Cloud Sync falls back to a key file under app.getPath('userData') instead;
 // see firebaseConfig.ts). Must run before any other module reads
 // process.env, so this stays the very first thing this file does.
-loadDotenv({ path: join(__dirname, '../../.env') })
+// quiet: true suppresses dotenv's own console output (including its
+// rotating self-promotional "tip" messages) — this is a GUI app with no
+// visible console in a packaged build, so that output has no audience.
+loadDotenv({ path: join(__dirname, '../../.env'), quiet: true })
 
 // Packaged builds pick up build/icon.ico via electron-builder's `win.icon`
 // automatically; this path only matters for `npm run dev`/unpackaged runs,
