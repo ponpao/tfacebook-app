@@ -258,14 +258,6 @@ export function AccountContextMenu({ x, y, account, onClose }: Props): React.JSX
   const targetIds = targetAccounts.map((a) => a.id)
   const targetCount = targetAccounts.length
 
-  // Checkpoint 282 (identity/liveness verification) is never resolved
-  // automatically — this app only detects and reports it (see autoLogin.ts).
-  // Surfacing a dedicated menu item lets the person open the account in a
-  // real, visible browser and complete Facebook's verification themselves.
-  const isCheckpoint282 =
-    account.status === 'Checkpoint' &&
-    (account.notes?.includes('282') || account.status_detail?.includes('282'))
-
   /**
    * Single account: generate the live 6-digit TOTP from its 2FA secret and
    * copy just the code. Multiple selected accounts: there's no single "the"
@@ -473,6 +465,29 @@ export function AccountContextMenu({ x, y, account, onClose }: Props): React.JSX
         label="Check Live / Die Status"
         onClick={run(checkLiveDie)}
       />
+      {/* Always shown regardless of the account's current status — a
+          checkpoint isn't always reflected accurately in status_detail (a
+          stale/manual status edit, or a check that hasn't run since it
+          happened), so gating this on status === 'Checkpoint' could hide it
+          exactly when it's needed. Facebook itself decides whether there's
+          actually anything to resolve when the account is opened. */}
+      <Submenu
+        label="Unlock / Checkpoint Tools"
+        icon={Unlock}
+        width={260}
+        registerPortalNode={registerPortalNode}
+      >
+        <Item
+          icon={Unlock}
+          label="Unlock Checkpoint 282 (Auto)"
+          onClick={run(unlock282)}
+        />
+        <Item
+          icon={Globe}
+          label="Resolve Checkpoint 282 (Open Browser / Manual)"
+          onClick={run(openChromeProfile)}
+        />
+      </Submenu>
       <Item
         icon={KeyRound}
         label="Get 2FA Code (Copy)"
@@ -538,21 +553,6 @@ export function AccountContextMenu({ x, y, account, onClose }: Props): React.JSX
         label="🧹 Clean Profile Storage..."
         onClick={run(() => openCleanProfile(targetIds))}
       />
-
-      {isCheckpoint282 && (
-        <>
-          <Item
-            icon={Unlock}
-            label="🔓 Unlock Checkpoint 282 (Captcha & Local Avatar)"
-            onClick={run(unlock282)}
-          />
-          <Item
-            icon={Globe}
-            label="Resolve Checkpoint 282 (Open in Browser)"
-            onClick={run(openChromeProfile)}
-          />
-        </>
-      )}
 
       <Sep />
 

@@ -22,7 +22,7 @@ import {
 import { useAccountStore } from '../../store/useAccountStore'
 import type { Scenario, ScenarioStep, ScenarioStepType } from '../../../types/scenario'
 import { STEP_LABELS, defaultStep } from '../../../types/scenario'
-import { TITLEBAR_PATTERN_URL } from '../../assets/titlebarPattern'
+import { HEADER_HEX_PATTERN_URL } from '../../assets/headerHexPattern'
 
 const STEP_TYPES: ScenarioStepType[] = [
   'scroll_newsfeed',
@@ -311,10 +311,10 @@ export function ScenarioBuilderModal({
       <div className="flex h-full max-h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded border border-slate-400 bg-[#f0f2f5] shadow-2xl">
         {/* Header */}
         <div
-          className="flex items-center justify-between border-b border-slate-300 bg-white px-4 py-2"
+          className="flex items-center justify-between border-b border-[#e4d8bc] bg-[#fdf9f0] px-4 py-2"
           style={{
-            backgroundImage: TITLEBAR_PATTERN_URL,
-            backgroundSize: '160px 160px',
+            backgroundImage: HEADER_HEX_PATTERN_URL,
+            backgroundSize: '56px 98px',
             backgroundRepeat: 'repeat'
           }}
         >

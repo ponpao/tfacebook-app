@@ -44,8 +44,12 @@ function createWindow(): void {
   const mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
-    minWidth: 1024,
-    minHeight: 640,
+    // Below ~1200px the toolbar's Row 1 fieldsets (Threads/Scenario/Search/
+    // Folder Manager) no longer fit alongside Import Accounts without
+    // wrapping into an unwanted 3rd row — 1200x700 is the smallest size
+    // that keeps the whole toolbar on its intended two rows.
+    minWidth: 1200,
+    minHeight: 700,
     show: false,
     frame: false, // custom WinForms-style title bar
     autoHideMenuBar: true,

@@ -278,8 +278,13 @@ export function RibbonToolbar({
         )}
       </div>
 
-      {/* ---- Row 1: run controls, threads/scenario/search/folder fieldsets, Import pushed far right ---- */}
-      <div className="flex flex-wrap items-end gap-2 px-2 py-1.5">
+      {/* ---- Row 1: run controls, threads/scenario/search/folder fieldsets, Import pushed far right ----
+          flex-nowrap + overflow-x-auto: below the window's minWidth this
+          row would otherwise wrap Import Accounts down into an unwanted 3rd
+          row — it now scrolls horizontally within Row 1 instead, keeping
+          Import pinned at the far right via ml-auto and staying on exactly
+          two rows no matter how narrow the window gets. */}
+      <div className="flex flex-nowrap items-center gap-2 overflow-x-auto px-2 py-1.5">
         {/* Action group: Start / Run + Stop */}
         <div className="flex items-center gap-1.5">
           <button
@@ -427,9 +432,12 @@ export function RibbonToolbar({
           </button>
         </fieldset>
 
-        {/* Primary Import button — pushed to the far right of Row 1 via ml-auto */}
+        {/* Primary Import button — pushed to the far right and pinned there
+            (sticky, not just ml-auto) so it stays visible/reachable even
+            once Row 1's fieldsets overflow into horizontal scroll on a
+            narrow window, rather than scrolling out of view with them. */}
         <button
-          className="win-btn-accent ml-auto h-[38px] justify-center px-4"
+          className="win-btn-accent sticky right-0 ml-auto h-[38px] shrink-0 justify-center px-4"
           onClick={onImport}
         >
           <Download size={15} />

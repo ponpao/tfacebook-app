@@ -1,9 +1,11 @@
 // ---------------------------------------------------------------------------
 // headerHexPattern.ts  — subtle repeating hexagon-outline background pattern
-// for the app's top header band (title bar + menu bar), as an inline SVG
-// data URI (no binary asset/pipeline wiring, crisp at any DPI/zoom). Distinct
-// from titlebarPattern.ts's wavy contour lines — this is the flat-top
-// honeycomb grid used across the "Studio"-style toolbar redesign.
+// used across the app's title bar, menu bar, and every modal's header band,
+// as an inline SVG data URI (no binary asset/pipeline wiring, crisp at any
+// DPI/zoom). This flat-top honeycomb grid replaced an earlier wavy-contour
+// pattern (titlebarPattern.ts, since removed) as part of the "Studio"-style
+// toolbar/header redesign — every consumer now uses this one pattern so the
+// whole app's chrome stays visually consistent.
 // ---------------------------------------------------------------------------
 
 /**

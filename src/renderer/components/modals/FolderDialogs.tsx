@@ -9,7 +9,7 @@
 import { useEffect, useState } from 'react'
 import { X, FolderPlus, FolderPen, FolderMinus, FolderInput } from 'lucide-react'
 import type { Folder } from '../../../types/folder'
-import { TITLEBAR_PATTERN_URL } from '../../assets/titlebarPattern'
+import { HEADER_HEX_PATTERN_URL } from '../../assets/headerHexPattern'
 
 export type FolderDialogMode = 'add' | 'rename' | 'delete' | 'move' | null
 
@@ -90,10 +90,10 @@ export function FolderDialogs({
       <div className="w-[420px] rounded-[4px] border border-[#999] bg-mc-bg shadow-2xl">
         {/* Title bar */}
         <div
-          className="flex items-center justify-between border-b border-[#d0d0d0] bg-white px-3 py-1.5"
+          className="flex items-center justify-between border-b border-[#e4d8bc] bg-[#fdf9f0] px-3 py-1.5"
           style={{
-            backgroundImage: TITLEBAR_PATTERN_URL,
-            backgroundSize: '160px 160px',
+            backgroundImage: HEADER_HEX_PATTERN_URL,
+            backgroundSize: '56px 98px',
             backgroundRepeat: 'repeat'
           }}
         >

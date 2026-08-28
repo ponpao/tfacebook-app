@@ -19,12 +19,11 @@ const COLUMN_WIDTHS_KEY = 'tfacebook_column_widths'
 
 /**
  * Row background + hover tint keyed by account.status — applied to BOTH the
- * outer row (which every non-sticky middle-column cell shows through, since
- * those cells have no background of their own) and the sticky left-edge
- * checkbox/row-number block (which needs its own explicit, matching color
- * since `position: sticky` requires an opaque background to correctly cover
- * scrolled-under content — a transparent sticky cell would let horizontally-
- * scrolled middle columns show through underneath it).
+ * outer row (which every middle-column cell shows through, since those
+ * cells have no background of their own) and the checkbox/row-number block
+ * (which still needs its own explicit, matching color since it's a
+ * separate flex child sitting in front of the row rather than transparent
+ * over it).
  *
  * `status` is a free-text field in this schema (`'Live' | 'Checkpoint' |
  * 'Die' | 'Changed Pass' | 'Unknown' | string`) — variants like "Checkpoint
@@ -208,11 +207,13 @@ export function AccountsGrid(): React.JSX.Element {
 
   const cellBorder = 'border-r border-b border-[#b8cbb0]'
   const headBorder = 'border-r border-b border-[#a0a0a0]'
-  // The locked left edge stays visible while the middle columns scroll
-  // horizontally underneath it — same sticky technique as the header's
-  // `sticky top-0`. There is no locked right edge anymore — Status and
-  // Activity Status are normal resizable middle columns now.
-  const stickyLeft = 'sticky left-0 z-[1]'
+  // The checkbox/row-number block used to be pinned via `sticky left-0` so
+  // it stayed visible while middle columns scrolled underneath it. Removed:
+  // every column (including this one) now scrolls together horizontally,
+  // with nothing frozen in place — this constant is kept as an empty string
+  // rather than deleted outright so the two render call sites below don't
+  // need their own separate edits if a locked edge is ever reintroduced.
+  const stickyLeft = ''
 
   const onRowContextMenu = (e: React.MouseEvent, a: Account): void => {
     e.preventDefault()
@@ -230,7 +231,7 @@ export function AccountsGrid(): React.JSX.Element {
         <div className="w-full" style={{ minWidth: totalWidth }}>
           {/* Header */}
           <div className="sticky top-0 z-10 flex w-full bg-mc-headbg">
-            {/* Locked left edge: checkbox + row number — fixed width, never resizable. */}
+            {/* Checkbox + row number — fixed width, never resizable, but scrolls horizontally with everything else (not pinned/frozen). */}
             <div
               className={`flex shrink-0 items-center bg-mc-headbg ${stickyLeft}`}
               style={{ width: LEFT_EDGE_W, height: ROW_HEIGHT }}
