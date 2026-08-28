@@ -172,7 +172,8 @@ export function ToolsUtilitiesModal({
     try {
       const res = await window.api.backup.export(targets)
       if (res.ok) {
-        showToast(`Backed up ${res.accountCount} account(s) to ${res.filePath}`, 6000)
+        const suffix = res.message ? ` ${res.message}` : ''
+        showToast(`Backed up ${res.accountCount} account(s) to ${res.filePath}.${suffix}`, 6000)
       } else if (res.message && res.message !== 'Backup canceled.') {
         showToast(res.message, 6000)
       }

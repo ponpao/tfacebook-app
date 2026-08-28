@@ -27,7 +27,7 @@ import { ZipArchive, type ArchiverError } from 'archiver'
 import * as unzipper from 'unzipper'
 import * as accounts from '../db/accountsRepo'
 import * as folders from '../db/foldersRepo'
-import { resolveProfileDir } from '../automation/browserContext'
+import { resolveProfileDir, isTracked, closeTrackedContext } from '../automation/browserContext'
 import { resolveServiceAccount, resolveStorageBucket, isFirebaseConfigured } from './firebaseConfig'
 import type { BackupManifest, BackupAccountRecord } from '../../types/backup'
 import { RECEIVE_ACCOUNT_FOLDER_NAME } from '../../types/backup'
@@ -68,7 +68,7 @@ function tempWorkDir(label: string): string {
 }
 
 /** Builds the manifest + zip for the given accounts — identical shape/logic to backupIpc.ts's exportBackup(), factored out so both local backup and Cloud Sync stay in lock-step if the format ever changes. */
-async function buildBackupZip(accountIds: number[], zipPath: string): Promise<{ manifest: BackupManifest; accountCount: number }> {
+async function buildBackupZip(accountIds: number[], zipPath: string): Promise<{ manifest: BackupManifest; accountCount: number; closedOpenProfiles: string[] }> {
   const rows = accounts.getAccountsByIds(accountIds)
   if (rows.length === 0) {
     throw new Error('No accounts to push.')
@@ -77,8 +77,19 @@ async function buildBackupZip(accountIds: number[], zipPath: string): Promise<{ 
   const manifestAccounts: BackupAccountRecord[] = []
   const folderNames = new Set<string>()
   const profileDirs: { uid: string; dir: string }[] = []
+  const closedOpenProfiles: string[] = []
 
   for (const a of rows) {
+    // A live Chrome process holds locks on / buffers writes to the profile's
+    // Cookies/Preferences/Network SQLite files — zipping it while still open
+    // can capture a torn write or silently skip a locked file, dropping
+    // session state from the bundle. Close it first so everything is
+    // flushed and released cleanly before it gets archived below.
+    if (a.uid && isTracked(a.uid)) {
+      await closeTrackedContext(a.uid)
+      closedOpenProfiles.push(a.uid)
+    }
+
     const hasProfile = !!a.uid && existsSync(resolveProfileDir(a.uid))
     if (hasProfile && a.uid) profileDirs.push({ uid: a.uid, dir: resolveProfileDir(a.uid) })
     if (a.folder_name) folderNames.add(a.folder_name)
@@ -135,7 +146,7 @@ async function buildBackupZip(accountIds: number[], zipPath: string): Promise<{ 
     void archive.finalize()
   })
 
-  return { manifest, accountCount: manifestAccounts.length }
+  return { manifest, accountCount: manifestAccounts.length, closedOpenProfiles }
 }
 
 /**
@@ -153,7 +164,7 @@ export async function pushToDevice(targetMachineId: string, accountIds: number[]
   const zipPath = join(workDir, 'payload.zip')
 
   try {
-    const { accountCount } = await buildBackupZip(accountIds, zipPath)
+    const { accountCount, closedOpenProfiles } = await buildBackupZip(accountIds, zipPath)
 
     const storagePath = `devices/${targetMachineId}/payload.zip`
     // Passed explicitly rather than relying on the app-level default bucket
@@ -172,7 +183,11 @@ export async function pushToDevice(targetMachineId: string, accountIds: number[]
         createdAt: new Date().toISOString()
       })
 
-    return { ok: true, accountCount, targetMachineId }
+    const message =
+      closedOpenProfiles.length > 0
+        ? `Pushed ${accountCount} account(s) to ${targetMachineId}. Closed ${closedOpenProfiles.length} open browser profile(s) first to capture a clean session.`
+        : undefined
+    return { ok: true, accountCount, targetMachineId, message }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     return { ok: false, message }
@@ -266,7 +281,13 @@ export async function pullPendingPayload(targetMachineId: string): Promise<Cloud
         skippedCount++
         continue
       }
-      const inserted = accounts.insertAccounts([
+      // upsertAccountsByUid (not a plain insert): a UID that already exists
+      // locally still gets its cookie/token/status refreshed from the
+      // pulled data, matching the profile folder this same pull is about to
+      // overwrite on disk below — otherwise the DB's session fields and the
+      // freshly-restored profile folder can disagree, and a browser launch
+      // right after a pull might not actually come up logged in.
+      const { inserted, updated } = accounts.upsertAccountsByUid([
         {
           uid: rec.uid,
           password: rec.password,
@@ -293,7 +314,7 @@ export async function pullPendingPayload(targetMachineId: string): Promise<Cloud
           folder_id: receiveFolder.id
         }
       ])
-      if (inserted > 0) importedCount++
+      if (inserted > 0 || updated > 0) importedCount++
       else skippedCount++
     }
 
@@ -302,6 +323,10 @@ export async function pullPendingPayload(targetMachineId: string): Promise<Cloud
     if (existsSync(extractedProfilesDir)) {
       const uidDirs = await readdir(extractedProfilesDir)
       for (const uid of uidDirs) {
+        // Close this UID's browser first if it happens to be open — writing
+        // a restored profile folder over one Chromium still has open would
+        // be fighting an active process for the same files.
+        if (isTracked(uid)) await closeTrackedContext(uid)
         const src = join(extractedProfilesDir, uid)
         const dest = resolveProfileDir(basename(uid))
         await mkdir(dest, { recursive: true })

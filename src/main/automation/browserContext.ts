@@ -327,6 +327,23 @@ export function isTracked(key: string): boolean {
   return trackedContexts.has(key)
 }
 
+/**
+ * Close a single tracked context by key (usually an account UID), if one is
+ * open. Used before bundling a profile folder for Backup/Cloud Sync — a
+ * live Chrome process holds locks on and buffers writes to files like
+ * Cookies/Preferences/Network's SQLite databases, so zipping a profile
+ * while it's still open can capture a torn/incomplete write or simply fail
+ * to read a locked file, silently dropping session state from the bundle.
+ * Closing first lets Chromium flush and release everything cleanly.
+ */
+export async function closeTrackedContext(key: string): Promise<boolean> {
+  const ctx = trackedContexts.get(key)
+  if (!ctx) return false
+  trackedContexts.delete(key)
+  await ctx.close().catch(() => void 0)
+  return true
+}
+
 /** Close every tracked context (headed profiles + in-flight queue runs). */
 export async function closeAllTrackedContexts(): Promise<number> {
   const contexts = [...trackedContexts.values()]

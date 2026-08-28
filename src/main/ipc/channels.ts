@@ -4,7 +4,8 @@
 // ---------------------------------------------------------------------------
 export const IPC = {
   system: {
-    clipboardWriteText: 'clipboard:writeText'
+    clipboardWriteText: 'clipboard:writeText',
+    getAppVersion: 'system:getAppVersion'
   },
   accounts: {
     list: 'accounts:list',

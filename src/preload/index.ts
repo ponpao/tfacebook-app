@@ -24,7 +24,8 @@ import type { CleanMode } from '../types/profileOptimizer'
 
 const api: AppApi = {
   system: {
-    clipboardWriteText: (text: string) => ipcRenderer.invoke(IPC.system.clipboardWriteText, text)
+    clipboardWriteText: (text: string) => ipcRenderer.invoke(IPC.system.clipboardWriteText, text),
+    getAppVersion: () => ipcRenderer.invoke(IPC.system.getAppVersion)
   },
   accounts: {
     list: (query: AccountQuery) => ipcRenderer.invoke(IPC.accounts.list, query),

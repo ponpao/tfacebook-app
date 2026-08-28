@@ -30,10 +30,12 @@ export function HelpAboutModal({
   const [checking, setChecking] = useState(false)
   const [license, setLicense] = useState<LicenseStatus | null>(null)
   const [deactivating, setDeactivating] = useState(false)
+  const [appVersion, setAppVersion] = useState<string | null>(null)
 
   useEffect(() => {
     if (!open) return
     void window.api.license.getStatus().then(setLicense)
+    void window.api.system.getAppVersion().then(setAppVersion)
   }, [open])
 
   const deactivate = async (): Promise<void> => {
@@ -93,7 +95,7 @@ export function HelpAboutModal({
             <div className="text-[15px] font-bold text-slate-800">
               TFACEBOOK Automation Studio
             </div>
-            <div className="text-slate-500">Version 1.0.0</div>
+            <div className="text-slate-500">Version {appVersion ?? '…'}</div>
           </div>
           <button className="win-btn" onClick={() => void checkForUpdates()} disabled={checking}>
             <RefreshCw size={13} className={`text-[#4a6a8a] ${checking ? 'animate-spin' : ''}`} />

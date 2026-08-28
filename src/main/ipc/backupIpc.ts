@@ -21,7 +21,7 @@ import * as unzipper from 'unzipper'
 import { IPC } from './channels'
 import * as accounts from '../db/accountsRepo'
 import * as folders from '../db/foldersRepo'
-import { resolveProfileDir } from '../automation/browserContext'
+import { resolveProfileDir, isTracked, closeTrackedContext } from '../automation/browserContext'
 import type { BackupManifest, BackupAccountRecord, BackupExportResult, BackupImportResult } from '../../types/backup'
 import { RECEIVE_ACCOUNT_FOLDER_NAME } from '../../types/backup'
 
@@ -59,8 +59,17 @@ async function exportBackup(win: BrowserWindow | undefined, accountIds: number[]
   const manifestAccounts: BackupAccountRecord[] = []
   const folderNames = new Set<string>()
   const profileDirs: { uid: string; dir: string }[] = []
+  const closedOpenProfiles: string[] = []
 
   for (const a of rows) {
+    // See closeTrackedContext()'s doc comment: a live Chrome process holds
+    // locks on / buffers writes to the profile's SQLite files, so zipping
+    // it while still open can silently drop or corrupt session state.
+    if (a.uid && isTracked(a.uid)) {
+      await closeTrackedContext(a.uid)
+      closedOpenProfiles.push(a.uid)
+    }
+
     const hasProfile = !!a.uid && existsSync(resolveProfileDir(a.uid))
     if (hasProfile && a.uid) profileDirs.push({ uid: a.uid, dir: resolveProfileDir(a.uid) })
     if (a.folder_name) folderNames.add(a.folder_name)
@@ -122,7 +131,11 @@ async function exportBackup(win: BrowserWindow | undefined, accountIds: number[]
     void archive.finalize()
   })
 
-  return { ok: true, filePath: result.filePath, accountCount: manifestAccounts.length }
+  const message =
+    closedOpenProfiles.length > 0
+      ? `Closed ${closedOpenProfiles.length} open browser profile(s) first to capture a clean session.`
+      : undefined
+  return { ok: true, filePath: result.filePath, accountCount: manifestAccounts.length, message }
 }
 
 /**
@@ -179,7 +192,13 @@ async function importBackup(win: BrowserWindow | undefined): Promise<BackupImpor
         skippedCount++
         continue
       }
-      const inserted = accounts.insertAccounts([
+      // upsertAccountsByUid: a uid that already exists locally still gets
+      // its cookie/token/status refreshed from the imported data, matching
+      // the profile folder this same restore overwrites on disk below —
+      // otherwise the DB's session fields and the freshly-restored profile
+      // folder can disagree, and a browser launch right after a restore
+      // might not actually come up logged in.
+      const { inserted, updated } = accounts.upsertAccountsByUid([
         {
           uid: rec.uid,
           password: rec.password,
@@ -206,11 +225,11 @@ async function importBackup(win: BrowserWindow | undefined): Promise<BackupImpor
           folder_id: receiveFolder.id
         }
       ])
-      // insertAccounts uses INSERT OR IGNORE (uid is UNIQUE) — a 0-changes
-      // result means this uid already exists locally; still worth restoring
-      // its profile folder below (the whole point of a restore), just not
-      // double-counted as a newly imported account.
-      if (inserted > 0) importedCount++
+      // A uid that already existed locally gets updated>0 instead of
+      // inserted>0 — still worth restoring its profile folder below (the
+      // whole point of a restore), just not double-counted as a newly
+      // imported account.
+      if (inserted > 0 || updated > 0) importedCount++
       else skippedCount++
     }
 
@@ -222,6 +241,10 @@ async function importBackup(win: BrowserWindow | undefined): Promise<BackupImpor
     if (existsSync(extractedProfilesDir)) {
       const uidDirs = await readdir(extractedProfilesDir)
       for (const uid of uidDirs) {
+        // Close this UID's browser first if it happens to be open — writing
+        // a restored profile folder over one Chromium still has open would
+        // be fighting an active process for the same files.
+        if (isTracked(uid)) await closeTrackedContext(uid)
         const src = join(extractedProfilesDir, uid)
         const dest = resolveProfileDir(basename(uid))
         await mkdir(dest, { recursive: true })

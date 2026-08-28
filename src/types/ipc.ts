@@ -220,6 +220,8 @@ export interface ToolsApi {
 
 export interface SystemApi {
   clipboardWriteText(text: string): Promise<boolean>
+  /** Electron's app.getVersion() — reads the packaged app's package.json, so the UI never needs its own hardcoded version string. */
+  getAppVersion(): Promise<string>
 }
 
 export interface UpdateAvailableInfo {

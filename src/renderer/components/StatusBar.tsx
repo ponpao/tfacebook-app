@@ -7,8 +7,6 @@ import { useEffect, useMemo, useState } from 'react'
 import { useAccountStore } from '../store/useAccountStore'
 import type { LicenseStatus } from '../../types/license'
 
-const APP_VERSION = '1.0.0'
-
 export function StatusBar(): React.JSX.Element {
   const accounts = useAccountStore((s) => s.accounts)
   const total = useAccountStore((s) => s.total)
@@ -17,10 +15,12 @@ export function StatusBar(): React.JSX.Element {
   const [license, setLicense] = useState<LicenseStatus | null>(null)
   const [machineId, setMachineId] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [appVersion, setAppVersion] = useState<string | null>(null)
 
   useEffect(() => {
     void window.api.license.getStatus().then(setLicense)
     void window.api.cloudSync.getMachineId().then(setMachineId)
+    void window.api.system.getAppVersion().then(setAppVersion)
   }, [])
 
   const copyMachineId = async (): Promise<void> => {
@@ -60,7 +60,7 @@ export function StatusBar(): React.JSX.Element {
               Status: <b className="text-[#1e9e4a]">Ready</b>
             </span>
             <span className="text-[#c8c8c8]">|</span>
-            <span>App Version: {APP_VERSION}</span>
+            <span>App Version: {appVersion ?? '…'}</span>
             <span className="text-[#c8c8c8]">|</span>
             <span>User: Administrator</span>
             <span className="text-[#c8c8c8]">|</span>

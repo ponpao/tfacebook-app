@@ -81,6 +81,61 @@ export function insertAccounts(accounts: NewAccount[]): number {
   return insertMany(accounts)
 }
 
+/**
+ * Like insertAccounts(), but for a UID that already exists locally, refreshes
+ * the session-critical fields (cookie, token, status, status_detail,
+ * live_status, last_active) instead of silently no-op'ing via INSERT OR
+ * IGNORE. Used by Backup import and Cloud Sync pull: both restore a profile
+ * folder onto disk unconditionally, but insertAccounts() alone would leave
+ * an existing row's stale cookie/token in place if the UID already existed
+ * locally — the restored profile folder and the DB's session fields would
+ * then disagree, and a subsequent browser launch could still see a stale
+ * cookie for a session that's actually still valid in the newly-restored
+ * profile, or vice versa. Deliberately narrow: does not touch name, notes,
+ * proxy, folder assignment, or anything else a user may have edited locally.
+ * Returns { inserted, updated } counts.
+ */
+export function upsertAccountsByUid(rows: NewAccount[]): { inserted: number; updated: number } {
+  const db = getDb()
+  const findStmt = db.prepare('SELECT id FROM accounts WHERE uid = ? AND is_deleted = 0')
+  const updateStmt = db.prepare(
+    `UPDATE accounts SET cookie = @cookie, token = @token, status = @status,
+     status_detail = @status_detail, live_status = @live_status, last_active = @last_active
+     WHERE id = @id`
+  )
+
+  let updated = 0
+  const toInsert: NewAccount[] = []
+
+  const run = db.transaction((items: NewAccount[]) => {
+    for (const row of items) {
+      if (!row.uid) {
+        toInsert.push(row)
+        continue
+      }
+      const existing = findStmt.get(row.uid) as { id: number } | undefined
+      if (!existing) {
+        toInsert.push(row)
+        continue
+      }
+      updateStmt.run({
+        id: existing.id,
+        cookie: row.cookie ?? null,
+        token: row.token ?? null,
+        status: row.status ?? 'Unknown',
+        status_detail: row.status_detail ?? null,
+        live_status: row.live_status ?? null,
+        last_active: row.last_active ?? null
+      })
+      updated += 1
+    }
+  })
+  run(rows)
+
+  const inserted = toInsert.length > 0 ? insertAccounts(toInsert) : 0
+  return { inserted, updated }
+}
+
 /** Paginated + filtered + sorted list. Joins the folder name. Excludes soft-deleted rows. */
 export function listAccounts(query: AccountQuery = {}): AccountListResult {
   const db = getDb()
