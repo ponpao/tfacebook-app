@@ -12,7 +12,6 @@ import type { Account } from '../../../types/account'
 import { useAccountStore } from '../../store/useAccountStore'
 import { GRID_COLUMNS, ROW_NUMBER_COLUMN, RESIZE_MIN_WIDTH, RESIZE_MAX_WIDTH } from './gridColumns'
 import { AccountContextMenu } from './AccountContextMenu'
-import { HEADER_HEX_PATTERN_URL } from '../../assets/headerHexPattern'
 
 const ROW_HEIGHT = 26
 const CHECKBOX_W = 34
@@ -207,7 +206,7 @@ export function AccountsGrid(): React.JSX.Element {
   const virtualRows = virtualizer.getVirtualItems()
 
   const cellBorder = 'border-r border-b border-[#b8cbb0]'
-  const headBorder = 'border-r border-b border-[#a0a0a0]'
+  const headBorder = 'border-r border-b border-slate-200'
   // The checkbox/row-number block used to be pinned via `sticky left-0` so
   // it stayed visible while middle columns scrolled underneath it. Removed:
   // every column (including this one) now scrolls together horizontally,
@@ -226,23 +225,15 @@ export function AccountsGrid(): React.JSX.Element {
   }
 
   return (
-    <div className="flex w-full min-w-full flex-1 flex-col overflow-hidden border border-slate-300 bg-white">
+    <div className="flex w-full min-w-full flex-1 flex-col overflow-hidden rounded-md border-[1.5px] border-slate-300 bg-white shadow-sm">
       <div ref={parentRef} className="relative flex-1 overflow-auto">
         {/* Inner width = at least the window width, expanding to fit all columns */}
         <div className="w-full" style={{ minWidth: totalWidth }}>
-          {/* Header — subtle hexagon pattern (matching the title bar/menu
-              bar/modal headers) instead of the flat mc-headbg fill; text
-              force-centered + bold regardless of each column's own data
+          {/* Header — clean, flat bg-slate-100 (no pattern); text
+              force-centered + semibold regardless of each column's own data
               alignment (left-aligned data cells still read naturally below
               a centered header label). */}
-          <div
-            className="sticky top-0 z-10 flex w-full bg-[#fdf9f0]"
-            style={{
-              backgroundImage: HEADER_HEX_PATTERN_URL,
-              backgroundSize: '56px 98px',
-              backgroundRepeat: 'repeat'
-            }}
-          >
+          <div className="sticky top-0 z-10 flex w-full bg-slate-100">
             {/* Checkbox + row number — fixed width, never resizable, but scrolls horizontally with everything else (not pinned/frozen). */}
             <div
               className={`flex shrink-0 items-center ${stickyLeft}`}
@@ -263,7 +254,7 @@ export function AccountsGrid(): React.JSX.Element {
                 />
               </div>
               <div
-                className={`flex h-full shrink-0 items-center justify-center text-center text-2xs font-bold text-slate-900 ${headBorder}`}
+                className={`flex h-full shrink-0 items-center justify-center text-center text-2xs font-semibold text-slate-800 ${headBorder}`}
                 style={{ width: ROW_NUMBER_COLUMN.width }}
               >
                 {ROW_NUMBER_COLUMN.header}
@@ -274,7 +265,7 @@ export function AccountsGrid(): React.JSX.Element {
             {columns.map((c) => (
               <div
                 key={c.key}
-                className={`group relative flex shrink-0 items-center justify-center bg-transparent px-1.5 text-center text-2xs font-bold text-slate-900 ${headBorder}`}
+                className={`group relative flex shrink-0 items-center justify-center bg-transparent px-1.5 text-center text-2xs font-semibold text-slate-800 ${headBorder}`}
                 style={{ width: c.width, height: ROW_HEIGHT }}
               >
                 <span className="truncate">{c.header}</span>
