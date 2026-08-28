@@ -218,7 +218,12 @@ export function registerIpcHandlers(): void {
       status: res.status,
       status_detail: res.detail,
       live_status: res.status,
-      last_active: new Date().toISOString().slice(0, 19).replace('T', ' ')
+      last_active: new Date().toISOString().slice(0, 19).replace('T', ' '),
+      // Only set on a confirmed-Live result (see checkLiveDie's doc
+      // comment) — keeps the DB's cookie current for the next Cloud Sync
+      // push even when the account was never re-logged-in, just checked.
+      ...(res.cookie ? { cookie: res.cookie } : {}),
+      ...(res.token ? { token: res.token } : {})
     })
     return res
   })

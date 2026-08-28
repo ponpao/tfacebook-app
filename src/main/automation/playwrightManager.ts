@@ -8,11 +8,20 @@
 // ---------------------------------------------------------------------------
 import type { Account } from '../../types/account'
 import { launchContext, trackContext, closeAllTrackedContexts } from './browserContext'
-import { runAutoLogin, classifyPage, type AutoLoginResult, type LoginStatus } from './autoLogin'
+import {
+  runAutoLogin,
+  classifyPage,
+  extractCookiesAndToken,
+  type AutoLoginResult,
+  type LoginStatus
+} from './autoLogin'
 
 export interface LiveDieResult {
   status: LoginStatus
   detail: string
+  /** Only set when status is 'Live' — a freshly re-extracted cookie/token so callers can keep the DB's session data current (e.g. for the next Cloud Sync push) rather than only refreshing it during a full login run. */
+  cookie?: string
+  token?: string
 }
 
 export type { AutoLoginResult }
@@ -43,7 +52,14 @@ export async function openProfile(
 
 /**
  * checkLiveDie — HEADLESS check of the account's session.
- * Reuses the persistent profile so an already-authenticated cookie is used.
+ * Reuses the persistent profile so an already-authenticated cookie is used
+ * (restored via injectSavedCookies() in browserContext.ts if the on-disk
+ * profile's own encrypted cookie store can't be read, e.g. after arriving
+ * via Backup/Restore or Cloud Sync from a different machine). On a
+ * confirmed-Live result, also re-extracts the current cookie/token so the
+ * caller can refresh the DB — Facebook rotates/reissues session cookies
+ * over time, so the value saved at last login can go stale even while the
+ * session itself is still perfectly valid.
  */
 export async function checkLiveDie(account: Account): Promise<LiveDieResult> {
   const context = await launchContext({ headless: true, account })
@@ -54,7 +70,12 @@ export async function checkLiveDie(account: Account): Promise<LiveDieResult> {
       waitUntil: 'domcontentloaded'
     })
     await page.waitForTimeout(1500)
-    return await classifyPage(page)
+    const result = await classifyPage(page)
+    if (result.status === 'Live') {
+      const { cookie, token } = await extractCookiesAndToken(context)
+      return { ...result, cookie, token }
+    }
+    return result
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     return { status: 'Unknown', detail: `Check failed: ${message}` }

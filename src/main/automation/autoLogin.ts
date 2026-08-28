@@ -1204,7 +1204,8 @@ async function waitForPostSubmitState(
   }
 }
 
-async function extractCookiesAndToken(
+/** Exported for reuse by checkLiveDie (playwrightManager.ts), which also needs to refresh a session's saved cookie/token after a successful headless liveness check — not just after a full login run. */
+export async function extractCookiesAndToken(
   context: BrowserContext
 ): Promise<{ cookie?: string; token?: string }> {
   try {

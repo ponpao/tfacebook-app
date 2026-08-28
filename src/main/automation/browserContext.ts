@@ -9,10 +9,77 @@
 import { app, screen } from 'electron'
 import { join } from 'path'
 import { mkdirSync, existsSync, writeFileSync, readFileSync, readdirSync } from 'fs'
-import { chromium, type BrowserContext } from 'playwright'
+import { chromium, type BrowserContext, type Cookie } from 'playwright'
 import type { Account } from '../../types/account'
 import { getAppSettings } from '../db/settingsRepo'
 import { buildStealthScript } from './stealthEngine'
+
+/**
+ * Parses a "name=value; name2=value2; ..." cookie string (this app's stored
+ * format — see extractCookiesAndToken() in autoLogin.ts) into Playwright
+ * cookie objects addCookies() accepts, targeting Facebook's cookie domain.
+ *
+ * This exists because Chrome/Chromium encrypts a profile's on-disk Cookies
+ * SQLite file with Windows DPAPI, keyed to the specific Windows user account
+ * (and, in practice, the specific machine) that created it — a profile
+ * folder copied to a different PC (via Backup/Restore or Cloud Sync) still
+ * has the encrypted bytes on disk, but Chromium on the new machine cannot
+ * decrypt them and the account effectively looks logged out there, even
+ * though the DB's `cookie` column has the real session values in plain
+ * text. Injecting them via the CDP-backed addCookies() bypasses that
+ * on-disk encrypted store entirely — it writes straight into the running
+ * browser's in-memory cookie jar, which Facebook accepts the same as any
+ * other cookie regardless of which machine set it.
+ */
+function parseCookieString(raw: string): Cookie[] {
+  const cookies: Cookie[] = []
+  for (const part of raw.split(';')) {
+    const eq = part.indexOf('=')
+    if (eq === -1) continue
+    const name = part.slice(0, eq).trim()
+    const value = part.slice(eq + 1).trim()
+    if (!name || !value) continue
+    cookies.push({
+      name,
+      value,
+      domain: '.facebook.com',
+      path: '/',
+      // Facebook's real cookies are a mix of session and long-lived
+      // (xs/c_user/datr survive well past a year) — expires: -1 marks this
+      // a session cookie in Playwright's API, but since Facebook's own
+      // Set-Cookie response on any subsequent request will re-issue proper
+      // expiries anyway, matching that exactly here isn't worth the
+      // complexity of parsing per-cookie attributes this app never stored
+      // in the first place (the DB only ever kept name=value pairs).
+      expires: -1,
+      httpOnly: false,
+      secure: true,
+      sameSite: 'None'
+    })
+  }
+  return cookies
+}
+
+/**
+ * Injects the account's saved cookie string into a freshly-launched
+ * context, before any navigation — restoring a cross-machine session that
+ * Chromium's own DPAPI-encrypted profile storage cannot. A quick sanity
+ * check (session-identifying cookie names) avoids wasting a CDP round trip
+ * or polluting the cookie jar with garbage on a blank/never-logged-in
+ * account's empty cookie field. Best-effort: a malformed cookie string
+ * should never prevent the browser from opening.
+ */
+async function injectSavedCookies(context: BrowserContext, account: Account): Promise<void> {
+  const raw = account.cookie?.trim()
+  if (!raw) return
+  if (!/\bc_user=|\bxs=|\bdatr=/.test(raw)) return
+  try {
+    const cookies = parseCookieString(raw)
+    if (cookies.length > 0) await context.addCookies(cookies)
+  } catch {
+    /* malformed cookie string — proceed with whatever the on-disk profile already has */
+  }
+}
 
 // MaxCare-style compact tiled window: small enough that many can be seen at
 // once in a grid across the screen, keyed by worker slot index (0, 1, 2...).
@@ -266,6 +333,12 @@ export async function launchContext({
     executablePath,
     args
   })
+
+  // Restore the saved session cookie before any navigation happens in the
+  // caller — see injectSavedCookies()'s doc comment for why this matters
+  // specifically for a profile that arrived via Backup/Restore or Cloud
+  // Sync from a different machine.
+  await injectSavedCookies(context, account)
 
   // Anti-detect init script — runs before any page script on every document
   // (including iframes) in this context, patching the JS-visible automation
