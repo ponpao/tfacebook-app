@@ -50,7 +50,7 @@ export interface AccountsApi {
     column: 'proxy' | 'user_agent',
     assignments: { id: number; value: string }[]
   ): Promise<number>
-  bulkSetField(column: 'notes' | 'live_status', ids: number[], value: string): Promise<number>
+  bulkSetField(column: 'notes' | 'live_status' | 'proxy', ids: number[], value: string): Promise<number>
   assignProxies(req: AssignProxyRequest): Promise<AssignResult>
   assignUseragents(req: AssignUseragentRequest): Promise<AssignResult>
   softDelete(ids: number[]): Promise<number>

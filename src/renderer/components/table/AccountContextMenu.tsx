@@ -31,7 +31,8 @@ import {
   UserMinus,
   UsersRound,
   DoorOpen,
-  ListChecks
+  ListChecks,
+  WifiOff
 } from 'lucide-react'
 import type { Account } from '../../../types/account'
 import { useAccountStore } from '../../store/useAccountStore'
@@ -582,6 +583,13 @@ export function AccountContextMenu({ x, y, account, onClose }: Props): React.JSX
     await refresh()
   }
 
+  const clearProxy = async (): Promise<void> => {
+    const targets = ids()
+    const n = await window.api.accounts.bulkSetField('proxy', targets, '')
+    showToast(`Cleared proxy on ${n} account(s).`)
+    await refresh()
+  }
+
   /** Joins one field across all target accounts with newlines, copies, and toasts the item count. */
   const copyField = async (pick: (a: Account) => string | null | undefined): Promise<void> => {
     const text = targetAccounts.map((a) => pick(a) ?? '').join('\n')
@@ -770,6 +778,7 @@ export function AccountContextMenu({ x, y, account, onClose }: Props): React.JSX
             label="Clear Activity Status"
             onClick={run(clearActivityStatus)}
           />
+          <Item icon={WifiOff} label="Clear Proxy" onClick={run(clearProxy)} />
         </Submenu>
       </Submenu>
 

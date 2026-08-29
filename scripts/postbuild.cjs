@@ -24,6 +24,19 @@ if (!fs.existsSync(realBundle)) {
   process.exit(1)
 }
 
+// splash.html is a plain static file, not a bundled entry point — electron-
+// vite's main build never touches/copies it, so it must be placed into
+// out/main/ manually here (same directory main/index.ts's splashWindow
+// loads it from via join(__dirname, 'splash.html')).
+const splashSrc = path.join(__dirname, '..', 'src', 'main', 'splash.html')
+const splashDest = path.join(mainDir, 'splash.html')
+if (fs.existsSync(splashSrc)) {
+  fs.copyFileSync(splashSrc, splashDest)
+  console.log('[postbuild] copied splash.html to out/main/splash.html')
+} else {
+  console.warn('[postbuild] src/main/splash.html not found — skipping splash screen asset copy')
+}
+
 fs.renameSync(realBundle, renamedBundle)
 
 const shim = `"use strict";

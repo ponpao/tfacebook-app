@@ -1,28 +1,20 @@
 {
-  "version": "1.1.4",
+  "version": "1.1.5",
   "releaseDate": "2026-08-29",
   "changelog": {
     "en": [
-      "Fixed avatars never displaying for any account: Chromium treats a purely-numeric hostname in the avatar:// protocol as an IP address, silently breaking every real Facebook UID — avatars now load via avatar://local/{uid} instead",
-      "Login with Cookie now validates the saved cookie actually contains the required session fields (c_user, xs) and verifies the page really lands on a logged-in feed, instead of assuming success — reports 'Invalid/Incomplete Cookie' otherwise; the browser now always closes automatically afterward",
-      "Login with Cookie now backfills an empty UID from the cookie's c_user value and extracts a display name via composer/nav/script fallbacks when the account has neither on file yet, running full metadata extraction the same as a credential login",
-      "Start/Stop button state and the Execution Timer now correctly track Login with Cookie runs, not just Run Auto Login and Scenario Warm-up",
-      "Right-click menu reorganized into 6 cascading submenus (Run & Browser Actions, Profile/Avatar & Checkpoint, Friends & Interaction Tools, Group Interaction Tools, Security & 2FA/OTP, Data & Batch Management) plus a standalone Recycle Bin action, replacing one long flat list; submenus now correctly flip left/up near screen edges instead of clipping",
-      "Added Friends & Groups automation: Add Friends by UID list, Add Suggested Friends, Unfriend/Cancel Requests, Join Groups by ID/URL list, Join Suggested Groups, Leave Groups — each with its own batch runner and progress tracking",
-      "Added a 'Groups' column next to 'Friends', and improved the Friends/Groups/Created Date scrapers to handle singular counts ('1 friend'), Professional Mode profiles, and Facebook's actual page text more accurately",
-      "Avatar downloads no longer happen automatically during login or a status check — only when explicitly requested via 'Download Avatar (Fast / No Browser)'",
-      "Start / Run button now shows a compact rounded count badge instead of wrapping onto a second line with many accounts selected"
+      "Brand new frameless splash screen: an elegant dark-themed startup window using the app's own official brand mark, with a smooth 10-second progress bar and rotating module-initialization status before the main window appears",
+      "Checkpoint/suspended-account detection is now unconditional on the /checkpoint/ URL path itself — a suspension screen ('We suspended your account / N days left to appeal') no longer gets misclassified as Live just because the profile nav bar still shows the account's name/avatar",
+      "Browser windows now close automatically and reliably on every terminal outcome — Live (with or without a scenario), Wrong Password, Checkpoint, and a stuck/failed 2FA attempt — so a finished batch never leaves windows cluttering the screen",
+      "Automatic bypass for Facebook's account-chooser interstitial ('Continue as X / Use another profile') during both credential login and Login with Cookie, including a profile cookie-clear before injection so a stale saved identity can't leak into the wrong account's session",
+      "Cookies are now only extracted and saved to the database for a genuinely Live session — a Checkpoint/suspended/disabled account's cookie is never persisted"
     ],
     "km": [
-      "កែតម្រូវបញ្ហារូបភាព Avatar មិនដែលបង្ហាញសម្រាប់គណនីណាមួយឡើយ៖ Chromiumចាត់ទុកឈ្មោះម៉ាស៊ីនជាលេខសុទ្ធក្នុងពិធីការ avatar:// ដូចជាអាសយដ្ឋាន IP ដែលធ្វើឲ្យ UID Facebook ពិតប្រាកដគ្រប់រូបខូចដោយស្ងាត់ៗ — Avatar ឥឡូវផ្ទុកតាមរយៈ avatar://local/{uid} វិញ",
-      "ការចូលគណនីដោយ Cookie ឥឡូវពិនិត្យផ្ទៀងផ្ទាត់ថា Cookie ដែលបានរក្សាទុកមានពិតជាមានទិន្នន័យសម័យ (c_user, xs) ចាំបាច់ និងផ្ទៀងផ្ទាត់ថាទំព័រពិតជាចូលទៅដល់ Feed ដែលបានចូលគណនីរួច ជំនួសឲ្យសន្មតថាជោគជ័យ — ប្រសិនបើមិនត្រូវនឹងលក្ខខណ្ឌ វានឹងរាយការណ៍ថា 'Invalid/Incomplete Cookie'; កម្មវិធីរុករកឥឡូវបិទដោយស្វ័យប្រវត្តិជានិច្ចបន្ទាប់ពីបញ្ចប់",
-      "ការចូលគណនីដោយ Cookie ឥឡូវបំពេញ UID ដែលទទេពីតម្លៃ c_user របស់ Cookie និងស្រង់ចេញឈ្មោះបង្ហាញតាមរយៈវិធីបម្រុងផ្សេងៗនៅពេលគណនីមិនទាន់មានទិន្នន័យទាំងពីរនេះ ព្រមទាំងដំណើរការស្រង់ទិន្នន័យពេញលេញដូចការចូលគណនីធម្មតា",
-      "ស្ថានភាពប៊ូតុង ចាប់ផ្ដើម/បញ្ឈប់ និងនាឡិកាដំណើរការ ឥឡូវតាមដានការចូលគណនីដោយ Cookie បានត្រឹមត្រូវ មិនមែនត្រឹមតែ ចូលគណនីស្វ័យប្រវត្តិ និង ការសម្ភាសសាកល្បង ប៉ុណ្ណោះទេ",
-      "ម៉ឺនុយចុចខាងស្ដាំត្រូវបានរៀបចំឡើងវិញជាម៉ឺនុយរងកាស្កាដ ៦ (ដំណើរការ & កម្មវិធីរុករក, ប្រវត្តិរូប/Avatar & ចំណុចត្រួតពិនិត្យ, ឧបករណ៍មិត្តភក្តិ, ឧបករណ៍ក្រុម, សុវត្ថិភាព & 2FA/OTP, ទិន្នន័យ & ការគ្រប់គ្រងជាបាច់) បូកនឹងសកម្មភាព ធុងសំរាម ដាច់ដោយឡែក — ម៉ឺនុយរងឥឡូវត្រឡប់ទៅឆ្វេង/លើបានត្រឹមត្រូវនៅជិតគែមអេក្រង់ជំនួសឲ្យកាត់ផ្ដាច់",
-      "បន្ថែមមុខងារស្វ័យប្រវត្តិកម្មមិត្តភក្តិ & ក្រុម៖ បន្ថែមមិត្តភក្តិតាមបញ្ជី UID, បន្ថែមមិត្តភក្តិដែលបានស្នើ, លុបមិត្តភក្តិ/ដកសំណើ, ចូលរួមក្រុមតាមបញ្ជី ID/URL, ចូលរួមក្រុមដែលបានស្នើ, ចាកចេញពីក្រុម",
-      "បន្ថែមជួរឈរ 'ក្រុម' នៅជាប់នឹង 'មិត្តភក្តិ' និងកែលម្អការស្រង់ទិន្នន័យមិត្តភក្តិ/ក្រុម/កាលបរិច្ឆេទបង្កើតគណនី ឲ្យត្រឹមត្រូវជាមួយចំនួនឯកវចន៍ ('១ មិត្តភក្តិ') និងគណនីម៉ូដអាជីព",
-      "ការទាញយករូបភាព Avatar លែងកើតឡើងដោយស្វ័យប្រវត្តិកំឡុងពេលចូលគណនី ឬពិនិត្យស្ថានភាព — កើតឡើងតែពេលចុច 'ទាញយក Avatar (លឿន / មិនប្រើកម្មវិធីរុករក)' ប៉ុណ្ណោះ",
-      "ប៊ូតុង ចាប់ផ្ដើម/ដំណើរការ ឥឡូវបង្ហាញផ្លាកចំនួនមូលតូចជំនួសឲ្យបត់ទៅជួរទីពីរនៅពេលជ្រើសរើសគណនីច្រើន"
+      "អេក្រង់ចាប់ផ្ដើមថ្មីទាំងស្រុង៖ បង្អួចចាប់ផ្ដើមរចនាបថងងឹតដ៏ទាក់ទាញ ប្រើសញ្ញាសម្គាល់ម៉ាកយីហោផ្លូវការរបស់កម្មវិធីខ្លួនឯង ជាមួយរបារវឌ្ឍនភាព ១០ វិនាទីរលូន និងស្ថានភាពដំណើរការម៉ូឌុលបង្វិលមុនពេលបង្អួចមេលេចឡើង",
+      "ការរកឃើញគណនីជាប់ Checkpoint/ផាកឃាត់ឥឡូវពឹងផ្អែកលើផ្លូវ URL /checkpoint/ ដោយផ្ទាល់ដោយគ្មានលក្ខខណ្ឌបន្ថែម — ទំព័រផាកឃាត់ ('We suspended your account / នៅសល់ N ថ្ងៃដើម្បីប្តឹងឧទ្ធរណ៍') លែងត្រូវបានចាត់ថ្នាក់ខុសជា Live ដោយសារឈ្មោះ/Avatar គណនីនៅតែបង្ហាញលើរបារនាំផ្លូវ",
+      "បង្អួចកម្មវិធីរុករកឥឡូវបិទដោយស្វ័យប្រវត្តិ និងជឿទុកចិត្តបានក្នុងលទ្ធផលចុងក្រោយគ្រប់ករណី — Live (មានឬគ្មានសេណារីយ៉ូ), ពាក្យសម្ងាត់ខុស, Checkpoint, និងការព្យាយាម 2FA ដែលបរាជ័យ/ជាប់គាំង — ដូច្នេះការដំណើរការជាបាច់ដែលបានបញ្ចប់ លែងបន្សល់ទុកបង្អួចធ្វើឱ្យរញ៉េរញ៉ៃអេក្រង់ទៀតឡើយ",
+      "ការជៀសផុតដោយស្វ័យប្រវត្តិចំពោះទំព័រជ្រើសរើសគណនីរបស់ Facebook ('បន្តជា X / ប្រើប្រវត្តិរូបផ្សេង') ទាំងក្នុងការចូលគណនីធម្មតា និងការចូលគណនីដោយ Cookie រួមទាំងការសម្អាត Cookie ប្រវត្តិរូបមុនពេលបញ្ចូល ដើម្បីកុំឲ្យអត្តសញ្ញាណចាស់ដែលបានរក្សាទុកលេចធ្លាយចូលទៅក្នុងសម័យគណនីខុស",
+      "Cookie ឥឡូវត្រូវបានស្រង់ចេញ និងរក្សាទុកទៅមូលដ្ឋានទិន្នន័យតែពេលមានសម័យ Live ពិតប្រាកដប៉ុណ្ណោះ — Cookie របស់គណនីជាប់ Checkpoint/ផាកឃាត់/បិទដំណើរការ លែងត្រូវបានរក្សាទុកឡើយ"
     ]
   }
 }

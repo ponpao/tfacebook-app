@@ -284,7 +284,7 @@ export function bulkAssignField(
  * Status). Deliberately narrow-typed to the specific columns those actions
  * touch, not a generic "any column" endpoint.
  */
-export function bulkSetField(column: 'notes' | 'live_status', ids: number[], value: string): number {
+export function bulkSetField(column: 'notes' | 'live_status' | 'proxy', ids: number[], value: string): number {
   if (ids.length === 0) return 0
   const db = getDb()
   const stmt = db.prepare(`UPDATE accounts SET ${column} = @value WHERE id = @id`)

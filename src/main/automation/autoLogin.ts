@@ -451,6 +451,84 @@ async function dismissConsentOverlays(page: Page, signal?: AbortSignal): Promise
   }
 }
 
+/**
+ * Facebook's "Account Chooser" / one-click-login interstitial — a saved
+ * browser profile (from a previous session on this machine/persistent
+ * profile dir) shows an avatar + name with "Continue" / "Use another
+ * profile" / "Create new account" instead of the normal email/password
+ * form. Left unhandled, this either gets misread as an already-logged-in
+ * session (it isn't — "Continue" hasn't been clicked) or the automation
+ * simply can't find #email/#pass and reports a false "page layout
+ * changed" error, since neither field is present on this screen at all.
+ */
+const USE_ANOTHER_PROFILE_SELECTORS = [
+  'div[role="button"]:has-text("Use another profile")',
+  'button:has-text("Use another profile")',
+  '[aria-label="Use another profile"]'
+]
+
+export async function isAccountSwitcherScreen(page: Page): Promise<boolean> {
+  for (const sel of USE_ANOTHER_PROFILE_SELECTORS) {
+    const visible = await page
+      .locator(sel)
+      .first()
+      .isVisible()
+      .catch(() => false)
+    if (visible) return true
+  }
+  return false
+}
+
+/**
+ * Resolve the account-switcher screen so the standard email/password form
+ * actually appears, in two stages:
+ *   1. Click "Use another profile" — Facebook's own way of returning to a
+ *      normal fresh-login form without disturbing anything else.
+ *   2. If the standard fields still aren't visible afterward (a layout
+ *      variant, or the click didn't register), fall back to a harder reset:
+ *      clear the context's cookies and the page's local/session storage,
+ *      then navigate directly to the login page.
+ * Best-effort throughout — never throws; the caller's own
+ * "email field not found" handling is the final safety net either way.
+ */
+export async function resolveAccountSwitcherScreen(
+  page: Page,
+  context: BrowserContext,
+  signal?: AbortSignal
+): Promise<void> {
+  for (const sel of USE_ANOTHER_PROFILE_SELECTORS) {
+    const btn = page.locator(sel).first()
+    const visible = await btn.isVisible().catch(() => false)
+    if (!visible) continue
+    await raceAbort(btn.click({ timeout: 5000 }).catch(() => void 0), signal)
+    await raceAbort(page.waitForTimeout(1500), signal)
+    break
+  }
+
+  const fieldsVisible = await findFirstVisible(page, LOGIN_FORM_SELECTORS, 3000)
+  if (fieldsVisible) return
+
+  // Harder reset: "Use another profile" either wasn't found or didn't
+  // actually produce the standard form — clear everything Facebook could
+  // be using to remember this browser profile's identity, then load the
+  // login page directly rather than the redirect-prone root URL.
+  await context.clearCookies().catch(() => void 0)
+  await page
+    .evaluate(() => {
+      try {
+        localStorage.clear()
+        sessionStorage.clear()
+      } catch {
+        /* ignore — some pages restrict storage access */
+      }
+    })
+    .catch(() => void 0)
+  await raceAbort(
+    page.goto('https://www.facebook.com/login.php', { timeout: 30000, waitUntil: 'domcontentloaded' }).catch(() => void 0),
+    signal
+  )
+}
+
 /** Click with a small randomized offset inside the target's bounding box — mimics natural mouse imprecision. */
 async function clickWithJitter(
   page: Page,
@@ -499,12 +577,26 @@ const WRONG_PASSWORD_PATTERNS = [
   'incorrect password'
 ]
 
-/** Genuine account-lock text — distinct from a mere "checkpoint" step in a normal flow. */
+/**
+ * Genuine account-lock/suspension text — distinct from a mere "checkpoint"
+ * step in a normal flow. Deliberately broad: Facebook varies this copy
+ * (interpolating the account's own name, "N days left to appeal", etc.), so
+ * this list exists purely as a secondary confirmation signal, NOT the sole
+ * gate — see the /checkpoint/ URL check below, which is unconditional and
+ * doesn't depend on matching any of these exactly.
+ */
 const ACCOUNT_LOCKED_PATTERNS = [
   'your account has been locked',
   'we suspended your account',
+  "we've suspended",
+  'suspended your account',
+  'suspended for violating',
   'account has been disabled',
-  'your account has been disabled'
+  'your account has been disabled',
+  'days left to appeal',
+  'day left to appeal',
+  'appeal this decision',
+  'your account is disabled'
 ]
 
 /**
@@ -542,22 +634,33 @@ export async function classifyPage(page: Page): Promise<{ status: LoginStatus; d
     return { status: 'Die', detail: 'Account Disabled / Suspended' }
   }
 
-  // ---- Real checkpoint: requires BOTH the /checkpoint/ URL AND an actual
-  // lock-screen indicator — a bare "checkpoint" substring in unrelated page
-  // text (or a 2FA step that will resolve normally) must not trip this.
-  // Checkpoint 282 (identity/liveness verification) is checked first since
-  // it can appear without the literal "282" digits on-page. ----
+  // ---- Real checkpoint: the /checkpoint/ URL PATH ITSELF is the
+  // unconditional, highest-priority signal — Facebook never puts a
+  // logged-out visitor or a normal 2FA step at this specific path, only an
+  // actual account-level checkpoint/suspension screen. This must NOT
+  // additionally require matching a hardcoded body-text pattern before
+  // counting as Checkpoint: Facebook varies its suspension copy (the
+  // account's own name interpolated, "N days left to appeal" instead of a
+  // fixed phrase, etc.), and a URL clearly on /checkpoint/ that happens not
+  // to match any of ACCOUNT_LOCKED_PATTERNS/CHECKPOINT_282_PATTERNS must
+  // still be reported as Checkpoint — never silently fall through to the
+  // generic Live fallback below just because the profile nav bar still
+  // renders the account's name/avatar (which it does even on a suspension
+  // screen). The body text is used only to pick the more specific detail
+  // label; it is never a gate on whether this counts as Checkpoint at all. ----
   if (url.includes('/checkpoint/')) {
     if (is282LockText(body)) {
       return { status: 'Checkpoint', detail: 'Checkpoint 282' }
     }
     const lockCodeMatch = body.match(/\b(956|282)\b/)
     const lockedText = ACCOUNT_LOCKED_PATTERNS.some((p) => body.includes(p))
-    if (lockCodeMatch || lockedText) {
-      return {
-        status: 'Checkpoint',
-        detail: `Checkpoint${lockCodeMatch ? ` ${lockCodeMatch[1]}` : ' (locked)'}`
-      }
+    return {
+      status: 'Checkpoint',
+      detail: lockCodeMatch
+        ? `Checkpoint ${lockCodeMatch[1]}`
+        : lockedText
+          ? 'Checkpoint (locked)'
+          : 'Checkpoint'
     }
   }
 
@@ -1142,12 +1245,13 @@ async function detectPostSubmitState(page: Page): Promise<PostSubmitState> {
     return { kind: 'wrongPassword' }
   }
 
-  // State 4: checkpoint / suspended — URL + an actual lock indicator.
+  // State 4: checkpoint / suspended — the /checkpoint/ URL path alone is
+  // the unconditional signal here too (see classifyPage's matching comment
+  // for why body-text confirmation must never gate this) — a suspension
+  // screen whose copy doesn't match any hardcoded pattern must still be
+  // reported as checkpoint, not silently fall through toward 'live'.
   if (url.includes('/checkpoint/')) {
-    if (is282LockText(body)) return { kind: 'checkpoint' }
-    const lockCodeMatch = body.match(/\b(956|282)\b/)
-    const lockedText = ACCOUNT_LOCKED_PATTERNS.some((p) => body.includes(p))
-    if (lockCodeMatch || lockedText) return { kind: 'checkpoint' }
+    return { kind: 'checkpoint' }
   }
 
   // State 5: "You're logged in. Trust this device?" — c_user is already set
@@ -1920,6 +2024,20 @@ export async function runAutoLogin(
     // otherwise sit on top of the login form and swallow clicks.
     await dismissConsentOverlays(page, signal)
 
+    // Account Chooser interstitial (avatar + name, "Continue" / "Use
+    // another profile" / "Create new account") — a saved profile dir can
+    // land here instead of the normal login form. Must be resolved BEFORE
+    // the isLoginPage() check below: this screen has neither the login form
+    // nor a genuinely-authenticated session, so left unhandled it either
+    // gets misread as "already logged in" or the credential-entry step
+    // below fails to find #email/#pass at all.
+    checkAborted(signal)
+    if (await isAccountSwitcherScreen(page)) {
+      progress('Checking session...', 'Resolving account switcher screen...')
+      await resolveAccountSwitcherScreen(page, context, signal)
+      checkAborted(signal)
+    }
+
     // Already logged in via a persisted session/cookie? Checked by DOM
     // presence of the login form (isLoginPage), not the URL — web.facebook.com
     // stays at the bare "/" path even while showing the login form for a
@@ -1949,8 +2067,11 @@ export async function runAutoLogin(
         }
       }
 
-      const { cookie, token } =
-        res.status === 'Live' ? metadata : await extractCookiesAndToken(context)
+      // Cookies are only extracted/saved for a genuinely Live session — see
+      // the matching comment further down in the fresh-credential-login
+      // branch for why a Checkpoint/suspended/disabled account's cookie
+      // must never be persisted.
+      const { cookie, token } = res.status === 'Live' ? metadata : { cookie: undefined, token: undefined }
       return {
         success: res.status === 'Live',
         status: res.status,
@@ -2016,7 +2137,8 @@ export async function runAutoLogin(
     // ---- Requirement 1: check WRONG PASSWORD first, before any 2FA logic.
     // A bad-credentials response must stop the flow dead — never fall through
     // into the 2FA state machine (which historically typed the TOTP into the
-    // login form). Close cleanly with status 'Changed Pass'. ----
+    // login form). Status is recorded as 'Changed Pass' and the browser
+    // closes immediately in the finally block below. ----
     if (postSubmit.kind === 'wrongPassword') {
       progress('Changed Pass', 'Wrong Password')
       return {
@@ -2032,8 +2154,10 @@ export async function runAutoLogin(
     // Checkpoint 282 (identity/liveness "Confirm you're human" verification)
     // is reported by name rather than the generic "956/282" label — this app
     // never attempts to resolve it automatically (no auto-solve, no photo
-    // upload), so the account is simply marked and the browser closed. Exit
-    // cleanly without touching the 2FA state machine. ----
+    // upload), so the account is simply marked Checkpoint and the browser
+    // closed immediately rather than left open — this app doesn't drive any
+    // manual-resolution flow from here (that's a separate, explicit action
+    // via "Resolve Checkpoint 282 (Manual)" opening its own browser). ----
     if (postSubmit.kind === 'checkpoint') {
       const is282 = is282LockText(await visibleText(page))
       const label = is282 ? 'Checkpoint 282' : 'Checkpoint 956/282'
@@ -2068,7 +2192,8 @@ export async function runAutoLogin(
         const actuallyLoggedIn = await waitForLoggedIn(page, context, progress, signal, 5000)
         if (!actuallyLoggedIn) {
           // Per requirement 2: never swallow a 2FA failure — log the exact
-          // step and persist it as a Checkpoint with a descriptive note.
+          // step and persist it as a Checkpoint with a descriptive note; the
+          // browser closes immediately in the finally block below.
           const failureDetail = resolution.failureStep ?? '2FA resolution failed for an unknown reason'
           progress('Checkpoint', failureDetail)
           return {
@@ -2109,8 +2234,12 @@ export async function runAutoLogin(
       progress('Live', 'Login Success')
     }
 
-    const { cookie, token } =
-      result.status === 'Live' ? metadata : await extractCookiesAndToken(context)
+    // Cookies are only extracted/saved for a genuinely Live session. A
+    // Checkpoint/suspended/disabled account's cookie is not a usable
+    // session — saving it would let a later "Login with Cookie" or queue
+    // run silently treat a suspended account as if it had a working
+    // session, and there's nothing to gain from persisting it regardless.
+    const { cookie, token } = result.status === 'Live' ? metadata : { cookie: undefined, token: undefined }
 
     // Use classifyPage's own detail text (e.g. "Checkpoint 282" vs the
     // generic "Checkpoint 956/282") rather than a second hardcoded string,
@@ -2146,11 +2275,15 @@ export async function runAutoLogin(
     progress('Error', message)
     return { success: false, status: 'Unknown', detail: `Login error: ${message}` }
   } finally {
+    // Always close and untrack once a final status has been determined —
+    // Live (with or without a scenario), any failure terminal state (wrong
+    // password, checkpoint, failed/stuck 2FA), a headless run, an aborted
+    // run, and a hard error (caught above) all close immediately. A
+    // finished "No scenario (login only)" run has already updated the
+    // account row with its status/cookie/metadata by this point, so there
+    // is nothing left for the browser window to show — leaving it open
+    // would just clutter the screen once the task is done.
     untrackContext(trackKey)
-    // Always close once a final status has been determined — a lingering
-    // browser window per finished account is a zombie-window leak, headed or
-    // not. (Single-account "Open Profile" is a separate, deliberately-kept-
-    // open flow in playwrightManager.ts and does not go through here.)
     await context?.close().catch(() => void 0)
   }
 }

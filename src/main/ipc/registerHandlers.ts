@@ -113,7 +113,7 @@ export function registerIpcHandlers(): void {
   )
   ipcMain.handle(
     IPC.accounts.bulkSetField,
-    (_e, column: 'notes' | 'live_status', ids: number[], value: string) =>
+    (_e, column: 'notes' | 'live_status' | 'proxy', ids: number[], value: string) =>
       accounts.bulkSetField(column, ids, value)
   )
   ipcMain.handle(IPC.accounts.assignProxies, (_e, req: AssignProxyRequest) => {

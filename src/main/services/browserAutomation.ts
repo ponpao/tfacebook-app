@@ -183,7 +183,19 @@ export async function loginWithCookieBatch(accountIds: number[], concurrency: nu
         resolvedUid = cUserFromCookie
       }
 
-      context = await launchContext({ headless: false, account, slotIndex: index })
+      context = await launchContext({
+        headless: false,
+        account,
+        slotIndex: index,
+        // A persistent profile dir can carry a stale, different Facebook
+        // identity from an earlier run — left in place, that surfaces
+        // Facebook's own account-chooser interstitial ("Continue as X /
+        // Use another profile") for the WRONG account before the
+        // just-injected cookie's session ever gets a chance to take
+        // effect. Clearing first (before injection) means this cookie is
+        // the only session Facebook can possibly offer.
+        resetProfileBeforeCookieInject: true
+      })
       trackContext(key, context)
 
       const page = context.pages()[0] ?? (await context.newPage())

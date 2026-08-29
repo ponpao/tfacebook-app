@@ -1,0 +1,222 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 540px;
+        height: 280px;
+        background: transparent;
+        overflow: hidden;
+        font-family:
+          -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          Roboto,
+          sans-serif;
+        -webkit-user-select: none;
+        user-select: none;
+      }
+
+      .card {
+        width: 540px;
+        height: 280px;
+        box-sizing: border-box;
+        background: #1c222d;
+        border-radius: 16px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+        display: flex;
+        flex-direction: column;
+        color: #e2e8f0;
+      }
+
+      .top {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        padding: 28px 32px;
+        gap: 28px;
+      }
+
+      .left {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        width: 130px;
+        flex-shrink: 0;
+      }
+
+      .logo {
+        width: 68px;
+        height: 68px;
+        border-radius: 14px;
+        filter: drop-shadow(0 4px 14px rgba(155, 61, 196, 0.45));
+      }
+
+      .brand {
+        font-size: 15px;
+        font-weight: 800;
+        background: linear-gradient(90deg, #ec2d8a, #9b3dc4, #2e2e9e);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+        letter-spacing: 0.02em;
+      }
+
+      .divider {
+        width: 1px;
+        align-self: stretch;
+        background: rgba(148, 163, 184, 0.35);
+        flex-shrink: 0;
+      }
+
+      .right {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 8px;
+        min-width: 0;
+      }
+
+      .title {
+        font-size: 22px;
+        font-weight: 800;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+        color: #ffffff;
+        line-height: 1.15;
+      }
+
+      .team {
+        font-size: 14px;
+        font-weight: 500;
+        color: #94a3b8;
+        letter-spacing: 0.05em;
+      }
+
+      .version {
+        font-size: 11px;
+        font-weight: 500;
+        color: #64748b;
+        letter-spacing: 0.06em;
+      }
+
+      .bottom {
+        padding: 0 32px 24px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .track {
+        height: 6px;
+        border-radius: 999px;
+        background: rgba(148, 163, 184, 0.18);
+        overflow: hidden;
+      }
+
+      .fill {
+        height: 100%;
+        width: 0%;
+        border-radius: 999px;
+        background: linear-gradient(90deg, #ec2d8a, #9b3dc4, #2e2e9e);
+        /* Smooth, continuous fill across the full splash duration — set
+           once (see the script below) rather than stepped per status
+           label, so the bar reads as one steady progression rather than 4
+           visible jumps. */
+        transition: width 10s linear;
+      }
+
+      .status {
+        font-size: 11.5px;
+        color: #94a3b8;
+        letter-spacing: 0.02em;
+        height: 14px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="top">
+        <div class="left">
+          <!-- Official TFACEBOOK brand mark — identical markup to
+               build/icon.svg and src/renderer/components/AppLogo.tsx (the
+               same icon shown in the app's own title bar), not a
+               placeholder/generic logo. -->
+          <svg class="logo" viewBox="0 0 1400 1400" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <defs>
+              <linearGradient id="tfb-splash-logo-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#EC2D8A" />
+                <stop offset="50%" stop-color="#9B3DC4" />
+                <stop offset="100%" stop-color="#2E2E9E" />
+              </linearGradient>
+            </defs>
+            <rect x="20" y="20" width="1360" height="1360" rx="280" fill="url(#tfb-splash-logo-bg)" />
+            <circle cx="700" cy="358" r="82" fill="#ffffff" />
+            <path
+              fill="#ffffff"
+              d="M 700 470 C 668 470 638 486 620 512 L 340 942 C 312 984 322 1041 364 1069
+                 C 406 1097 463 1087 491 1045 L 700 726 L 909 1045 C 937 1087 994 1097 1036 1069
+                 C 1078 1041 1088 984 1060 942 L 780 512 C 762 486 732 470 700 470 Z"
+            />
+          </svg>
+          <div class="brand">TFacebook</div>
+        </div>
+        <div class="divider"></div>
+        <div class="right">
+          <div class="title">TFACEBOOK Automation</div>
+          <div class="team">P2TFACEBOOK</div>
+          <div class="version" id="version"></div>
+        </div>
+      </div>
+      <div class="bottom">
+        <div class="track"><div class="fill" id="fill"></div></div>
+        <div class="status" id="status">Initializing System Modules...</div>
+      </div>
+    </div>
+    <script>
+      // Version is passed as a URL query param (?v=1.1.4) at load time —
+      // see splashWindow.loadFile() in main/index.ts — so this file never
+      // needs its own hardcoded version to drift from package.json's.
+      const params = new URLSearchParams(window.location.search)
+      const v = params.get('v')
+      if (v) document.getElementById('version').textContent = `VERSION ${v}`
+
+      const steps = [
+        'Initializing System Modules...',
+        'Connecting Local Database...',
+        'Loading Playwright Automation Engine...',
+        'Ready...'
+      ]
+      const fill = document.getElementById('fill')
+      const status = document.getElementById('status')
+      const TOTAL_MS = 10000
+      const STEP_MS = TOTAL_MS / steps.length // 2.5s per stage
+
+      // Status labels switch at each 2.5s boundary (0-2.5s, 2.5-5s, 5-7.5s,
+      // 7.5-10s) — set via setTimeout per step, matching main/index.ts's
+      // own 10s handoff delay so the main window never appears before this
+      // finishes. The progress bar itself is NOT stepped in sync with
+      // these labels — it's set to 100% once, immediately, and its own
+      // `transition: width 10s linear` (see the .fill rule above) is what
+      // actually paces the visible fill smoothly across the full 10s,
+      // reading as one steady progression rather than 4 discrete jumps.
+      requestAnimationFrame(() => {
+        fill.style.width = '100%'
+      })
+
+      steps.forEach((label, i) => {
+        setTimeout(() => {
+          status.textContent = label
+        }, i * STEP_MS)
+      })
+    </script>
+  </body>
+</html>

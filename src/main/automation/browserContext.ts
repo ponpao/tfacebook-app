@@ -302,40 +302,162 @@ export function resolveProfileDir(uid: string | null): string {
 
 /**
  * Parse an account.proxy string into a Playwright proxy config.
- * Accepts:  host:port  |  host:port:user:pass  |  scheme://user:pass@host:port
+ * Accepts every proxy string format actually seen in the wild across
+ * providers (Webshare, static residential ISPs, generic SOCKS5 resellers),
+ * not just the plain host:port / scheme://user:pass@host:port shapes the
+ * old version handled — those two alone left out the equally common
+ * "host:port:user:pass" (Webshare's own default export format) and any
+ * "socks5://host:port:user:pass" variant, both of which used to get
+ * mis-split or silently downgraded to http:// and fail to authenticate,
+ * surfacing as Chromium's ERR_TUNNEL_CONNECTION_FAILED at launch:
+ *   1. host:port:user:pass       (Webshare / static residential default)
+ *   2. user:pass@host:port       (no scheme)
+ *   3. http(s)://user:pass@host:port
+ *   4. socks5://user:pass@host:port
+ *   5. socks5://host:port:user:pass
+ *   6. host:port                 (unauthenticated / IP-whitelisted)
+ * Deliberately does NOT use `new URL()` — it throws on shapes 1 and 5
+ * (a "port" of "8080:user:pass" isn't valid), which is what caused the old
+ * scheme-prefixed branch to fall through to raw colon-splitting on a
+ * string that still had its "socks5://" prefix attached, and then hardcode
+ * `http://` regardless of the real scheme.
  */
 export function parseProxy(
   raw: string | null | undefined
 ): { server: string; username?: string; password?: string } | undefined {
-  if (!raw || !raw.trim()) return undefined
-  const value = raw.trim()
+  if (!raw || typeof raw !== 'string') return undefined
+  const trimmed = raw.trim()
+  if (!trimmed) return undefined
 
-  // scheme://user:pass@host:port
-  if (value.includes('://')) {
-    try {
-      const u = new URL(value)
-      const server = `${u.protocol}//${u.hostname}:${u.port || '80'}`
-      return u.username
-        ? {
-            server,
-            username: decodeURIComponent(u.username),
-            password: decodeURIComponent(u.password)
-          }
-        : { server }
-    } catch {
-      /* fall through to colon parsing */
+  // Strip and remember an explicit scheme prefix — http, https, or socks5 —
+  // defaulting to http when none is given, same as Chromium's own default
+  // proxy scheme. Every later branch reuses `protocol`, so a socks5:// or
+  // https:// prefix always survives into the final server string instead
+  // of one branch (the old colon-split fallback) silently discarding it.
+  let protocol = 'http'
+  let rest = trimmed
+  const schemeMatch = trimmed.match(/^(https?|socks5):\/\/(.*)$/i)
+  if (schemeMatch) {
+    protocol = schemeMatch[1].toLowerCase()
+    rest = schemeMatch[2]
+  }
+
+  const buildServer = (host: string, port: string): string => `${protocol}://${host.trim()}:${port.trim()}`
+
+  // Format: user:pass@host:port (with or without a scheme prefix already
+  // stripped above) — split on the LAST '@' so a password that itself
+  // contains '@' doesn't truncate the host/port half.
+  const atIndex = rest.lastIndexOf('@')
+  if (atIndex !== -1) {
+    const authPart = rest.slice(0, atIndex)
+    const hostPart = rest.slice(atIndex + 1)
+    const colonIndex = authPart.indexOf(':')
+    const username = colonIndex === -1 ? authPart : authPart.slice(0, colonIndex)
+    const password = colonIndex === -1 ? '' : authPart.slice(colonIndex + 1)
+    const [host, port] = hostPart.split(':')
+    if (host && port) {
+      return {
+        server: buildServer(host, port),
+        username: username ? decodeURIComponent(username.trim()) : undefined,
+        password: password ? decodeURIComponent(password.trim()) : undefined
+      }
     }
   }
 
-  // host:port[:user:pass]
-  const parts = value.split(':')
-  if (parts.length >= 2) {
-    const [host, port, user, pass] = parts
-    const server = `http://${host}:${port}`
-    return user ? { server, username: user, password: pass ?? '' } : { server }
+  // Format: host:port:user:pass  |  host:port  (scheme already stripped,
+  // if one was present — covers both plain and socks5://host:port:user:pass).
+  const parts = rest.split(':')
+  if (parts.length >= 4) {
+    const [host, port, user, ...passParts] = parts
+    // A password containing ':' (rare, but not impossible) would otherwise
+    // be silently truncated at the first colon — rejoin anything past the
+    // third colon back into the password instead of dropping it.
+    const pass = passParts.join(':')
+    if (host && port) {
+      return { server: buildServer(host, port), username: user.trim(), password: pass.trim() }
+    }
+  } else if (parts.length === 2) {
+    const [host, port] = parts
+    if (host && port) return { server: buildServer(host, port) }
   }
 
   return undefined
+}
+
+/** Extracts the bare host (IP or hostname, no port/credentials) out of a raw proxy string, reusing parseProxy's already-robust format handling rather than a naive split. */
+function extractProxyHost(rawProxy: string): string | undefined {
+  const parsed = parseProxy(rawProxy)
+  if (!parsed) return undefined
+  // parsed.server is "protocol://host:port" — strip both ends.
+  const withoutScheme = parsed.server.replace(/^[a-z0-9]+:\/\//i, '')
+  const host = withoutScheme.split(':')[0]
+  return host || undefined
+}
+
+export interface ProxyGeoData {
+  timezone: string
+  lat: number
+  lon: number
+  countryCode: string
+}
+
+// Keyed by proxy host — a rotating-gateway proxy string maps to the same
+// cache entry across every launch using it, so this is a reasonable
+// approximation (the lookup reflects the gateway's own IP, not necessarily
+// whatever IP the gateway rotates to per-connection) rather than a perfect
+// per-session geo match. Process-lifetime cache: cleared on app restart,
+// which is fine since a proxy's geolocation is effectively static day-to-day.
+const proxyGeoCache = new Map<string, ProxyGeoData | null>()
+
+/**
+ * Looks up a proxy host's approximate physical location via ip-api.com's
+ * free endpoint (no API key required, generous rate limit for this app's
+ * usage pattern) — timezone, coordinates, and country code. Used to make
+ * the launched browser's reported timezone/geolocation/locale consistent
+ * with the proxy's exit IP instead of the host machine's real location,
+ * which is itself a fingerprinting/bot-detection signal (a New York
+ * residential IP paired with a browser reporting Asia/Phnom_Penh as its
+ * timezone is an obvious tell). Best-effort: returns null on any failure
+ * (network error, malformed response, non-IP hostname ip-api.com can't
+ * resolve) rather than throwing — a failed lookup just means the launched
+ * context falls back to sensible hardcoded US defaults, never blocks
+ * launching the browser itself.
+ */
+export async function getProxyGeoData(host: string): Promise<ProxyGeoData | null> {
+  // Only a successful lookup is cached — a transient network failure or a
+  // momentary ip-api.com hiccup shouldn't permanently disable geo-matching
+  // for that proxy for the rest of the app's process lifetime; retrying on
+  // the next launch is cheap and correct.
+  const cached = proxyGeoCache.get(host)
+  if (cached) return cached
+
+  try {
+    const response = await fetch(`http://ip-api.com/json/${encodeURIComponent(host)}?fields=status,countryCode,timezone,lat,lon`, {
+      signal: AbortSignal.timeout(8000)
+    })
+    const data = (await response.json()) as {
+      status?: string
+      countryCode?: string
+      timezone?: string
+      lat?: number
+      lon?: number
+    }
+
+    if (data.status === 'success') {
+      const geo: ProxyGeoData = {
+        timezone: data.timezone || 'America/New_York',
+        lat: typeof data.lat === 'number' ? data.lat : 40.7128,
+        lon: typeof data.lon === 'number' ? data.lon : -74.006,
+        countryCode: data.countryCode || 'US'
+      }
+      proxyGeoCache.set(host, geo)
+      return geo
+    }
+    return null
+  } catch (err) {
+    console.warn(`[ProxyGeo] Failed to fetch geo info for ${host}:`, err instanceof Error ? err.message : err)
+    return null
+  }
 }
 
 export interface LaunchOpts {
@@ -348,6 +470,21 @@ export interface LaunchOpts {
    * same position. Ignored when headless.
    */
   slotIndex?: number
+  /**
+   * Clear the persistent profile's existing cookies/storage BEFORE
+   * injecting the account's saved cookie — used only by Login with Cookie
+   * (browserAutomation.ts). That flow's whole point is "use exactly this
+   * saved cookie's session," but the profile dir can carry a DIFFERENT,
+   * stale identity from an earlier run (Facebook's own account-chooser
+   * cookie), which surfaces the "Continue as X / Use another profile"
+   * interstitial for the WRONG account before the just-injected cookie's
+   * session ever gets a chance to take effect. Clearing first means the
+   * injected cookie is the only session Facebook can possibly offer.
+   * Every other caller (openProfile, checkLiveDie, runAutoLogin) omits
+   * this — those rely on the persistent profile's own real session
+   * surviving across runs, which this would otherwise destroy.
+   */
+  resetProfileBeforeCookieInject?: boolean
 }
 
 /** Randomized delay (ms) using the persisted General Settings delay range. */
@@ -363,7 +500,8 @@ export async function settingsDelay(): Promise<void> {
 export async function launchContext({
   headless,
   account,
-  slotIndex
+  slotIndex,
+  resetProfileBeforeCookieInject
 }: LaunchOpts): Promise<BrowserContext> {
   const settings = getAppSettings()
   const viewport = pick(VIEWPORTS)
@@ -371,6 +509,21 @@ export async function launchContext({
   const userAgent = account.user_agent?.trim() || pick(USER_AGENTS)
   const proxy = parseProxy(account.proxy)
   const resolvedHeadless = headless ?? settings.browserMode === 'headless'
+
+  // Match the launched context's reported timezone/geolocation/locale to
+  // the assigned proxy's actual exit location — a proxy IP geolocating to
+  // New York while the browser reports (say) Asia/Phnom_Penh as its
+  // timezone is itself a strong bot-detection signal, independent of
+  // anything else this app already does to look like a real device.
+  // Best-effort: a failed/unavailable lookup (no proxy configured, network
+  // error, non-resolvable host) falls back to sensible US defaults rather
+  // than ever blocking the browser from launching.
+  const proxyHost = account.proxy ? extractProxyHost(account.proxy) : undefined
+  const proxyGeo = proxyHost ? await getProxyGeoData(proxyHost) : null
+  const timezoneId = proxyGeo?.timezone ?? 'America/New_York'
+  const geolocation = proxyGeo ? { latitude: proxyGeo.lat, longitude: proxyGeo.lon, accuracy: 100 } : undefined
+  const permissions = proxyGeo ? ['geolocation'] : []
+  const locale = !proxyGeo || proxyGeo.countryCode === 'US' ? 'en-US' : `en-${proxyGeo.countryCode}`
   const executablePath =
     settings.customChromiumPath.trim() && existsSync(settings.customChromiumPath.trim())
       ? settings.customChromiumPath.trim()
@@ -420,8 +573,33 @@ export async function launchContext({
     userAgent,
     proxy,
     executablePath,
-    args
+    args,
+    // Playwright appends --enable-automation to Chromium's launch args by
+    // default, which shows the "Chrome is being controlled by automated
+    // test software" infobar and sets navigator.webdriver at the CDP level
+    // — a signal some detection scripts check independently of the
+    // --disable-blink-features=AutomationControlled flag above (which only
+    // addresses the JS-visible blink feature, not this CLI flag or its
+    // downstream effects). Suppressing it here removes that flag entirely
+    // instead of leaving it to be patched over client-side.
+    ignoreDefaultArgs: ['--enable-automation'],
+    // Proxy-geolocation matching (see getProxyGeoData above) — timezoneId
+    // and locale always get a value (US defaults when no proxy/lookup
+    // succeeded); geolocation/permissions are only set when a real lookup
+    // succeeded, since granting a 'geolocation' permission the browser then
+    // has no coordinates to answer with would be worse than not
+    // granting it at all.
+    timezoneId,
+    locale,
+    ...(geolocation ? { geolocation, permissions } : {})
   })
+
+  // Login with Cookie only — see resetProfileBeforeCookieInject's doc
+  // comment on LaunchOpts. Must happen BEFORE injectSavedCookies() below,
+  // not after: clearing afterward would wipe the very cookie just injected.
+  if (resetProfileBeforeCookieInject) {
+    await context.clearCookies().catch(() => void 0)
+  }
 
   // Restore the saved session cookie before any navigation happens in the
   // caller — see injectSavedCookies()'s doc comment for why this matters
@@ -441,7 +619,11 @@ export async function launchContext({
   const isMac = userAgent.includes('Macintosh')
   await context.addInitScript(
     buildStealthScript({
-      languages: ['en-US', 'en'],
+      // Matches the context's own `locale` option above — a browser whose
+      // reported navigator.languages disagrees with its Accept-Language
+      // header (locale) and its geolocation/timezone is a mismatch a
+      // fingerprinting script can flag just as easily as a wrong timezone.
+      languages: [locale, locale.split('-')[0]],
       profileSeed: account.uid ?? undefined,
       ...(isMac
         ? { gpuVendor: 'Google Inc. (Apple)', gpuRenderer: 'ANGLE (Apple, Apple M1, OpenGL 4.1)' }
