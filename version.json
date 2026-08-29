@@ -1,20 +1,16 @@
 {
-  "version": "1.1.5",
-  "releaseDate": "2026-08-29",
+  "version": "1.1.6",
+  "releaseDate": "2026-08-30",
   "changelog": {
     "en": [
-      "Brand new frameless splash screen: an elegant dark-themed startup window using the app's own official brand mark, with a smooth 10-second progress bar and rotating module-initialization status before the main window appears",
-      "Checkpoint/suspended-account detection is now unconditional on the /checkpoint/ URL path itself — a suspension screen ('We suspended your account / N days left to appeal') no longer gets misclassified as Live just because the profile nav bar still shows the account's name/avatar",
-      "Browser windows now close automatically and reliably on every terminal outcome — Live (with or without a scenario), Wrong Password, Checkpoint, and a stuck/failed 2FA attempt — so a finished batch never leaves windows cluttering the screen",
-      "Automatic bypass for Facebook's account-chooser interstitial ('Continue as X / Use another profile') during both credential login and Login with Cookie, including a profile cookie-clear before injection so a stale saved identity can't leak into the wrong account's session",
-      "Cookies are now only extracted and saved to the database for a genuinely Live session — a Checkpoint/suspended/disabled account's cookie is never persisted"
+      "Bundle complete headless-shell binaries: the packaged app now ships both the full Chromium browser and the separate chromium-headless-shell binary Playwright defaults headless launches to — a client PC with no dev cache previously crashed on avatar extraction, Check Live/Die, and any headless queue run with 'Executable doesn't exist at ...chrome-headless-shell.exe'",
+      "Enabled proxy geo-sync: the launched browser's timezone, geolocation, and locale now automatically match the assigned proxy's real exit location instead of the host machine's own",
+      "Streamlined the row context menu's Clear Proxy action into the Batch Selection & Status submenu, alongside Clear Notes and Clear Activity Status"
     ],
     "km": [
-      "អេក្រង់ចាប់ផ្ដើមថ្មីទាំងស្រុង៖ បង្អួចចាប់ផ្ដើមរចនាបថងងឹតដ៏ទាក់ទាញ ប្រើសញ្ញាសម្គាល់ម៉ាកយីហោផ្លូវការរបស់កម្មវិធីខ្លួនឯង ជាមួយរបារវឌ្ឍនភាព ១០ វិនាទីរលូន និងស្ថានភាពដំណើរការម៉ូឌុលបង្វិលមុនពេលបង្អួចមេលេចឡើង",
-      "ការរកឃើញគណនីជាប់ Checkpoint/ផាកឃាត់ឥឡូវពឹងផ្អែកលើផ្លូវ URL /checkpoint/ ដោយផ្ទាល់ដោយគ្មានលក្ខខណ្ឌបន្ថែម — ទំព័រផាកឃាត់ ('We suspended your account / នៅសល់ N ថ្ងៃដើម្បីប្តឹងឧទ្ធរណ៍') លែងត្រូវបានចាត់ថ្នាក់ខុសជា Live ដោយសារឈ្មោះ/Avatar គណនីនៅតែបង្ហាញលើរបារនាំផ្លូវ",
-      "បង្អួចកម្មវិធីរុករកឥឡូវបិទដោយស្វ័យប្រវត្តិ និងជឿទុកចិត្តបានក្នុងលទ្ធផលចុងក្រោយគ្រប់ករណី — Live (មានឬគ្មានសេណារីយ៉ូ), ពាក្យសម្ងាត់ខុស, Checkpoint, និងការព្យាយាម 2FA ដែលបរាជ័យ/ជាប់គាំង — ដូច្នេះការដំណើរការជាបាច់ដែលបានបញ្ចប់ លែងបន្សល់ទុកបង្អួចធ្វើឱ្យរញ៉េរញ៉ៃអេក្រង់ទៀតឡើយ",
-      "ការជៀសផុតដោយស្វ័យប្រវត្តិចំពោះទំព័រជ្រើសរើសគណនីរបស់ Facebook ('បន្តជា X / ប្រើប្រវត្តិរូបផ្សេង') ទាំងក្នុងការចូលគណនីធម្មតា និងការចូលគណនីដោយ Cookie រួមទាំងការសម្អាត Cookie ប្រវត្តិរូបមុនពេលបញ្ចូល ដើម្បីកុំឲ្យអត្តសញ្ញាណចាស់ដែលបានរក្សាទុកលេចធ្លាយចូលទៅក្នុងសម័យគណនីខុស",
-      "Cookie ឥឡូវត្រូវបានស្រង់ចេញ និងរក្សាទុកទៅមូលដ្ឋានទិន្នន័យតែពេលមានសម័យ Live ពិតប្រាកដប៉ុណ្ណោះ — Cookie របស់គណនីជាប់ Checkpoint/ផាកឃាត់/បិទដំណើរការ លែងត្រូវបានរក្សាទុកឡើយ"
+      "រួមបញ្ចូល Binary chromium-headless-shell ពេញលេញ៖ កម្មវិធីដែលបានវេចខ្ចប់ឥឡូវផ្ទុកទាំង Chromium ពេញលេញ និង Binary ដាច់ដោយឡែក chromium-headless-shell ដែល Playwright ប្រើលំនាំដើមសម្រាប់ការបើកដំណើរការបែប Headless — កុំព្យូទ័រអតិថិជនដែលគ្មាន Cache អភិវឌ្ឍន៍ពីមុនធ្លាប់គាំងពេលទាញយក Avatar, ពិនិត្យ Live/Die, ឬដំណើរការជាបាច់បែប Headless ជាមួយកំហុស 'Executable doesn't exist at ...chrome-headless-shell.exe'",
+      "បើកដំណើរការការធ្វើសមកាលកម្មទីតាំង Proxy៖ តំបន់ពេលវេលា ទីតាំងភូមិសាស្ត្រ និងភាសារបស់កម្មវិធីរុករកដែលបានបើកឥឡូវផ្គូផ្គងទីតាំងពិតប្រាកដនៃ Proxy ដោយស្វ័យប្រវត្តិ ជំនួសឲ្យទីតាំងម៉ាស៊ីនម្ចាស់ផ្ទាល់",
+      "សម្រួលសកម្មភាព លុប Proxy លើម៉ឺនុយចុចខាងស្ដាំទៅក្នុងម៉ឺនុយរង ការជ្រើសរើស & ស្ថានភាពជាបាច់ រួមជាមួយ លុបកំណត់ចំណាំ និង លុបស្ថានភាពសកម្មភាព"
     ]
   }
 }
