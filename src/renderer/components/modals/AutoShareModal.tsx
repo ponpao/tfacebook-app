@@ -20,6 +20,9 @@ export function AutoShareModal({
   const showToast = useAccountStore((s) => s.showToast)
   const refresh = useAccountStore((s) => s.refresh)
 
+  const withQueueRunning = useAccountStore((s) => s.withQueueRunning)
+  const stopQueueRun = useAccountStore((s) => s.stopQueueRun)
+
   const [targetUrl, setTargetUrl] = useState('')
   const [destination, setDestination] = useState<ShareDestination>('wall')
   const [caption, setCaption] = useState('')
@@ -51,26 +54,26 @@ export function AutoShareModal({
       showToast('Enter a target Facebook post/reel/video URL.')
       return
     }
-    setRunning(true)
+    onClose()
     showToast(`Auto Share: running on ${ids.length} account(s)…`)
     try {
-      const summary = await window.api.automation.runAutoShare({
-        accountIds: ids,
-        concurrency: threadCount,
-        targetUrl: targetUrl.trim(),
-        destination,
-        captionTemplate: caption,
-        groupCount,
-        delayMinSeconds: delayMin,
-        delayMaxSeconds: delayMax
+      await withQueueRunning(async () => {
+        const summary = await window.api.automation.runAutoShare({
+          accountIds: ids,
+          concurrency: threadCount,
+          targetUrl: targetUrl.trim(),
+          destination,
+          captionTemplate: caption,
+          groupCount,
+          delayMinSeconds: delayMin,
+          delayMaxSeconds: delayMax
+        })
+        showToast(
+          `Auto Share done: ${summary.succeeded}/${summary.total} succeeded, ${summary.failed} failed.`,
+          6000
+        )
       })
-      showToast(
-        `Auto Share done: ${summary.succeeded}/${summary.total} succeeded, ${summary.failed} failed.`,
-        6000
-      )
-      onClose()
     } finally {
-      setRunning(false)
       await refresh()
     }
   }
@@ -78,7 +81,12 @@ export function AutoShareModal({
   return (
     <ModalShell
       open={open}
-      onClose={onClose}
+      onClose={() => {
+        if (running) {
+          void stopQueueRun()
+        }
+        onClose()
+      }}
       title="Auto Share"
       icon={Share2}
       footer={
@@ -86,8 +94,16 @@ export function AutoShareModal({
           <span className="mr-auto text-[11px] text-slate-500">
             {count} account(s) selected · {threadCount} thread(s)
           </span>
-          <button className="win-btn" onClick={onClose} disabled={running}>
-            Cancel
+          <button
+            className="win-btn"
+            onClick={() => {
+              if (running) {
+                void stopQueueRun()
+              }
+              onClose()
+            }}
+          >
+            {running ? 'Stop / Cancel' : 'Cancel'}
           </button>
           <button className="win-btn-accent" onClick={() => void run()} disabled={running}>
             {running ? 'Running…' : 'Start Auto Share'}

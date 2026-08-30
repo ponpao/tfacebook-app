@@ -181,7 +181,8 @@ export interface AutomationApi {
    * batch so their windows tile neatly instead of stacking on top of each
    * other at the same default position. Omit for a single ad-hoc open.
    */
-  openProfile(accountId: number, slotIndex?: number): Promise<OpenProfileResult>
+  /** `rowNumber` is the account's 1-based position in the grid as the user currently sees it (filtered/sorted view) — used only for the Chrome window title, distinct from `slotIndex`, which is the position within this launch batch and drives window tiling. */
+  openProfile(accountId: number, slotIndex?: number, rowNumber?: number): Promise<OpenProfileResult>
   checkLive(accountId: number): Promise<LiveDieResult>
   getMailOtp(accountId: number): Promise<MailOtpResult>
   autoLogin(accountId: number): Promise<AutoLoginResult>
@@ -197,7 +198,7 @@ export interface AutomationApi {
   runWatchLive(req: WatchLiveRequest): Promise<MarketingBatchSummary>
   unlock282(accountIds: number[]): Promise<MarketingBatchSummary>
   /** Opens a headed, cookie-authenticated browser per account (no password/2FA re-entry) — concurrency is the current Threads setting, same convention as runQueue. */
-  loginWithCookieBatch(accountIds: number[], concurrency: number): Promise<CookieLoginSummary>
+  loginWithCookieBatch(accountIds: number[], concurrency: number, rowNumbers?: Record<number, number>): Promise<CookieLoginSummary>
   onCookieLoginProgress(cb: (event: CookieLoginEvent) => void): () => void
   addFriendsByUidList(req: AddFriendsByUidListRequest): Promise<MarketingBatchSummary>
   addSuggestedFriends(req: AddSuggestedFriendsRequest): Promise<MarketingBatchSummary>
@@ -354,6 +355,49 @@ export interface CloudSyncApi {
   onPulled(cb: (result: CloudPullResult) => void): () => void
 }
 
+export interface BatchScanProgressEvent {
+  index: number
+  total: number
+  accountId: number
+  name: string
+  count: number
+}
+
+export interface PagesApi {
+  getManagedPages(
+    accountId: number,
+    forceRefresh?: boolean,
+    headless?: boolean
+  ): Promise<import('./account').ManagedPage[]>
+  batchScanPages(accountIds: number[]): Promise<{ totalScanned: number; totalPagesFound: number }>
+  clearPageData(accountIds: number[]): Promise<{ clearedCount: number }>
+  fetchPosts(
+    accountId: number,
+    assetId: string,
+    filter: import('./account').PagePostFilter,
+    headless?: boolean
+  ): Promise<{ posts: import('./account').PagePost[]; totalScraped: number }>
+  deletePosts(
+    accountId: number,
+    assetId: string,
+    postIds: string[],
+    headless?: boolean,
+    batchSize?: number
+  ): Promise<{ success: boolean; deletedCount: number; detail: string }>
+  stopOperation(): Promise<{ ok: boolean }>
+  onFetchProgress(cb: (payload: { accountId: number; assetId: string; message: string }) => void): () => void
+  onDeleteProgress(
+    cb: (payload: {
+      accountId: number
+      assetId: string
+      message: string
+      deletedCount?: number
+      completedIds?: string[]
+    }) => void
+  ): () => void
+  onBatchScanProgress(cb: (payload: BatchScanProgressEvent) => void): () => void
+}
+
 export interface AppApi {
   system: SystemApi
   accounts: AccountsApi
@@ -364,6 +408,7 @@ export interface AppApi {
   settings: SettingsApi
   window: WindowApi
   automation: AutomationApi
+  pages: PagesApi
   utils: UtilsApi
   updater: UpdaterApi
   tools: ToolsApi

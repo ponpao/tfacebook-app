@@ -4,6 +4,7 @@
 // ---------------------------------------------------------------------------
 import type { Account } from '../../types/account'
 import { launchContext, trackContext, untrackContext } from './browserContext'
+import { verifyActiveSession } from './sessionGuard'
 
 export interface WatchLiveOptions {
   liveUrl: string
@@ -90,6 +91,11 @@ export async function watchLive(account: Account, options: WatchLiveOptions): Pr
     checkAborted(signal)
     await raceAbort(page.goto(liveUrl, { timeout: 45000, waitUntil: 'domcontentloaded' }), signal)
     await raceAbort(page.waitForTimeout(2500), signal)
+
+    const session = await verifyActiveSession(page, account, signal, progress)
+    if (!session.live) {
+      return { success: false, commented: false, detail: session.detail }
+    }
 
     const comment = pickComment(comments)
     // Post the comment roughly halfway through the watch window so it looks

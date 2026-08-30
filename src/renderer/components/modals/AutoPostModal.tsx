@@ -21,6 +21,9 @@ export function AutoPostModal({
   const showToast = useAccountStore((s) => s.showToast)
   const refresh = useAccountStore((s) => s.refresh)
 
+  const withQueueRunning = useAccountStore((s) => s.withQueueRunning)
+  const stopQueueRun = useAccountStore((s) => s.stopQueueRun)
+
   const [destination, setDestination] = useState<PostDestination>('feed')
   const [content, setContent] = useState('')
   const [spinPreview, setSpinPreview] = useState<string[]>([])
@@ -57,26 +60,26 @@ export function AutoPostModal({
       showToast('Enter post content (spin syntax supported).')
       return
     }
-    setRunning(true)
+    onClose()
     showToast(`Auto Post: running on ${ids.length} account(s)…`)
     try {
-      const summary = await window.api.automation.runAutoPost({
-        accountIds: ids,
-        concurrency: threadCount,
-        destination,
-        contentTemplate: content,
-        imagePaths,
-        groupCount,
-        delayMinSeconds: delayMin,
-        delayMaxSeconds: delayMax
+      await withQueueRunning(async () => {
+        const summary = await window.api.automation.runAutoPost({
+          accountIds: ids,
+          concurrency: threadCount,
+          destination,
+          contentTemplate: content,
+          imagePaths,
+          groupCount,
+          delayMinSeconds: delayMin,
+          delayMaxSeconds: delayMax
+        })
+        showToast(
+          `Auto Post done: ${summary.succeeded}/${summary.total} succeeded, ${summary.failed} failed.`,
+          6000
+        )
       })
-      showToast(
-        `Auto Post done: ${summary.succeeded}/${summary.total} succeeded, ${summary.failed} failed.`,
-        6000
-      )
-      onClose()
     } finally {
-      setRunning(false)
       await refresh()
     }
   }
@@ -84,7 +87,12 @@ export function AutoPostModal({
   return (
     <ModalShell
       open={open}
-      onClose={onClose}
+      onClose={() => {
+        if (running) {
+          void stopQueueRun()
+        }
+        onClose()
+      }}
       title="Auto Post"
       icon={BookOpen}
       footer={
@@ -92,8 +100,16 @@ export function AutoPostModal({
           <span className="mr-auto text-[11px] text-slate-500">
             {count} account(s) selected · {threadCount} thread(s)
           </span>
-          <button className="win-btn" onClick={onClose} disabled={running}>
-            Cancel
+          <button
+            className="win-btn"
+            onClick={() => {
+              if (running) {
+                void stopQueueRun()
+              }
+              onClose()
+            }}
+          >
+            {running ? 'Stop / Cancel' : 'Cancel'}
           </button>
           <button className="win-btn-accent" onClick={() => void run()} disabled={running}>
             {running ? 'Running…' : 'Start Auto Post'}

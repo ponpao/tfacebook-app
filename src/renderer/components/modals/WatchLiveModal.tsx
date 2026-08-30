@@ -24,6 +24,8 @@ export function WatchLiveModal({
   const threadCount = useAccountStore((s) => s.threadCount)
   const showToast = useAccountStore((s) => s.showToast)
   const refresh = useAccountStore((s) => s.refresh)
+  const withQueueRunning = useAccountStore((s) => s.withQueueRunning)
+  const stopQueueRun = useAccountStore((s) => s.stopQueueRun)
 
   const [liveUrl, setLiveUrl] = useState('')
   const [duration, setDuration] = useState(3)
@@ -49,23 +51,23 @@ export function WatchLiveModal({
       showToast('Enter a livestream URL.')
       return
     }
-    setRunning(true)
+    onClose()
     showToast(`Watch Live: running on ${ids.length} account(s)…`)
     try {
-      const summary = await window.api.automation.runWatchLive({
-        accountIds: ids,
-        concurrency: threadCount,
-        liveUrl: liveUrl.trim(),
-        watchSeconds,
-        comments: comments.length > 0 ? comments : undefined
+      await withQueueRunning(async () => {
+        const summary = await window.api.automation.runWatchLive({
+          accountIds: ids,
+          concurrency: threadCount,
+          liveUrl: liveUrl.trim(),
+          watchSeconds,
+          comments: comments.length > 0 ? comments : undefined
+        })
+        showToast(
+          `Watch Live done: ${summary.succeeded}/${summary.total} succeeded, ${summary.failed} failed.`,
+          6000
+        )
       })
-      showToast(
-        `Watch Live done: ${summary.succeeded}/${summary.total} succeeded, ${summary.failed} failed.`,
-        6000
-      )
-      onClose()
     } finally {
-      setRunning(false)
       await refresh()
     }
   }
@@ -73,7 +75,12 @@ export function WatchLiveModal({
   return (
     <ModalShell
       open={open}
-      onClose={onClose}
+      onClose={() => {
+        if (running) {
+          void stopQueueRun()
+        }
+        onClose()
+      }}
       title="Watch Live"
       icon={Video}
       footer={
@@ -81,8 +88,16 @@ export function WatchLiveModal({
           <span className="mr-auto text-[11px] text-slate-500">
             {count} account(s) selected · {threadCount} thread(s)
           </span>
-          <button className="win-btn" onClick={onClose} disabled={running}>
-            Cancel
+          <button
+            className="win-btn"
+            onClick={() => {
+              if (running) {
+                void stopQueueRun()
+              }
+              onClose()
+            }}
+          >
+            {running ? 'Stop / Cancel' : 'Cancel'}
           </button>
           <button className="win-btn-accent" onClick={() => void run()} disabled={running}>
             {running ? 'Running…' : 'Start Watching'}

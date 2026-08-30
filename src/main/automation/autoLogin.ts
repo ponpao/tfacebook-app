@@ -7,7 +7,7 @@
 // (headless, concurrent, abortable).
 // ---------------------------------------------------------------------------
 import type { BrowserContext, Page } from 'playwright'
-import type { Account } from '../../types/account'
+import type { Account, ManagedPage } from '../../types/account'
 import { launchContext, trackContext, untrackContext, hasRequiredSessionCookies } from './browserContext'
 import { fetchFacebookOtp } from './imapWorker'
 import { generateTOTP } from './totp'
@@ -33,6 +33,14 @@ export interface AutoLoginResult {
   location?: string
   /** Account creation / joined date scraped from transparency info (best-effort). */
   createdDate?: string
+  // Full-mode-only enrichment (see ScrapedProfileData).
+  uid?: string
+  dtsgToken?: string
+  followers?: string
+  following?: string
+  currentLocation?: string
+  pagesCount?: number
+  friendsList?: string[]
   /** Set when 2FA resolution failed/timed out — persisted to accounts.notes. */
   notes?: string
 }
@@ -1398,7 +1406,7 @@ function looksLikeRealName(s: string | null | undefined): s is string {
  * the document title, then generic nav-bar selectors, if the UID link isn't
  * present (e.g. a vanity-username account with no numeric UID on file).
  */
-async function extractProfileName(page: Page, uid?: string | null): Promise<string | undefined> {
+export async function extractProfileName(page: Page, uid?: string | null): Promise<string | undefined> {
   if (uid) {
     const ownProfileLink = page.locator(`a[href*="profile.php?id=${uid}"]`).first()
     const raw = await ownProfileLink.textContent().catch(() => null)
@@ -1422,440 +1430,7 @@ async function extractProfileName(page: Page, uid?: string | null): Promise<stri
 }
 
 
-export interface ProfileInfo {
-  friendsCount?: number
-  groupsCount?: number
-  /** Best-effort "Joined <Month> <Year>" scan of the /me page's own text — cheap enough to run even in Fast Mode, unlike extractCreatedDate's dialog-click flow which Fast Mode skips for speed. */
-  createdDate?: string
-}
 
-/**
- * Best-effort extraction of friends count from the logged-in profile.
- * Navigates to /me and reads the counters. Never throws — leaves the field
- * undefined so the DB keeps its imported value. Always returns to the feed
- * so a subsequent warm-up scenario starts from a normal page.
- *
- * A "Professional Mode" (Public Figure) profile's header shows "N follower
- * • N following" instead of any friends text at all — the real friends
- * count only exists in the separate Friends widget card, so a header-only
- * strategy silently finds nothing and falls back to 0 for these profiles.
- * Strategies are tried in priority order and stop at the first real match:
- *   A. The dedicated Friends widget card (works for both normal and
- *      Professional Mode profiles, since the widget exists either way).
- *   B. A raw DOM scan for a standalone "N friend(s)" text node, explicitly
- *      excluding anything mentioning "mutual" (a mutual-friends caption on
- *      an unrelated suggestion card is not the account's own count).
- *   C. The plain page-header regex — the original approach, correct for a
- *      normal (non-Professional-Mode) profile whose header does show it.
- *   D. Direct navigation to /{uid}/friends and counting the rendered friend
- *      cards — last resort when the widget itself didn't render/parse.
- */
-async function extractFriendsCount(
-  page: Page,
-  uid: string | null | undefined,
-  signal?: AbortSignal
-): Promise<number | undefined> {
-  // Strategy A: whole-page innerText scan via page.evaluate(). innerText
-  // (not textContent) is what makes this reliable — it flattens Facebook's
-  // deeply nested span/div markup into readable text WITH the whitespace
-  // browsers actually render between sibling elements, so "1" and "friend"
-  // sitting in separate sibling spans still come through as "1 friend"
-  // rather than being silently glued into "1friend" or split apart
-  // entirely — which is almost certainly why prior DOM-node-exact-match
-  // strategies (requiring one single element's own text to equal "N
-  // friend(s)") kept finding nothing on the real page.
-  try {
-    const evaluated = await page
-      .evaluate(() => {
-        const bodyText = document.body.innerText
-        const regex = /(?:^|\n|\s)(\d+[\d,.]*)\s*(?:friend|friends|មិត្តភក្តិ)\b/i
-        const match = bodyText.match(regex)
-        if (match) return { count: parseInt(match[1].replace(/,/g, ''), 10), via: 'bodyText' as const }
-
-        const friendsLink = document.querySelector('a[href*="/friends"]')
-        if (friendsLink) {
-          const linkText = (friendsLink as HTMLElement).innerText || friendsLink.textContent || ''
-          const linkMatch = linkText.match(/(\d+[\d,.]*)/)
-          if (linkMatch) return { count: parseInt(linkMatch[1].replace(/,/g, ''), 10), via: 'friendsLink' as const }
-        }
-        return null
-      })
-      .catch(() => null)
-    if (evaluated && Number.isFinite(evaluated.count)) {
-      console.log(`[extractFriendsCount] matched via ${evaluated.via}: ${evaluated.count}`)
-      return evaluated.count
-    }
-    console.log('[extractFriendsCount] Strategy A found no match on', page.url())
-  } catch {
-    /* fall through to the next strategy */
-  }
-
-  // Strategy B: the dedicated Friends widget card, scoped narrowly so a
-  // sidebar "N mutual friends" caption on an unrelated suggestion card
-  // can't be matched instead of the account's own widget.
-  try {
-    const friendsWidget = page
-      .locator(
-        'div:has(> a[href*="/friends"]):has-text("friend"), div:has(> span:has-text("Friends")):has-text("friend")'
-      )
-      .first()
-    if ((await friendsWidget.count().catch(() => 0)) > 0) {
-      const text = (await friendsWidget.innerText().catch(() => '')) || ''
-      const match = text.match(/(\d+[\d,.]*)\s*friend/i)
-      if (match) {
-        const n = parseInt(match[1].replace(/[,.]/g, ''), 10)
-        if (Number.isFinite(n)) {
-          console.log(`[extractFriendsCount] matched via Strategy B widget: ${n}`)
-          return n
-        }
-      }
-    }
-  } catch {
-    /* fall through to the next strategy */
-  }
-
-  // Strategy C: plain header regex — correct for a normal profile whose
-  // header itself shows "N friends", which Professional Mode replaces with
-  // "N follower • N following" instead.
-  try {
-    const headerText = (await page.locator('div[role="main"]').first().innerText().catch(() => '')) || ''
-    const headerMatch = headerText.match(/(\d+[\d,.]*)\s*(?:friends|friend)\b/i)
-    if (headerMatch) {
-      const n = parseInt(headerMatch[1].replace(/[,.]/g, ''), 10)
-      if (Number.isFinite(n)) {
-        console.log(`[extractFriendsCount] matched via Strategy C header: ${n}`)
-        return n
-      }
-    }
-  } catch {
-    /* fall through to the next strategy */
-  }
-
-  // Strategy D: direct navigation to /{uid}/friends, counting rendered
-  // friend cards — last resort when the widget didn't render or parse on
-  // the main profile page at all (e.g. Professional Mode's widget still
-  // ambiguous, or a layout variant none of the above selectors matched).
-  if (uid) {
-    try {
-      await raceAbort(
-        page.goto(`https://www.facebook.com/${encodeURIComponent(uid)}/friends`, {
-          timeout: 15000,
-          waitUntil: 'domcontentloaded'
-        }),
-        signal
-      )
-      await raceAbort(page.waitForTimeout(2000), signal)
-      const cardCount = await page
-        .locator('div[data-pagelet="ProfileAppSection_0"] a[role="link"]')
-        .count()
-        .catch(() => 0)
-      if (cardCount > 0) {
-        console.log(`[extractFriendsCount] matched via Strategy D card count: ${cardCount}`)
-        return cardCount
-      }
-      console.log('[extractFriendsCount] all strategies found nothing on', page.url())
-    } catch {
-      /* best-effort — leave undefined */
-    }
-  }
-
-  return undefined
-}
-
-async function extractProfileInfo(
-  page: Page,
-  uid: string | null | undefined,
-  signal?: AbortSignal
-): Promise<ProfileInfo> {
-  const info: ProfileInfo = {}
-  try {
-    await raceAbort(
-      page.goto('https://www.facebook.com/me', { timeout: 20000, waitUntil: 'domcontentloaded' }),
-      signal
-    )
-    await raceAbort(page.waitForTimeout(2500), signal)
-
-    // If /me bounced to a review/checkpoint interstitial rather than the real
-    // profile, skip friends scraping (the numbers there are noise).
-    const url = page.url()
-    const onProfile = !url.includes('/checkpoint/') && !url.includes('/confirm')
-
-    if (onProfile) {
-      info.friendsCount = await extractFriendsCount(page, uid, signal)
-      // Strategy D above navigates away to /{uid}/friends — return to /me
-      // so subsequent extraction (groups, location, created date) starts
-      // from a known page rather than wherever Strategy D left off.
-      if (page.url() !== url) {
-        await page.goto('https://www.facebook.com/me', { timeout: 20000, waitUntil: 'domcontentloaded' }).catch(() => void 0)
-      }
-
-      // Cheap "Joined <Month> <Year>" text scan — a single page.evaluate()
-      // against text already on the loaded page, so unlike
-      // extractCreatedDate() (which navigates + clicks to open a dialog)
-      // this is worth running even in Fast Mode. Not every profile shows
-      // this text on /me itself, so a miss here isn't unusual — Full Mode's
-      // separate extractCreatedDate() is still the more reliable path and
-      // takes priority when it runs (see extractAllMetadata).
-      const createdDate = await page
-        .evaluate(() => {
-          const bodyText = document.body.innerText
-          const match = bodyText.match(/(?:Joined|បានចូលរួម)\s*([A-Za-z]+\s+\d{4}|\d{1,2}\s+[A-Za-z]+\s+\d{4})/i)
-          return match ? match[1] : null
-        })
-        .catch(() => null)
-      if (createdDate) info.createdDate = createdDate
-    }
-  } catch {
-    /* best-effort — leave partial info */
-  }
-
-  try {
-    checkAborted(signal)
-    // Groups count — Facebook's own "Joined groups" listing under Account
-    // Center; the page shows an explicit "N groups" summary heading above
-    // the list, distinct from any individual group's own member count.
-    await raceAbort(
-      page.goto('https://www.facebook.com/groups/joins/?nav_source=tab', {
-        timeout: 20000,
-        waitUntil: 'domcontentloaded'
-      }),
-      signal
-    )
-    await raceAbort(page.waitForTimeout(2000), signal)
-    const groupsUrl = page.url()
-    const onGroupsPage = !groupsUrl.includes('/checkpoint/') && !groupsUrl.includes('/confirm')
-    if (onGroupsPage) {
-      const groupsBodyText = (await page.locator('body').innerText().catch(() => '')) || ''
-      // Match ONLY the page's own explicit "All groups you've joined (N)"
-      // summary heading — a generic "N groups" scan of the whole page body
-      // matches the FIRST such phrase anywhere (a suggested-group's member
-      // count, an unrelated card's caption, etc.) long before it reaches
-      // the real heading, which is what produced wrong counts previously.
-      const groupsMatch = groupsBodyText.match(/all groups you.ve joined\s*\((\d+)\)/i)
-      if (groupsMatch) {
-        const n = parseInt(groupsMatch[1], 10)
-        if (Number.isFinite(n)) info.groupsCount = n
-      } else {
-        // Heading not found (layout variant, different locale) — fall back
-        // to counting the actual rendered group cards in the feed, each
-        // identified by its own "View group"/"View Group" action button
-        // rather than any stray number elsewhere on the page.
-        const cardCount = await page
-          .locator('div[role="feed"] > div')
-          .filter({ has: page.locator('text=/view group/i') })
-          .count()
-          .catch(() => 0)
-        if (cardCount > 0) info.groupsCount = cardCount
-      }
-    }
-  } catch {
-    /* best-effort — leave partial info */
-  } finally {
-    await page
-      .goto('https://www.facebook.com/', { timeout: 20000, waitUntil: 'domcontentloaded' })
-      .catch(() => void 0)
-  }
-  return info
-}
-
-/**
- * Extract the account's Primary Location from Facebook's own transparency
- * page (Settings > Your Information > Off-Facebook data has a sibling page
- * at /primary_location/info showing "Your primary location is near: <place>").
- * Confirmed working via live testing — this page reliably renders that exact
- * heading text for a logged-in session. Returns null gracefully on any
- * failure (blocked, redirected, or the text isn't present) rather than
- * throwing, since this is a best-effort enrichment, not a login requirement.
- */
-async function extractPrimaryLocation(page: Page, signal?: AbortSignal): Promise<string | null> {
-  try {
-    await raceAbort(
-      page.goto('https://web.facebook.com/primary_location/info', {
-        timeout: 10000,
-        waitUntil: 'domcontentloaded'
-      }),
-      signal
-    )
-    await raceAbort(
-      page
-        .locator('body')
-        .getByText('Your primary location', { exact: false })
-        .first()
-        .waitFor({ state: 'visible', timeout: 5000 })
-        .catch(() => void 0),
-      signal
-    )
-
-    const bodyText = (await page.locator('body').innerText().catch(() => '')) || ''
-    const match = bodyText.match(/Your primary location is near:\s*([^\n\r]+)/i)
-    if (!match) return null
-
-    const location = match[1].trim().replace(/\s+/g, ' ')
-    return location || null
-  } catch {
-    return null
-  } finally {
-    await page
-      .goto('https://web.facebook.com/', { timeout: 20000, waitUntil: 'domcontentloaded' })
-      .catch(() => void 0)
-  }
-}
-
-/**
- * Selectors for the account's own profile-name heading, tried in order.
- * `h1`/`div[role="main"] h1` are kept for accounts where Facebook does render
- * the name as a heading; the name-text span is the fallback that matches
- * this app's own live-tested DOM. The final xpath entry is UNVERIFIED against
- * this app's test accounts (the mount_0_0_* id it was captured from is a
- * React useId() value that is not stable across sessions — see the
- * "Last-resort" comments elsewhere in this file) and is kept only as a
- * best-effort attempt in case a different account/session renders it.
- */
-function profileNameSelectors(
-  page: Page,
-  name: string | null | undefined
-): ReturnType<Page['locator']>[] {
-  const locators: ReturnType<Page['locator']>[] = []
-
-  if (name) {
-    // Exact-text match first — this is the one confirmed, via live testing
-    // across multiple real accounts, to reliably hit the actual clickable
-    // name element and open the dialog. getByText(exact: true) only matches
-    // an element whose OWN normalized text equals the name exactly — unlike
-    // :has-text(), which matches any ancestor whose text content merely
-    // CONTAINS the name as a substring (a wrapping nav/sidebar container can
-    // easily contain the name buried inside it, and :has-text() + .first()
-    // would silently click that wrong element instead).
-    locators.push(page.getByText(name, { exact: true }).first())
-  }
-
-  // Structural fallbacks — used when `name` is missing/wrong, or didn't
-  // match anything. UNVERIFIED against a live account (Facebook's real page
-  // has been observed rendering the visible name as a plain span, not an
-  // h1 — the page's only actual <h1> was a hidden a11y "Notifications"
-  // heading) — kept only as a best-effort attempt for layouts that do use a
-  // real heading element, filtered so that decoy can never match.
-  locators.push(
-    page.locator('[data-pagelet="ProfileHeader"] h1').first(),
-    page.locator('h1 span, [data-pagelet="ProfileHeader"] h1').first(),
-    page.locator('div[role="main"] h1, h1').filter({ hasNotText: /^Notifications$/i }).first(),
-    page.getByRole('heading', { level: 1 }).filter({ hasNotText: /^Notifications$/i }).first()
-  )
-
-  if (name) {
-    const escaped = name.replace(/"/g, '\\"')
-    locators.push(page.locator(`div[role="main"] span:has-text("${escaped}")`).first())
-  }
-
-  // Unverified last-resort fallback (mount id is a non-deterministic
-  // React useId() value — kept only in case a different session renders it).
-  locators.push(
-    page
-      .locator(
-        'xpath=//*[contains(@id, "mount_0_0_")]/div[1]/div[1]/div[1]/div[3]/div[1]/div[1]/div[2]/div[1]/div[1]/div[1]/div[1]/div[2]/div[1]/div[1]/div[1]/div[2]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/span[1]/div[1]'
-      )
-      .first()
-  )
-
-  return locators
-}
-
-/**
- * Extract the account's Facebook join/creation date by clicking the profile
- * name to open the "About this profile" transparency dialog, which shows a
- * "Joined Facebook: <date>" row. Confirmed working live: clicking the
- * visible name text (not the page's hidden a11y <h1>) opens a dialog titled
- * with the account name, containing "Joined Facebook: March 13, 2026" plus
- * unrelated rows below it (e.g. "Profile updated: N weeks ago") — the date
- * regex below is deliberately restricted to a single line so it can't run on
- * into those.
- */
-async function extractCreatedDate(
-  page: Page,
-  uid: string | null | undefined,
-  name: string | null | undefined,
-  signal?: AbortSignal
-): Promise<string | null> {
-  if (!uid) return null
-  try {
-    await raceAbort(
-      page.goto(`https://web.facebook.com/profile.php?id=${uid}`, {
-        timeout: 12000,
-        waitUntil: 'domcontentloaded'
-      }),
-      signal
-    )
-    await raceAbort(page.waitForTimeout(2000), signal)
-
-    // Structural selectors (h1 / heading role / ProfileHeader) are tried
-    // first regardless of `name` — this must keep working even when name
-    // extraction itself failed or returned the wrong text, since bulk runs
-    // can't assume a correct name is always available by this point.
-    const nameHeading = await findFirstVisibleLocator(profileNameSelectors(page, name), 4000)
-    if (!nameHeading) return null
-
-    await raceAbort(nameHeading.click({ force: true, timeout: 5000 }).catch(() => void 0), signal)
-
-    const dialog = page.locator('div[role="dialog"]').first()
-    const dialogVisible = await dialog
-      .waitFor({ state: 'visible', timeout: 5000 })
-      .then(() => true)
-      .catch(() => false)
-    if (!dialogVisible) return null
-
-    // The dialog can render its frame before "Joined Facebook" itself has
-    // hydrated in — wait for that specific text, not just the dialog shell,
-    // so innerText() below isn't read too early and returns a false null.
-    const joinedTextReady = await raceAbort(
-      page
-        .waitForSelector('div[role="dialog"] :text("Joined Facebook")', { timeout: 6000 })
-        .then(() => true)
-        .catch(() => false),
-      signal
-    )
-    if (!joinedTextReady) {
-      await raceAbort(page.keyboard.press('Escape').catch(() => void 0), signal)
-      return null
-    }
-
-    const dialogText = (await dialog.innerText().catch(() => '')) || ''
-    let match = dialogText.match(/Joined Facebook:\s*([^\n\r]+)/i)
-
-    // Fallback: read the "Joined Facebook: <date>" row's own text node
-    // directly rather than the whole dialog's innerText(). Kept as a second
-    // attempt (not the primary path) since the xpath below is captured from
-    // one real account's DOM snapshot and, like the other xpath fallback in
-    // profileNameSelectors, isn't guaranteed stable across sessions/layouts.
-    if (!match) {
-      const rowText = await page
-        .locator(
-          'xpath=//*[contains(@id, "mount_0_0_")]/div[1]/div[1]/div[1]/div[4]/div[1]/div[1]/div[1]/div[1]/div[2]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[2]/div[2]/div[1]/div[1]/div[2]/div[1]/div[1]/div[2]/div[1]/div[1]/div[1]/span[1]/span[1]'
-        )
-        .first()
-        .innerText()
-        .catch(() => null)
-      if (rowText) match = rowText.match(/Joined Facebook:\s*([^\n\r]+)/i)
-    }
-
-    const result = match ? match[1].trim().replace(/\s+/g, ' ') : null
-
-    // Close the dialog — Escape first, falling back to its own Close button.
-    await raceAbort(page.keyboard.press('Escape').catch(() => void 0), signal)
-    const stillOpen = await dialog.isVisible().catch(() => false)
-    if (stillOpen) {
-      const closeBtn = page.locator('div[role="dialog"] [aria-label="Close"]').first()
-      await raceAbort(closeBtn.click({ timeout: 3000 }).catch(() => void 0), signal)
-    }
-
-    return result
-  } catch {
-    return null
-  } finally {
-    await page
-      .goto('https://web.facebook.com/', { timeout: 20000, waitUntil: 'domcontentloaded' })
-      .catch(() => void 0)
-  }
-}
 
 export interface ScrapedProfileData {
   cookie?: string
@@ -1866,81 +1441,489 @@ export interface ScrapedProfileData {
   groupsCount?: number
   location?: string
   createdDate?: string
+  uid?: string
+  dtsgToken?: string
+  followers?: string
+  following?: string
+  currentLocation?: string
+  pagesCount?: number
+  pagesData?: string
+  friendsList?: string[]
 }
 
 /**
- * Single entry point that runs the complete post-login profile-enrichment
- * sequence (cookies, name, avatar, primary location, created date) against
- * an already-authenticated page. Each step is independently best-effort —
- * one step failing (a selector miss, a slow/blocked page) never blocks or
- * throws past the ones after it, since none of this is required for the
- * login itself to count as successful. Steps that navigate away (location,
- * created date) always return to the feed afterward, so the page is left in
- * a consistent state for whatever runs next (a warm-up scenario, the next
- * account in the queue, etc.).
+ * Step 1: Base Script Parse
+ * Single synchronous DOM read of the current page's inline scripts for USER_ID, NAME, and DTSG token.
+ */
+export async function extractFromInlineScripts(
+  page: Page
+): Promise<{ userId?: string; name?: string; dtsg?: string }> {
+  return (
+    (await page
+      .evaluate(() => {
+        let name: string | null = null
+        let userId: string | null = null
+        let dtsg: string | null = null
+        const scripts = Array.from(document.querySelectorAll('script'))
+        for (const s of scripts) {
+          const content = s.textContent || ''
+          if (!dtsg) {
+            const m =
+              content.match(/"DTSGInitialData",\[\],\{"token":"([^"]+)"/) ||
+              content.match(/"dtsg":\{"token":"([^"]+)"/) ||
+              content.match(/"async_get_token":"([^"]+)"/) ||
+              content.match(/name="fb_dtsg"\s+value="([^"]+)"/) ||
+              content.match(/\["DTSGInitData",\[\],\{"token":"([^"]+)"/) ||
+              content.match(/"token":"(NAf[^"]+)"/) ||
+              content.match(/DTSGInitialData.*?token":"([^"]+)"/)
+            if (m) dtsg = m[1]
+          }
+          if (!userId) {
+            const m =
+              content.match(/"USER_ID":"(\d+)"/) ||
+              content.match(/"actorID":"(\d+)"/) ||
+              content.match(/"ACCOUNT_ID":"(\d+)"/) ||
+              content.match(/"current_user_id":"(\d+)"/)
+            if (m && m[1] !== '0') userId = m[1]
+          }
+          if (!name) {
+            const m = content.match(/"NAME":"([^"]+)"/) || content.match(/"user":\{"name":"([^"]+)"/)
+            if (m) name = m[1]
+          }
+        }
+        if (!dtsg) {
+          const inputEl = document.querySelector('input[name="fb_dtsg"]') as HTMLInputElement | null
+          if (inputEl?.value) dtsg = inputEl.value
+        }
+        return { userId: userId ?? undefined, name: name ?? undefined, dtsg: dtsg ?? undefined }
+      })
+      .catch(() => ({}))) || {}
+  )
+}
+
+/**
+ * Step 2: Friends & Followers Extraction (via /me?sk=friends)
+ */
+export async function extractFriendsAndFollowers(
+  page: Page,
+  myUserId: string | null | undefined,
+  signal?: AbortSignal
+): Promise<{ friendsCount?: number; friendsList?: string[]; followers?: string; following?: string }> {
+  try {
+    checkAborted(signal)
+    await raceAbort(
+      page.goto('https://www.facebook.com/me?sk=friends', {
+        waitUntil: 'domcontentloaded',
+        timeout: 8000
+      }),
+      signal
+    )
+    await raceAbort(page.waitForTimeout(1500), signal)
+    const info = await page.evaluate((myId: string) => {
+      const main = document.querySelector('div[role="main"]') || document.body
+      const pageText = ((main as HTMLElement).innerText || '').replace(/ /g, ' ')
+      const followerMatch = pageText.match(/(\d[\d,.]*\s*(?:followers?|អ្នកតាមដាន))/i)
+      const followingMatch = pageText.match(/(\d[\d,.]*\s*(?:following|កំពុងតាមដាន))/i)
+      const friendMatch =
+        pageText.match(/Friends\s*·?\s*(\d[\d,.]*)/i) ||
+        pageText.match(/(\d[\d,.]*)\s*(?:friends?|មិត្តភក្តិ)/i) ||
+        pageText.match(/(?:friends?|មិត្តភក្តិ)\s*·?\s*(\d[\d,.]*)/i)
+      const NON_NAMES = [
+        'Friends', 'Find Friends', 'Friend requests', 'Recently Added', 'Followers',
+        'Following', 'More', 'All', 'About', 'Reels', 'Photos', 'Check-ins', 'Edit', 'Dashboard'
+      ]
+      const friendList: string[] = []
+      const seen = new Set<string>()
+      for (const a of Array.from(main.querySelectorAll('a[role="link"]'))) {
+        const href = (a as HTMLAnchorElement).href || ''
+        const text = ((a as HTMLElement).innerText || '').trim()
+        const isNotSelf = myId ? !href.includes(myId) && !href.includes('/me') : !href.includes('/me')
+        const isProfile =
+          href.includes('profile.php?id=') ||
+          (!href.includes('/groups/') && !href.includes('/pages/') && !href.includes('/messages/'))
+        if (isNotSelf && isProfile && !NON_NAMES.includes(text) && text.length > 1 && !text.includes('\n')) {
+          if (!seen.has(href)) {
+            seen.add(href)
+            friendList.push(text)
+          }
+        }
+      }
+      const parseNum = (s: string | undefined): number | undefined => {
+        if (!s) return undefined
+        const m = s.match(/\d[\d,.]*/)
+        if (!m) return undefined
+        const n = parseInt(m[0].replace(/[,.]/g, ''), 10)
+        return Number.isFinite(n) ? n : undefined
+      }
+      return {
+        friendsCount: parseNum(friendMatch?.[1]) ?? (friendList.length > 0 ? friendList.length : undefined),
+        friendsList: friendList.length ? friendList : undefined,
+        followers: followerMatch ? followerMatch[1].trim() : undefined,
+        following: followingMatch ? followingMatch[1].trim() : undefined
+      }
+    }, myUserId ?? '')
+    return info
+  } catch (err) {
+    console.warn('[extractFriendsAndFollowers] error:', err)
+    return {}
+  }
+}
+
+/**
+ * Step 3: Created Date Extraction (via /me/allactivity)
+ */
+export async function extractCreatedDateFromActivityLog(
+  page: Page,
+  signal?: AbortSignal
+): Promise<string | undefined> {
+  try {
+    checkAborted(signal)
+    await raceAbort(
+      page.goto('https://www.facebook.com/me/allactivity', {
+        waitUntil: 'domcontentloaded',
+        timeout: 8000
+      }),
+      signal
+    )
+    await raceAbort(page.waitForTimeout(2500), signal)
+    const date = await page.evaluate(() => {
+      const main = document.querySelector('div[role="main"]') || document.body
+      const lines = (main as HTMLElement).innerText.split('\n').map((l) => l.trim()).filter(Boolean)
+      const dateRegex =
+        /^(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}$/i
+      const dates = lines.filter((l) => dateRegex.test(l))
+      if (dates.length > 0) return dates[dates.length - 1]
+      const joinedMatch = (main as HTMLElement).innerText.match(/Joined\s+([A-Za-z]+\s+\d{4})/i)
+      if (joinedMatch) return joinedMatch[1]
+      return null
+    })
+    return date ?? undefined
+  } catch (err) {
+    console.warn('[extractCreatedDateFromActivityLog] error:', err)
+    return undefined
+  }
+}
+
+/**
+ * Step 4A: Primary Location (via /primary_location/info)
+ */
+export async function extractPrimaryLocation(
+  page: Page,
+  signal?: AbortSignal
+): Promise<string | undefined> {
+  try {
+    checkAborted(signal)
+    await raceAbort(
+      page.goto('https://www.facebook.com/primary_location/info', {
+        waitUntil: 'domcontentloaded',
+        timeout: 8000
+      }),
+      signal
+    )
+    await raceAbort(page.waitForTimeout(1500), signal)
+    const location = await page.evaluate(() => {
+      const bodyText = (document.body.innerText || '').replace(/ /g, ' ')
+      const match = bodyText.match(/Your primary location is near:\s*([^\n\r]+)/i)
+      return match ? match[1].trim().replace(/\s+/g, ' ') : null
+    })
+    return location ?? undefined
+  } catch (err) {
+    console.warn('[extractPrimaryLocation] error:', err)
+    return undefined
+  }
+}
+
+/**
+ * Step 4B: Current Location (via accountscenter login activity)
+ */
+export async function extractCurrentDeviceLocation(
+  page: Page,
+  signal?: AbortSignal
+): Promise<string | undefined> {
+  try {
+    checkAborted(signal)
+    await raceAbort(
+      page.goto('https://accountscenter.facebook.com/password_and_security/login_activity', {
+        waitUntil: 'domcontentloaded',
+        timeout: 8000
+      }),
+      signal
+    )
+    await raceAbort(page.waitForTimeout(2500), signal)
+
+    // Click the account row to expand device login activity
+    try {
+      await page.evaluate(() => {
+        const clickables = Array.from(document.querySelectorAll('div[role="button"], a[role="link"]'))
+        const target = clickables.find((el) => {
+          const txt = (el as HTMLElement).innerText || ''
+          const label = el.getAttribute('aria-label') || ''
+          return (
+            /more|Facebook|This device|Active now/i.test(txt) &&
+            !/Learn more|Preferences|Back|Close|Settings|Password|Two-factor|Saved|Passkey|Security/i.test(txt + label)
+          )
+        })
+        if (target) (target as HTMLElement).click()
+      })
+      await raceAbort(page.waitForTimeout(2500), signal)
+    } catch {
+      /* best-effort row click */
+    }
+
+    const loc = await page.evaluate(() => {
+      const lines = document.body.innerText.split('\n').map((l) => l.trim()).filter(Boolean)
+      for (let i = 0; i < lines.length; i++) {
+        if (/this device/i.test(lines[i]) && i > 0) return lines[i - 1]
+      }
+      return null
+    })
+    return loc ?? undefined
+  } catch (err) {
+    console.warn('[extractCurrentDeviceLocation] error:', err)
+    return undefined
+  }
+}
+
+/**
+ * Step 5A: Groups Count (via /groups/joins)
+ */
+export async function extractGroupsCount(page: Page, signal?: AbortSignal): Promise<number | undefined> {
+  try {
+    checkAborted(signal)
+    await raceAbort(
+      page.goto('https://www.facebook.com/groups/joins', {
+        waitUntil: 'domcontentloaded',
+        timeout: 8000
+      }),
+      signal
+    )
+    await raceAbort(page.waitForTimeout(2000), signal)
+    const count = await page.evaluate(() => {
+      const main = document.querySelector('div[role="main"]') || document.body
+      const bodyText = (document.body.innerText || '').replace(/ /g, ' ')
+      const mainText = ((main as HTMLElement).innerText || '').replace(/ /g, ' ')
+
+      // 1. Check heading number in parentheses: "All groups you've joined (2)"
+      const headingMatch =
+        bodyText.match(/all groups you.ve joined\s*\((\d+)\)/i) ||
+        mainText.match(/all groups you.ve joined\s*\((\d+)\)/i) ||
+        bodyText.match(/(\d+)\s*groups? you.ve joined/i)
+      if (headingMatch) {
+        const n = parseInt(headingMatch[1], 10)
+        if (Number.isFinite(n)) return n
+      }
+
+      // 2. Count distinct group IDs inside main container only
+      const uniqueGroupIds = new Set<string>()
+      for (const a of Array.from(main.querySelectorAll('a[href*="/groups/"]'))) {
+        const href = a.getAttribute('href') || ''
+        const m = href.match(/\/groups\/(\d+|[a-zA-Z0-9._-]+)\/?/)
+        if (m && !['joins', 'feed', 'discover', 'categories', 'create', 'user'].includes(m[1])) {
+          uniqueGroupIds.add(m[1])
+        }
+      }
+      return uniqueGroupIds.size
+    })
+    return typeof count === 'number' && Number.isFinite(count) ? count : 0
+  } catch (err) {
+    console.warn('[extractGroupsCount] error:', err)
+    return undefined
+  }
+}
+
+export interface ExtractedPagesResult {
+  count: number
+  pages: ManagedPage[]
+}
+
+/**
+ * Step 5B: Pages Count & Managed Pages List (via /pages/?category=your_pages)
+ */
+export async function extractPagesCount(page: Page, signal?: AbortSignal): Promise<ExtractedPagesResult | undefined> {
+  try {
+    checkAborted(signal)
+    await raceAbort(
+      page.goto('https://www.facebook.com/pages/?category=your_pages', {
+        waitUntil: 'domcontentloaded',
+        timeout: 8000
+      }),
+      signal
+    )
+    await raceAbort(page.waitForTimeout(2000), signal)
+    const data = await page.evaluate(() => {
+      const main = document.querySelector('div[role="main"]') || document.body
+      const text = ((main as HTMLElement).innerText || '').replace(/\u00a0/g, ' ')
+      const allLinks = Array.from(main.querySelectorAll('a'))
+      const pages: Array<{ pageId: string; name: string; assetId?: string; url?: string }> = []
+
+      // 1. Header count match: "Pages you manage (N)"
+      const match = text.match(/Pages you manage\s*\((\d+)\)/i) || document.body.innerText.match(/Pages you manage\s*\((\d+)\)/i)
+      const headerCount = match ? parseInt(match[1], 10) : undefined
+
+      // Look for page links and corresponding asset_ids
+      const pageLinks = allLinks.filter((a) => {
+        const aText = (a.innerText || '').trim()
+        const href = a.href || ''
+        return (
+          aText &&
+          !/^(Pages|Create Page|Meta Business Suite|Discover|Followed Pages|Invites|Promote|Notifications|Messages|\d+\s*(Notifications|Messages)|Create post)$/i.test(
+            aText
+          ) &&
+          !href.includes('/inbox/') &&
+          !href.includes('/ad_center/') &&
+          !href.includes('/settings') &&
+          !href.includes('category=')
+        )
+      })
+
+      // Extract assetId from inbox or ad_center link if available
+      const bizLink = allLinks.find((a) => a.href.includes('asset_id=') || a.href.includes('page_id='))
+      let defaultAssetId: string | undefined
+      if (bizLink) {
+        const m = bizLink.href.match(/(?:asset_id|page_id)=(\d+)/)
+        if (m) defaultAssetId = m[1]
+      }
+
+      for (const a of pageLinks) {
+        const name = (a.innerText || '').trim()
+        let pageId = ''
+        const m = a.href.match(/profile\.php\?id=(\d+)/)
+        if (m) {
+          pageId = m[1]
+        } else {
+          const clean = a.href.split('?')[0].replace(/^https?:\/\/[^/]+/, '').replace(/^\//, '')
+          if (clean) pageId = clean
+        }
+        if (pageId && !pages.some((p) => p.pageId === pageId)) {
+          pages.push({
+            pageId,
+            name,
+            assetId: defaultAssetId || pageId,
+            url: a.href.split('&')[0]
+          })
+        }
+      }
+
+      const count = headerCount ?? (pages.length > 0 ? pages.length : 0)
+      return { count, pages }
+    })
+
+    return data
+  } catch (err) {
+    console.warn('[extractPagesCount] error:', err)
+    return undefined
+  }
+}
+
+/**
+ * 5-Step post-login metadata extraction pipeline.
+ * Each step is wrapped in its own try/catch and 8000ms timeout so a single
+ * missing field never fails or hangs the rest of the pipeline.
  */
 export async function extractAllMetadata(
   page: Page,
   context: BrowserContext,
   uid: string | null | undefined,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  onStepUpdate?: (data: Partial<Account>) => void | Promise<void>
 ): Promise<ScrapedProfileData> {
-  // STEP 1: cookies — read first, before any further navigation, so the
-  // full set (c_user, xs, datr, fr, ...) reflects the freshly-landed feed.
+  // Step 1: Base script + cookie parse on current page
   const { cookie, token } = await extractCookiesAndToken(context)
+  const scriptData = await extractFromInlineScripts(page)
+  const cUser = cookie
+    ? cookie.split(';').map((p) => p.trim()).find((p) => p.startsWith('c_user='))?.slice('c_user='.length)
+    : undefined
+  const resolvedUid = uid?.trim() ? uid : (scriptData.userId ?? cUser)
+  const dtsgToken = scriptData.dtsg
+  const name = looksLikeRealName(scriptData.name)
+    ? scriptData.name.trim()
+    : await extractProfileName(page, resolvedUid)
 
-  // STEP 2: name — UID-scoped nav link first, falling back to document
-  // title and generic nav selectors (see extractProfileName for the order).
-  const name = await extractProfileName(page, uid)
-  checkAborted(signal)
-
-  // Avatar is deliberately NOT downloaded here. It used to run
-  // unconditionally on every login/warmup as "STEP 3", but that means every
-  // Run Auto Login / Login with Cookie / status check silently wrote a file
-  // to disk with no user action behind it — avatar downloads must only
-  // happen when the user explicitly clicks "Download Avatar (Fast / No
-  // Browser)" (avatarService.ts's own dedicated, on-demand download path).
-
-  const profileInfo = await extractProfileInfo(page, uid, signal)
-  checkAborted(signal)
-
-  // Fast Mode (General Settings → Metadata Extraction Mode) skips the two
-  // steps that each require a full navigation away from the feed and back —
-  // primary_location/info, and clicking the profile heading to open the
-  // "Joined Facebook" dialog — since those are the slowest, least essential
-  // steps when running large batches and only Name + Cookies are needed.
-  const fastMode = getAppSettings().metadataExtractionMode === 'fast'
-  if (fastMode) {
-    return {
-      cookie,
-      token,
-      name,
-      friendsCount: profileInfo.friendsCount,
-      groupsCount: profileInfo.groupsCount,
-      createdDate: profileInfo.createdDate
-    }
-  }
-
-  // STEP 4: primary location — Facebook's own transparency page.
-  const location = (await extractPrimaryLocation(page, signal)) ?? undefined
-  checkAborted(signal)
-
-  // STEP 5: created date — the dialog-click flow is the more reliable
-  // source when it runs (Full Mode only), so it takes priority; the cheap
-  // text-scan from extractProfileInfo (STEP 3 above, runs in both modes)
-  // is only used as a fallback if the dialog-click flow found nothing.
-  const createdDate = (await extractCreatedDate(page, uid, name, signal)) ?? profileInfo.createdDate ?? undefined
-  checkAborted(signal)
-
-  return {
+  const result: ScrapedProfileData = {
     cookie,
     token,
     name,
-    friendsCount: profileInfo.friendsCount,
-    groupsCount: profileInfo.groupsCount,
-    location,
-    createdDate
+    uid: resolvedUid,
+    dtsgToken
   }
+
+  await onStepUpdate?.({
+    status: 'Live',
+    ...(cookie ? { cookie } : {}),
+    ...(token ? { token } : {}),
+    ...(name ? { name } : {}),
+    ...(resolvedUid ? { uid: resolvedUid } : {}),
+    ...(dtsgToken ? { dtsg_token: dtsgToken } : {})
+  })
+
+  const isFastMode = getAppSettings().metadataExtractionMode === 'fast'
+  if (isFastMode) {
+    return result
+  }
+
+  // Step 2: Friends & Followers (via /me?sk=friends)
+  try {
+    checkAborted(signal)
+    const ff = await extractFriendsAndFollowers(page, resolvedUid, signal)
+    result.friendsCount = ff.friendsCount
+    result.followers = ff.followers
+    result.following = ff.following
+    result.friendsList = ff.friendsList
+    await onStepUpdate?.({
+      ...(ff.friendsCount != null ? { friends_count: ff.friendsCount } : {}),
+      ...(ff.followers ? { followers: ff.followers } : {}),
+      ...(ff.following ? { following: ff.following } : {}),
+      ...(ff.friendsList ? { friends_list: JSON.stringify(ff.friendsList) } : {})
+    })
+  } catch (err) {
+    console.warn('[extractAllMetadata] Step 2 friends/followers error:', err)
+  }
+
+  // Step 3: Created Date (via /me/allactivity)
+  try {
+    checkAborted(signal)
+    const createdDate = await extractCreatedDateFromActivityLog(page, signal)
+    if (createdDate) {
+      result.createdDate = createdDate
+      await onStepUpdate?.({ created_date: createdDate })
+    }
+  } catch (err) {
+    console.warn('[extractAllMetadata] Step 3 created date error:', err)
+  }
+
+  // Step 4: Locations (Primary: /primary_location/info, Current: login_activity)
+  try {
+    checkAborted(signal)
+    const primaryLocation = await extractPrimaryLocation(page, signal)
+    const currentLocation = await extractCurrentDeviceLocation(page, signal)
+    result.location = primaryLocation
+    result.currentLocation = currentLocation
+    await onStepUpdate?.({
+      ...(primaryLocation ? { location: primaryLocation } : {}),
+      ...(currentLocation ? { current_location: currentLocation } : {})
+    })
+  } catch (err) {
+    console.warn('[extractAllMetadata] Step 4 location error:', err)
+  }
+
+  // Step 5: Groups & Pages (Groups: /groups/joins, Pages: /pages/?category=your_pages)
+  try {
+    checkAborted(signal)
+    const groupsCount = await extractGroupsCount(page, signal)
+    const pagesResult = await extractPagesCount(page, signal)
+    result.groupsCount = groupsCount
+    result.pagesCount = pagesResult?.count
+    result.pagesData = pagesResult?.pages ? JSON.stringify(pagesResult.pages) : undefined
+    await onStepUpdate?.({
+      ...(groupsCount != null ? { groups_count: groupsCount } : {}),
+      ...(pagesResult?.count != null ? { pages_count: pagesResult.count } : {}),
+      ...(pagesResult?.pages ? { pages_data: JSON.stringify(pagesResult.pages) } : {})
+    })
+  } catch (err) {
+    console.warn('[extractAllMetadata] Step 5 groups/pages error:', err)
+  }
+
+  return result
 }
 
 /**
@@ -2081,6 +2064,13 @@ export async function runAutoLogin(
         name: metadata.name,
         friendsCount: metadata.friendsCount,
         groupsCount: metadata.groupsCount,
+        uid: metadata.uid,
+        dtsgToken: metadata.dtsgToken,
+        followers: metadata.followers,
+        following: metadata.following,
+        currentLocation: metadata.currentLocation,
+        pagesCount: metadata.pagesCount,
+        friendsList: metadata.friendsList,
         location: metadata.location,
         createdDate: metadata.createdDate,
         notes:
@@ -2262,6 +2252,13 @@ export async function runAutoLogin(
       name: metadata.name,
       friendsCount: metadata.friendsCount,
       groupsCount: metadata.groupsCount,
+      uid: metadata.uid,
+      dtsgToken: metadata.dtsgToken,
+      followers: metadata.followers,
+      following: metadata.following,
+      currentLocation: metadata.currentLocation,
+      pagesCount: metadata.pagesCount,
+      friendsList: metadata.friendsList,
       location: metadata.location,
       createdDate: metadata.createdDate,
       notes

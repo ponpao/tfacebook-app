@@ -28,6 +28,13 @@ const WRITABLE_COLUMNS = [
   'gender',
   'friends_count',
   'groups_count',
+  'pages_count',
+  'pages_data',
+  'friends_list',
+  'followers',
+  'following',
+  'current_location',
+  'dtsg_token',
   'cookie',
   'token',
   'proxy',
@@ -68,7 +75,12 @@ export function insertAccounts(accounts: NewAccount[]): number {
       const params: Record<string, unknown> = {}
       for (const c of cols) {
         const v = (row as Record<string, unknown>)[c]
-        params[c] = v === undefined ? (c === 'friends_count' || c === 'groups_count' ? 0 : null) : v
+        params[c] =
+          v === undefined
+            ? c === 'friends_count' || c === 'groups_count' || c === 'pages_count'
+              ? 0
+              : null
+            : v
       }
       if (params.status == null) params.status = 'Unknown'
       // New accounts land in the default folder unless told otherwise.

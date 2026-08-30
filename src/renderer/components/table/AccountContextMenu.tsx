@@ -386,7 +386,16 @@ export function AccountContextMenu({ x, y, account, onClose }: Props): React.JSX
     let succeeded = 0
     let failed = 0
     for (let i = 0; i < accountsToOpen.length; i++) {
-      const res = await window.api.automation.openProfile(accountsToOpen[i].id, i)
+      // `i` is this launch batch's tiling slot; the window TITLE instead uses
+      // the account's 1-based position in the grid as displayed (allAccounts
+      // is the same ordered array the grid renders), so selecting rows 5 and
+      // 9 titles those windows "5 - Name" and "9 - Name" rather than 1 and 2.
+      const rowNumber = allAccounts.findIndex((acc) => acc.id === accountsToOpen[i].id) + 1
+      const res = await window.api.automation.openProfile(
+        accountsToOpen[i].id,
+        i,
+        rowNumber > 0 ? rowNumber : undefined
+      )
       if (res.ok) succeeded += 1
       else failed += 1
     }
@@ -410,7 +419,13 @@ export function AccountContextMenu({ x, y, account, onClose }: Props): React.JSX
         })
       })
       try {
-        const summary = await window.api.automation.loginWithCookieBatch(targets, threadCount)
+        // accountId -> 1-based grid row number as currently displayed, so
+        // each launched window's title matches the row the user sees.
+        const rowNumbers: Record<number, number> = {}
+        allAccounts.forEach((acc, i) => {
+          if (targets.includes(acc.id)) rowNumbers[acc.id] = i + 1
+        })
+        const summary = await window.api.automation.loginWithCookieBatch(targets, threadCount, rowNumbers)
         showToast(
           `Cookie Login: ${summary.succeeded}/${summary.total} succeeded${summary.failed ? `, ${summary.failed} failed` : ''}.`,
           6000

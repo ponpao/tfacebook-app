@@ -36,10 +36,11 @@ export type { AutoLoginResult }
  */
 export async function openProfile(
   account: Account,
-  slotIndex?: number
+  slotIndex?: number,
+  rowNumber?: number
 ): Promise<{ ok: boolean; detail: string }> {
   const key = `profile:${account.uid ?? account.id}`
-  const context = await launchContext({ headless: false, account, slotIndex })
+  const context = await launchContext({ headless: false, account, slotIndex, rowNumber })
   trackContext(key, context)
 
   const page = context.pages()[0] ?? (await context.newPage())
@@ -65,12 +66,35 @@ export async function checkLiveDie(account: Account): Promise<LiveDieResult> {
   const context = await launchContext({ headless: true, account })
   try {
     const page = await context.newPage()
+
+    // Speed: a liveness check only needs the page's URL and text, never its
+    // visual assets. Blocking images/media/fonts/stylesheets cuts the bulk
+    // of the bytes and round trips out of every check. Deliberately does NOT
+    // block scripts — Facebook renders the feed/checkpoint DOM client-side,
+    // so classifyPage() would see an empty shell without them.
+    await page.route('**/*', (route) => {
+      const type = route.request().resourceType()
+      if (type === 'image' || type === 'media' || type === 'font' || type === 'stylesheet') {
+        return route.abort()
+      }
+      return route.continue()
+    })
+
     await page.goto('https://www.facebook.com/me', {
-      timeout: 45000,
+      timeout: 20000,
       waitUntil: 'domcontentloaded'
     })
-    await page.waitForTimeout(1500)
-    const result = await classifyPage(page)
+
+    // Poll for a definitive answer instead of always paying a flat wait:
+    // most sessions classify on the first pass (~0ms extra), and only a
+    // still-hydrating page costs additional time — capped well under the
+    // old unconditional 1.5s + 45s navigation budget.
+    let result = await classifyPage(page)
+    const settleDeadline = Date.now() + 2500
+    while (result.status === 'Unknown' && Date.now() < settleDeadline) {
+      await page.waitForTimeout(250)
+      result = await classifyPage(page)
+    }
     if (result.status === 'Live') {
       const { cookie, token } = await extractCookiesAndToken(context)
       return { ...result, cookie, token }

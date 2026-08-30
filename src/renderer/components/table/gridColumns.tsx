@@ -83,24 +83,34 @@ function AvatarCell({ uid, cacheBust }: { uid: string | null; cacheBust: string 
 }
 
 /** Masked, click-to-copy cell for the (long, sensitive) cookie string. */
-function CookieCell({ cookie }: { cookie: string | null }): React.ReactNode {
-  if (!cookie) return ''
-  const masked = cookie.length > 18 ? `${cookie.slice(0, 12)}…${cookie.slice(-4)}` : cookie
+/** A truncated, monospace, click-to-copy cell for long string values (cookie, DTSG token, …). */
+function CopyableCell({
+  value,
+  label
+}: {
+  value: string | null
+  label: string
+}): React.ReactNode {
+  if (!value) return ''
+  const masked = value.length > 18 ? `${value.slice(0, 12)}…${value.slice(-4)}` : value
   const copy = (e: React.MouseEvent): void => {
     e.stopPropagation() // don't toggle the row selection
-    void navigator.clipboard.writeText(cookie)
-    const toast = useAccountStore.getState().showToast
-    toast('Cookie copied to clipboard')
+    void navigator.clipboard.writeText(value)
+    useAccountStore.getState().showToast(`${label} copied to clipboard`)
   }
   return (
     <span
       className="cursor-pointer font-mono text-[#0067c0] hover:underline"
-      title="Click to copy full cookie"
+      title={`Click to copy full ${label.toLowerCase()}`}
       onClick={copy}
     >
       {masked} 📋
     </span>
   )
+}
+
+function CookieCell({ cookie }: { cookie: string | null }): React.ReactNode {
+  return <CopyableCell value={cookie} label="Cookie" />
 }
 
 /**
@@ -159,6 +169,50 @@ export const GRID_COLUMNS: GridColumn[] = [
     align: 'right',
     render: (a) => a.groups_count ?? 0
   },
+  {
+    key: 'followers',
+    header: 'Followers',
+    width: 100,
+    align: 'right',
+    render: (a) => a.followers ?? ''
+  },
+  {
+    key: 'pages_count',
+    header: 'Pages',
+    width: 70,
+    align: 'right',
+    render: (a) => {
+      let tooltip = ''
+      if (a.pages_data) {
+        try {
+          const parsed = JSON.parse(a.pages_data)
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            tooltip = parsed.map((p: any) => `${p.name} (ID: ${p.pageId})`).join('\n')
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+      return (
+        <span title={tooltip || `${a.pages_count ?? 0} Page(s)`} className="cursor-default">
+          {a.pages_count ?? 0}
+        </span>
+      )
+    },
+    title: (a) => {
+      if (a.pages_data) {
+        try {
+          const parsed = JSON.parse(a.pages_data)
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return parsed.map((p: any) => `${p.name} (ID: ${p.pageId})`).join(', ')
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+      return `${a.pages_count ?? 0} Page(s)`
+    }
+  },
   { key: 'proxy', header: 'Proxy', width: 150, render: (a) => a.proxy ?? '' },
   {
     key: 'location',
@@ -167,11 +221,24 @@ export const GRID_COLUMNS: GridColumn[] = [
     render: (a) => a.location ?? ''
   },
   {
+    key: 'current_location',
+    header: 'Current Location',
+    width: 140,
+    render: (a) => a.current_location ?? ''
+  },
+  {
     key: 'cookie',
     header: 'Cookie',
     width: 160,
     render: (a) => <CookieCell cookie={a.cookie} />,
     title: (a) => (a.cookie ? 'Click to copy full cookie' : '')
+  },
+  {
+    key: 'dtsg_token',
+    header: 'Token',
+    width: 150,
+    render: (a) => <CopyableCell value={a.dtsg_token} label="Token" />,
+    title: (a) => (a.dtsg_token ? 'Click to copy full DTSG token' : '')
   },
   {
     key: 'created_date',

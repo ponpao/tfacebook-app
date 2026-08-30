@@ -108,11 +108,18 @@ export function AccountsGrid(): React.JSX.Element {
   const [dragAnchorIndex, setDragAnchorIndex] = useState<number | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const lastClickedIndexRef = useRef<number | null>(null)
+  // Selection as it was when the current drag started. A Ctrl-drag adds its
+  // range on top of this snapshot, so every mouseenter recomputes from the
+  // original set rather than compounding onto the previous frame's result
+  // (which would make rows dragged over and then back off stay selected).
+  const dragBaseSelectionRef = useRef<Record<string, boolean>>({})
 
-  const selectRange = (fromIndex: number, toIndex: number): void => {
+  const selectRange = (fromIndex: number, toIndex: number, additive = false): void => {
     const lo = Math.min(fromIndex, toIndex)
     const hi = Math.max(fromIndex, toIndex)
-    const next: Record<string, boolean> = {}
+    // Additive (Ctrl held): start from the pre-drag selection and add the
+    // range. Non-additive: the range becomes the entire selection.
+    const next: Record<string, boolean> = additive ? { ...dragBaseSelectionRef.current } : {}
     for (let i = lo; i <= hi; i++) {
       const acc = accounts[i]
       if (acc) next[acc.id] = true
@@ -306,12 +313,17 @@ export function AccountsGrid(): React.JSX.Element {
                     // checkbox click already stops propagation before this
                     // fires, and right-click is handled separately below.
                     if (e.button !== 0) return
+                    // Snapshot the selection at drag start so a Ctrl-drag can
+                    // add to it (see selectRange's `additive` branch).
+                    dragBaseSelectionRef.current = { ...rowSelection }
                     setDragAnchorIndex(vRow.index)
                     setIsDragging(true)
                   }}
-                  onMouseEnter={() => {
+                  onMouseEnter={(e) => {
                     if (isDragging && dragAnchorIndex !== null) {
-                      selectRange(dragAnchorIndex, vRow.index)
+                      // Ctrl/Cmd held -> add this range to the pre-drag
+                      // selection; otherwise the range replaces it entirely.
+                      selectRange(dragAnchorIndex, vRow.index, e.ctrlKey || e.metaKey)
                     }
                   }}
                   onClick={(e) => {
@@ -325,9 +337,17 @@ export function AccountsGrid(): React.JSX.Element {
                     }
                     setDragAnchorIndex(null)
                     if (e.shiftKey && lastClickedIndexRef.current !== null) {
-                      selectRange(lastClickedIndexRef.current, vRow.index)
-                    } else {
+                      selectRange(lastClickedIndexRef.current, vRow.index, e.ctrlKey || e.metaKey)
+                    } else if (e.ctrlKey || e.metaKey) {
+                      // Ctrl+Click toggles just this row, preserving the rest
+                      // of the selection (5 selected + 1 new = 6).
                       toggleRow(a.id, !selected)
+                      lastClickedIndexRef.current = vRow.index
+                    } else {
+                      // Plain click resets the selection to exactly this row —
+                      // 5 selected, click a 6th, and only that 6th stays
+                      // selected. (toggleRow alone would leave the other 5.)
+                      setRowSelection({ [a.id]: true })
                       lastClickedIndexRef.current = vRow.index
                     }
                   }}

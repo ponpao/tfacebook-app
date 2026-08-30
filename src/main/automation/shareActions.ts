@@ -6,6 +6,7 @@ import type { Page } from 'playwright'
 import type { Account } from '../../types/account'
 import { launchContext, trackContext, untrackContext } from './browserContext'
 import { parseSpinSyntax } from '../utils/spinSyntax'
+import { verifyActiveSession } from './sessionGuard'
 
 export type ShareDestination = 'wall' | 'groups'
 
@@ -54,17 +55,20 @@ async function delay(page: Page, min: number, max: number, signal?: AbortSignal)
 const SHARE_BUTTON_SELECTORS = [
   '[aria-label="Send this to friends or post it on your profile." i]',
   '[aria-label="Share" i]',
+  '[aria-label*="Share" i]',
   'div[role="button"]:has-text("Share")',
-  'div[role="button"]:has-text("Chia sẻ")'
+  'div[role="button"]:has-text("Chia sẻ")',
+  'span:has-text("Share")'
 ]
 const SHARE_NOW_SELECTORS = [
-  // Facebook's share picker renders its options as menuitems in some
-  // layouts and as plain buttons in others — both are tried.
   'div[role="menuitem"]:has-text("Share now")',
   'div[role="menuitem"]:has-text("Share to Feed")',
+  'div[role="menuitem"]:has-text("Share to News Feed")',
   'div[role="button"]:has-text("Share now")',
   'div[role="button"]:has-text("Share to Feed")',
   'div[role="button"]:has-text("Chia sẻ ngay")',
+  'span:has-text("Share now")',
+  'span:has-text("Share to Feed")',
   'span:has-text("Share to News Feed")'
 ]
 const SHARE_TO_GROUP_SELECTORS = [
@@ -82,6 +86,8 @@ const CAPTION_TEXTBOX_SELECTORS = [
   'div[role="textbox"][contenteditable="true"]'
 ]
 const POST_SUBMIT_SELECTORS = [
+  'div[role="dialog"] div[aria-label="Post"]',
+  'div[role="dialog"] div[role="button"]:has-text("Post")',
   'div[aria-label="Post"][role="button"]',
   'div[aria-label="Đăng"][role="button"]',
   'div[role="button"]:has-text("Post")',
@@ -244,6 +250,16 @@ export async function sharePostOrVideo(
     progress('Opening target post...')
     await raceAbort(page.goto(targetUrl, { timeout: 45000, waitUntil: 'domcontentloaded' }), signal)
     await raceAbort(page.waitForTimeout(2000), signal)
+
+    const session = await verifyActiveSession(page, account, signal, progress)
+    if (!session.live) {
+      return {
+        success: false,
+        shared: 0,
+        attempted: 0,
+        detail: session.detail
+      }
+    }
 
     if (destination === 'wall') {
       attempted = 1

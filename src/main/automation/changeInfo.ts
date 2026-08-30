@@ -8,6 +8,7 @@ import { randomBytes } from 'crypto'
 import type { Page } from 'playwright'
 import type { Account } from '../../types/account'
 import { launchContext, trackContext, untrackContext } from './browserContext'
+import { verifyActiveSession } from './sessionGuard'
 import { pickRandomUnusedImage } from '../utils/imageFolder'
 import { pickSpinText } from '../utils/pickSpinText'
 import { generateTOTP } from './totp'
@@ -824,6 +825,15 @@ export async function batchChangeInfo(
 
   try {
     const page = context.pages()[0] ?? (await context.newPage())
+
+    progress('Opening Facebook...')
+    await raceAbort(page.goto('https://web.facebook.com/', { timeout: 45000, waitUntil: 'domcontentloaded' }), signal)
+    await raceAbort(page.waitForTimeout(2000), signal)
+
+    const session = await verifyActiveSession(page, account, signal, progress)
+    if (!session.live) {
+      return { success: false, detail: session.detail, errors: [session.detail] }
+    }
 
     if (changePassword) {
       checkAborted(signal)

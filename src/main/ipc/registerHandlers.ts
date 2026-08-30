@@ -42,6 +42,14 @@ import {
   runJoinSuggestedGroups,
   runLeaveGroups
 } from '../automation/friendsGroups'
+import {
+  getOrExtractManagedPages,
+  batchScanPages,
+  clearStoredPageData,
+  fetchPagePosts,
+  bulkDeletePagePosts,
+  stopPageOperations
+} from '../automation/pagePostsManager'
 import { resolveProfileDir } from '../automation/browserContext'
 import { cleanProfiles } from '../automation/profileOptimizer'
 import { buildExportLines } from '../utils/exportAccounts'
@@ -212,11 +220,11 @@ export function registerIpcHandlers(): void {
   )
 
   // ---- automation (Playwright + IMAP) -------------------------------------
-  ipcMain.handle(IPC.automation.openProfile, async (_e, accountId: number, slotIndex?: number) => {
+  ipcMain.handle(IPC.automation.openProfile, async (_e, accountId: number, slotIndex?: number, rowNumber?: number) => {
     const acc = accounts.getAccount(accountId)
     if (!acc) return { ok: false, detail: 'Account not found' }
     try {
-      const res = await openProfile(acc, slotIndex)
+      const res = await openProfile(acc, slotIndex, rowNumber)
       accounts.updateAccount(accountId, { live_status: res.detail })
       return res
     } catch (err) {
@@ -283,8 +291,17 @@ export function registerIpcHandlers(): void {
       ...(res.cookie ? { cookie: res.cookie } : {}),
       ...(res.token ? { token: res.token } : {}),
       ...(res.name ? { name: res.name } : {}),
+      // UID Optimization Rule: only write a scraped uid when the account had
+      // none — never overwrite an existing one.
+      ...(!acc.uid?.trim() && res.uid ? { uid: res.uid } : {}),
       ...(res.friendsCount != null ? { friends_count: res.friendsCount } : {}),
       ...(res.groupsCount != null ? { groups_count: res.groupsCount } : {}),
+          ...(res.pagesCount != null ? { pages_count: res.pagesCount } : {}),
+          ...(res.friendsList ? { friends_list: JSON.stringify(res.friendsList) } : {}),
+          ...(res.followers ? { followers: res.followers } : {}),
+          ...(res.following ? { following: res.following } : {}),
+          ...(res.currentLocation ? { current_location: res.currentLocation } : {}),
+          ...(res.dtsgToken ? { dtsg_token: res.dtsgToken } : {}),
       ...(res.location ? { location: res.location } : {}),
       ...(res.createdDate ? { created_date: res.createdDate } : {}),
       ...(res.notes ? { notes: res.notes } : {}),
@@ -411,7 +428,8 @@ export function registerIpcHandlers(): void {
   // ---- Login with Cookie (batch, headed, no credential re-entry) -----------
   ipcMain.handle(
     IPC.automation.loginWithCookieBatch,
-    (_e, accountIds: number[], concurrency: number) => loginWithCookieBatch(accountIds, concurrency)
+    (_e, accountIds: number[], concurrency: number, rowNumbers?: Record<number, number>) =>
+      loginWithCookieBatch(accountIds, concurrency, rowNumbers)
   )
 
   // ---- Friends & Groups automation ------------------------------------------
@@ -601,6 +619,86 @@ export function registerIpcHandlers(): void {
       return { ok: true, filePath: result.filePath }
     }
   )
+
+  // ---- pages post manager (Meta Business Suite) ----------------------------
+  ipcMain.handle(
+    IPC.pages.getManagedPages,
+    async (_e, accountId: number, forceRefresh?: boolean, headless?: boolean) => {
+      const acc = accounts.getAccount(accountId)
+      if (!acc) return []
+      return await getOrExtractManagedPages(acc, Boolean(forceRefresh), headless ?? true)
+    }
+  )
+
+  ipcMain.handle(
+    IPC.pages.batchScanPages,
+    async (e, accountIds: number[]) => {
+      const win = BrowserWindow.fromWebContents(e.sender)
+      return await batchScanPages(accountIds, (progress) => {
+        win?.webContents.send(IPC.pages.onBatchScanProgress, progress)
+      })
+    }
+  )
+
+  ipcMain.handle(
+    IPC.pages.clearPageData,
+    async (_e, accountIds: number[]) => {
+      return clearStoredPageData(accountIds)
+    }
+  )
+
+  ipcMain.handle(
+    IPC.pages.fetchPosts,
+    async (e, accountId: number, assetId: string, filter: any, headless?: boolean) => {
+      const acc = accounts.getAccount(accountId)
+      if (!acc) return { posts: [], totalScraped: 0 }
+      const win = BrowserWindow.fromWebContents(e.sender)
+      return await fetchPagePosts(acc, assetId, filter, headless ?? true, undefined, (msg) => {
+        win?.webContents.send(IPC.pages.onFetchProgress, { accountId, assetId, message: msg })
+      })
+    }
+  )
+
+  ipcMain.handle(
+    IPC.pages.deletePosts,
+    async (
+      e,
+      accountId: number,
+      assetId: string,
+      postIds: string[],
+      headless?: boolean,
+      batchSize?: number
+    ) => {
+      const acc = accounts.getAccount(accountId)
+      if (!acc) return { success: false, deletedCount: 0, detail: 'Account not found' }
+      const win = BrowserWindow.fromWebContents(e.sender)
+      return await bulkDeletePagePosts(
+        acc,
+        assetId,
+        postIds,
+        headless ?? true,
+        batchSize ?? 20,
+        undefined,
+        (progress) => {
+          if (typeof progress === 'string') {
+            win?.webContents.send(IPC.pages.onDeleteProgress, { accountId, assetId, message: progress })
+          } else {
+            win?.webContents.send(IPC.pages.onDeleteProgress, {
+              accountId,
+              assetId,
+              message: progress.message,
+              deletedCount: progress.deletedCount,
+              completedIds: progress.completedIds
+            })
+          }
+        }
+      )
+    }
+  )
+
+  ipcMain.handle(IPC.pages.stopOperation, async () => {
+    return await stopPageOperations()
+  })
 
   // ---- window controls (frameless title bar) ------------------------------
   const winFromEvent = (e: Electron.IpcMainInvokeEvent): BrowserWindow | null =>

@@ -13,6 +13,8 @@ export function ModalShell({
   title,
   icon: Icon,
   width = 'max-w-2xl',
+  height,
+  bodyClassName,
   footer,
   children
 }: {
@@ -21,6 +23,8 @@ export function ModalShell({
   title: string
   icon: typeof X
   width?: string
+  height?: string
+  bodyClassName?: string
   footer?: React.ReactNode
   children: React.ReactNode
 }): React.JSX.Element | null {
@@ -37,13 +41,13 @@ export function ModalShell({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose()
       }}
     >
       <div
-        className={`flex h-full max-h-[85vh] w-full ${width} flex-col overflow-hidden rounded border border-slate-400 border-t-4 border-t-indigo-600 bg-[#f0f2f5] shadow-2xl`}
+        className={`flex ${height || 'h-full max-h-[88vh]'} w-full ${width} flex-col overflow-hidden rounded border border-slate-400 border-t-4 border-t-indigo-600 bg-[#f0f2f5] shadow-2xl`}
       >
         <div
           className="flex items-center justify-between border-b border-[#e4d8bc] bg-[#fdf9f0] px-4 py-2"
@@ -62,7 +66,7 @@ export function ModalShell({
           </button>
         </div>
 
-        <div className="flex-1 overflow-auto p-4">{children}</div>
+        <div className={bodyClassName || 'flex-1 overflow-auto p-4'}>{children}</div>
 
         {footer && (
           <div className="flex items-center justify-end gap-2 border-t border-slate-300 bg-[#f6f6f6] px-4 py-2.5">

@@ -609,24 +609,71 @@ export async function runLeaveGroups(
     let left = 0
     for (let i = 0; i < maxCount; i++) {
       checkAborted(signal)
-      const menuBtn = page.locator(LEAVE_GROUP_MENU_SELECTORS.join(', ')).first()
+      const menuBtn = page.locator('div[aria-label="More"][role="button"], div[aria-label="Joined"][role="button"], div[role="button"]:has-text("Joined"), div[role="button"]:has-text("Manage")').first()
       const visible = await menuBtn.isVisible().catch(() => false)
       if (!visible) break
       progress(`Leaving group ${left + 1}...`)
       await raceAbort(menuBtn.click({ timeout: 5000 }).catch(() => void 0), signal)
-      await randomDelay(600, 1200, signal)
+      await randomDelay(800, 1500, signal)
 
-      const leaveItem = page.locator('div[role="menuitem"]:has-text("Leave Group")').first()
-      const itemVisible = await leaveItem.isVisible().catch(() => false)
-      if (!itemVisible) continue
-      await raceAbort(leaveItem.click({ timeout: 5000 }).catch(() => void 0), signal)
-      await randomDelay(600, 1200, signal)
+      // Find and click "Leave group" in the popup menu
+      let clickedMenuItem = await page.evaluate(() => {
+        const items = Array.from(document.querySelectorAll('div[role="menuitem"], div[role="button"], span'))
+        const target = items.find((el) => {
+          const txt = (el.textContent || '').trim()
+          return /^Leave group$/i.test(txt) || /^Leave Group$/i.test(txt) || txt.includes('Leave group') || txt.includes('Leave Group')
+        })
+        if (target) {
+          ;(target as HTMLElement).click()
+          return true
+        }
+        return false
+      }).catch(() => false)
 
-      const confirmBtn = page.locator('button:has-text("Leave Group"), div[aria-label="Leave Group"]').first()
-      const confirmVisible = await confirmBtn.isVisible().catch(() => false)
-      if (confirmVisible) {
-        await raceAbort(confirmBtn.click({ timeout: 5000 }).catch(() => void 0), signal)
+      if (!clickedMenuItem) {
+        const leaveItem = page.locator('div[role="menuitem"]:has-text("Leave group"), div[role="menuitem"]:has-text("Leave Group"), div[role="button"]:has-text("Leave group")').first()
+        if (await leaveItem.isVisible({ timeout: 3000 }).catch(() => false)) {
+          await raceAbort(leaveItem.click({ timeout: 5000 }).catch(() => void 0), signal)
+          clickedMenuItem = true
+        }
       }
+
+      if (!clickedMenuItem) continue
+      await randomDelay(1000, 2000, signal)
+
+      // Confirm "Leave group" in the dialog
+      let confirmed = await page.evaluate(() => {
+        const dialog = document.querySelector('div[role="dialog"]') || document.body
+        const btns = Array.from(dialog.querySelectorAll('button, div[role="button"], [aria-label]'))
+        const target = btns.find((b) => {
+          const txt = (b.textContent || '').trim()
+          const aria = (b.getAttribute('aria-label') || '').trim()
+          return (
+            /^Leave group$/i.test(txt) ||
+            /^Leave Group$/i.test(txt) ||
+            /^Leave group$/i.test(aria) ||
+            /^Leave Group$/i.test(aria) ||
+            txt.includes('Leave group') ||
+            txt.includes('Leave Group')
+          )
+        })
+        if (target) {
+          ;(target as HTMLElement).click()
+          return true
+        }
+        return false
+      }).catch(() => false)
+
+      if (!confirmed) {
+        const confirmBtn = page.locator(
+          'div[role="dialog"] div[aria-label="Leave group"], div[role="dialog"] button:has-text("Leave group"), div[role="dialog"] button:has-text("Leave Group"), div[aria-label="Leave group"]'
+        ).first()
+        if (await confirmBtn.isVisible({ timeout: 4000 }).catch(() => false)) {
+          await raceAbort(confirmBtn.click({ timeout: 5000 }).catch(() => void 0), signal)
+          confirmed = true
+        }
+      }
+
       left += 1
       await randomDelay(delayMinSeconds * 1000, delayMaxSeconds * 1000, signal)
     }

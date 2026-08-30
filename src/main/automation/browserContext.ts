@@ -284,6 +284,11 @@ function disablePasswordManagerPrefs(dir: string): void {
       unknown
     >
     profile.password_manager_enabled = false
+    const contentSettings = ((profile.default_content_setting_values && typeof profile.default_content_setting_values === 'object'
+      ? profile.default_content_setting_values
+      : {}) as Record<string, unknown>)
+    contentSettings.notifications = 2
+    profile.default_content_setting_values = contentSettings
     prefs.profile = profile
     writeFileSync(prefsPath, JSON.stringify(prefs), 'utf8')
   } catch {
@@ -422,7 +427,17 @@ const proxyGeoCache = new Map<string, ProxyGeoData | null>()
  * resolve) rather than throwing — a failed lookup just means the launched
  * context falls back to sensible hardcoded US defaults, never blocks
  * launching the browser itself.
+ *
+ * The timeout here is deliberately SHORT (1.5s). This call sits directly in
+ * the browser-launch path, so every millisecond it spends waiting is a
+ * millisecond the user stares at nothing after clicking Run/Open Profile.
+ * An earlier 8s budget meant a slow or unreachable ip-api.com added up to
+ * eight seconds of dead time to every uncached launch. Geo-matching is a
+ * nice-to-have fingerprinting refinement, never worth stalling the actual
+ * launch for — if it can't answer fast, the US defaults are used instead.
  */
+const GEO_LOOKUP_TIMEOUT_MS = 1500
+
 export async function getProxyGeoData(host: string): Promise<ProxyGeoData | null> {
   // Only a successful lookup is cached — a transient network failure or a
   // momentary ip-api.com hiccup shouldn't permanently disable geo-matching
@@ -433,7 +448,7 @@ export async function getProxyGeoData(host: string): Promise<ProxyGeoData | null
 
   try {
     const response = await fetch(`http://ip-api.com/json/${encodeURIComponent(host)}?fields=status,countryCode,timezone,lat,lon`, {
-      signal: AbortSignal.timeout(8000)
+      signal: AbortSignal.timeout(GEO_LOOKUP_TIMEOUT_MS)
     })
     const data = (await response.json()) as {
       status?: string
@@ -460,6 +475,113 @@ export async function getProxyGeoData(host: string): Promise<ProxyGeoData | null
   }
 }
 
+/** Shown in place of the account name in the browser window title when the name hasn't been scraped yet. */
+export const UNNAMED_ACCOUNT_TITLE = 'មិនទាន់ទាញឈ្មោះ'
+
+/**
+ * Builds the Chrome window title for an account: `{rowNumber} - {name}`,
+ * falling back to the Khmer "name not scraped yet" label when the account
+ * has no name on file. Exported so callers that launch a context can apply
+ * it (see applyWindowTitle) with the row number the user actually sees in
+ * the grid.
+ */
+export function buildWindowTitle(account: Account, rowNumber?: number): string {
+  const name = account.name?.trim() || UNNAMED_ACCOUNT_TITLE
+  return rowNumber != null ? `${rowNumber} - ${name}` : name
+}
+
+/**
+ * Pins a fixed window title on every document in the context, now and after
+ * any future navigation. Two layers are needed because Facebook sets its own
+ * document.title on load AND again on client-side route changes:
+ *   1. addInitScript — runs before page scripts on every new document, and
+ *      installs a title-property redefinition so later writes can't win.
+ *   2. an immediate pass over already-open pages, since the context's first
+ *      page exists before this is called.
+ * Best-effort throughout: a failure here must never stop a browser launch.
+ */
+export function buildWindowTitleScript(title: string): string {
+  return `(() => {
+    const DESIRED = ${JSON.stringify(title)};
+    // Re-entrant guard: the setter override below writes the title itself,
+    // which would otherwise re-trigger the observer in a loop.
+    let writing = false;
+
+    const write = () => {
+      if (writing) return;
+      writing = true;
+      try {
+        let el = document.querySelector('title');
+        if (!el && document.head) {
+          el = document.createElement('title');
+          document.head.appendChild(el);
+        }
+        if (el && el.textContent !== DESIRED) el.textContent = DESIRED;
+      } catch (e) {} finally { writing = false; }
+    };
+
+    // 1. Override the document.title SETTER. This is the decisive layer:
+    //    Facebook assigns \`document.title = "(8) Facebook"\` directly, and
+    //    intercepting the assignment beats it before the DOM ever changes,
+    //    rather than racing to overwrite it afterward. The getter still
+    //    reports our title so Facebook's own equality checks stay happy.
+    try {
+      const proto = Document.prototype;
+      const orig = Object.getOwnPropertyDescriptor(proto, 'title');
+      if (orig && orig.configurable) {
+        Object.defineProperty(proto, 'title', {
+          configurable: true,
+          get() { return DESIRED; },
+          set() { write(); }
+        });
+      }
+    } catch (e) {}
+
+    // 2. MutationObserver on <head>/<title>, for title changes made by
+    //    mutating the element directly instead of assigning document.title.
+    //    document.documentElement can be null this early (this script runs
+    //    before the document exists on a fresh navigation), so the observer
+    //    is attached once there IS something to observe — the previous
+    //    version attached unconditionally and silently failed here.
+    const observe = () => {
+      try {
+        const target = document.head || document.documentElement;
+        if (!target) return false;
+        new MutationObserver(write).observe(target, {
+          subtree: true, childList: true, characterData: true
+        });
+        return true;
+      } catch (e) { return false; }
+    };
+
+    const start = () => { write(); observe(); };
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', start);
+      // readystatechange also covers documents that never fire DOMContentLoaded
+      // in the expected order during a client-side route change.
+      document.addEventListener('readystatechange', start);
+    } else {
+      start();
+    }
+    write();
+
+    // 3. Low-frequency interval as a last-resort net for anything the two
+    //    layers above miss (e.g. a title set from inside a worker-driven
+    //    render pass). 500ms is imperceptible to the user and negligible
+    //    cost, and it is the only layer guaranteed to survive Facebook
+    //    replacing large parts of the document wholesale.
+    try { setInterval(write, 500); } catch (e) {}
+  })();`
+}
+
+export async function applyWindowTitle(context: BrowserContext, title: string): Promise<void> {
+  const script = buildWindowTitleScript(title)
+  await context.addInitScript(script).catch(() => void 0)
+  for (const page of context.pages()) {
+    await page.evaluate(script).catch(() => void 0)
+  }
+}
+
 export interface LaunchOpts {
   /** Explicit override; omit to fall back to the persisted General Settings browser mode. */
   headless?: boolean
@@ -470,6 +592,13 @@ export interface LaunchOpts {
    * same position. Ignored when headless.
    */
   slotIndex?: number
+  /**
+   * The account's 1-based position in the grid as the user currently sees it
+   * — used only for the Chrome window title (`{rowNumber} - {name}`). Purely
+   * a display value from the renderer; distinct from slotIndex, which is
+   * this launch batch's tiling position.
+   */
+  rowNumber?: number
   /**
    * Clear the persistent profile's existing cookies/storage BEFORE
    * injecting the account's saved cookie — used only by Login with Cookie
@@ -501,6 +630,7 @@ export async function launchContext({
   headless,
   account,
   slotIndex,
+  rowNumber,
   resetProfileBeforeCookieInject
 }: LaunchOpts): Promise<BrowserContext> {
   const settings = getAppSettings()
@@ -537,6 +667,7 @@ export async function launchContext({
     '--no-sandbox',
     '--disable-setuid-sandbox',
     '--disable-infobars',
+    '--disable-notifications',
     '--disable-dev-shm-usage',
     '--disable-save-password-bubble',
     '--disable-features=PasswordManager,PasswordManagerUI,OptimizationGuideModelDownloading',
@@ -630,6 +761,13 @@ export async function launchContext({
         : {})
     })
   )
+
+  // Window title: "{rowNumber} - {name}" so a screen full of tiled browser
+  // windows is identifiable at a glance from the taskbar/title bar. Only
+  // meaningful for a headed launch — a headless context has no window.
+  if (!resolvedHeadless) {
+    await applyWindowTitle(context, buildWindowTitle(account, rowNumber))
+  }
 
   // RAM & Media Optimizer — abort image/media/font requests when enabled in
   // General Settings, except while on a checkpoint page (a captcha image

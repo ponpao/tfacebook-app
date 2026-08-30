@@ -107,6 +107,17 @@ export const IPC = {
     onUidCheckProgress: 'tools:uidCheckProgress',
     onProxyCheckProgress: 'tools:proxyCheckProgress'
   },
+  pages: {
+    getManagedPages: 'pages:getManagedPages',
+    batchScanPages: 'pages:batchScanPages',
+    clearPageData: 'pages:clearPageData',
+    fetchPosts: 'pages:fetchPosts',
+    deletePosts: 'pages:deletePosts',
+    stopOperation: 'pages:stopOperation',
+    onFetchProgress: 'pages:onFetchProgress',
+    onDeleteProgress: 'pages:onDeleteProgress',
+    onBatchScanProgress: 'pages:onBatchScanProgress'
+  },
   updater: {
     check: 'updater:check',
     startDownload: 'updater:startDownload',

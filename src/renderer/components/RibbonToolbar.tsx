@@ -29,13 +29,15 @@ import {
   Shuffle,
   XCircle,
   GripVertical,
-  PinOff
+  PinOff,
+  Trash2
 } from 'lucide-react'
 import { useAccountStore, type SearchField } from '../store/useAccountStore'
 import { ALL_FOLDERS } from '../../types/folder'
 import type { FolderDialogMode } from './modals/FolderDialogs'
 import type { AccountStatus } from '../../types/account'
 import { AutoPostModal } from './modals/AutoPostModal'
+import { DeletePagePostsModal } from './modals/DeletePagePostsModal'
 import { AutoShareModal } from './modals/AutoShareModal'
 import { ChangeInfoModal } from './modals/ChangeInfoModal'
 import { ImportProxyModal } from './modals/ImportProxyModal'
@@ -146,6 +148,7 @@ export function RibbonToolbar({
   const openExportModal = useAccountStore((s) => s.openExportModal)
 
   const [autoPostOpen, setAutoPostOpen] = useState(false)
+  const [deletePagePostsOpen, setDeletePagePostsOpen] = useState(false)
   const [autoShareOpen, setAutoShareOpen] = useState(false)
   const [changeInfoOpen, setChangeInfoOpen] = useState(false)
   const [importProxyOpen, setImportProxyOpen] = useState(false)
@@ -227,6 +230,7 @@ export function RibbonToolbar({
 
   const actionHandlers: Record<string, () => void> = {
     'Auto Post': () => setAutoPostOpen(true),
+    'Delete Post in Page': () => setDeletePagePostsOpen(true),
     'Auto Share': () => setAutoShareOpen(true),
     'Watch Live': () => setWatchLiveOpen(true),
     'Change Info': () => setChangeInfoOpen(true),
@@ -466,6 +470,10 @@ export function RibbonToolbar({
       </div>
 
       <AutoPostModal open={autoPostOpen} onClose={() => setAutoPostOpen(false)} />
+      <DeletePagePostsModal
+        open={deletePagePostsOpen}
+        onClose={() => setDeletePagePostsOpen(false)}
+      />
       <AutoShareModal open={autoShareOpen} onClose={() => setAutoShareOpen(false)} />
       <WatchLiveModal open={watchLiveOpen} onClose={() => setWatchLiveOpen(false)} />
       <ChangeInfoModal open={changeInfoOpen} onClose={() => setChangeInfoOpen(false)} />

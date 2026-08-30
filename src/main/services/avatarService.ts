@@ -172,9 +172,12 @@ async function runWithConcurrency<T>(items: T[], limit: number, worker: (item: T
   let cursor = 0
   const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
     for (;;) {
-      const index = cursor
+      // Atomic claim — see the matching comment in browserAutomation.ts's
+      // runWithConcurrency. Splitting the read from the increment lets two
+      // workers claim the same index (double-downloading one avatar while
+      // silently skipping another) once concurrency is 2+.
+      const index = cursor++
       if (index >= items.length) return
-      cursor += 1
       await worker(items[index], index)
     }
   })

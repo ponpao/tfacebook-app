@@ -27,6 +27,15 @@ export interface Account {
   gender: string | null
   friends_count: number
   groups_count: number
+  pages_count: number
+  /** JSON array of managed pages: [{ pageId, name, assetId, url }] */
+  pages_data?: string | null
+  /** JSON array of friend display names, stringified. */
+  friends_list: string | null
+  followers: string | null
+  following: string | null
+  current_location: string | null
+  dtsg_token: string | null
   cookie: string | null
   token: string | null
   proxy: string | null
@@ -84,4 +93,30 @@ export interface AccountStats {
   unknown: number
   error: number
   proxies: number
+}
+
+export interface ManagedPage {
+  pageId: string
+  name: string
+  assetId?: string
+  url?: string
+}
+
+export type PagePostType = 'ALL' | 'REEL' | 'PHOTO' | 'STATUS'
+
+export interface PagePost {
+  id: string
+  type: 'Reel' | 'Photo' | 'Status'
+  date: string
+  title: string
+  views: number
+  likes: number
+  reach: number
+  status?: 'Published' | 'Deleting' | 'Deleting...' | 'Processing...' | '✓ Completed' | '✗ Failed' | 'In Trash' | 'Failed' | string
+}
+
+export interface PagePostFilter {
+  fromDate?: string
+  toDate?: string
+  targetType?: PagePostType
 }

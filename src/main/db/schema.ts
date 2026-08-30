@@ -4,7 +4,7 @@
 // A small `schema_version` row in `settings` allows future migrations.
 // ---------------------------------------------------------------------------
 
-export const SCHEMA_VERSION = 6
+export const SCHEMA_VERSION = 7
 
 /** ID of the auto-seeded default folder. */
 export const DEFAULT_FOLDER_ID = 1
@@ -35,6 +35,13 @@ CREATE TABLE IF NOT EXISTS accounts (
   gender        TEXT,
   friends_count INTEGER DEFAULT 0,
   groups_count  INTEGER DEFAULT 0,
+  pages_count   INTEGER DEFAULT 0,
+  pages_data    TEXT,
+  friends_list  TEXT,
+  followers     TEXT,
+  following     TEXT,
+  current_location TEXT,
+  dtsg_token    TEXT,
   cookie        TEXT,
   token         TEXT,
   proxy         TEXT,
@@ -148,5 +155,13 @@ export const MIGRATION_COLUMNS: { table: string; column: string; ddl: string }[]
     table: 'accounts',
     column: 'groups_count',
     ddl: 'ALTER TABLE accounts ADD COLUMN groups_count INTEGER DEFAULT 0'
-  }
+  },
+  // Full-extraction fields (see the dual-mode extractor in autoLogin.ts).
+  { table: 'accounts', column: 'pages_count', ddl: 'ALTER TABLE accounts ADD COLUMN pages_count INTEGER DEFAULT 0' },
+  { table: 'accounts', column: 'pages_data', ddl: 'ALTER TABLE accounts ADD COLUMN pages_data TEXT' },
+  { table: 'accounts', column: 'friends_list', ddl: 'ALTER TABLE accounts ADD COLUMN friends_list TEXT' },
+  { table: 'accounts', column: 'followers', ddl: 'ALTER TABLE accounts ADD COLUMN followers TEXT' },
+  { table: 'accounts', column: 'following', ddl: 'ALTER TABLE accounts ADD COLUMN following TEXT' },
+  { table: 'accounts', column: 'current_location', ddl: 'ALTER TABLE accounts ADD COLUMN current_location TEXT' },
+  { table: 'accounts', column: 'dtsg_token', ddl: 'ALTER TABLE accounts ADD COLUMN dtsg_token TEXT' }
 ]

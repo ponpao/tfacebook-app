@@ -24,6 +24,7 @@ import { SetNotesModal } from './components/modals/SetNotesModal'
 import { CleanProfileModal } from './components/modals/CleanProfileModal'
 import { AddFriendsModal } from './components/modals/AddFriendsModal'
 import { JoinGroupsModal } from './components/modals/JoinGroupsModal'
+import { DeletePagePostsModal } from './components/modals/DeletePagePostsModal'
 import { UpdateNotificationModal } from './components/modals/UpdateNotificationModal'
 import { AutoShutdownDialog } from './components/modals/AutoShutdownDialog'
 import { useAccountStore } from './store/useAccountStore'
@@ -68,6 +69,7 @@ function Dashboard({
   const [generalSettingsOpen, setGeneralSettingsOpen] = useState(false)
   const [toolsUtilitiesOpen, setToolsUtilitiesOpen] = useState(false)
   const [helpAboutOpen, setHelpAboutOpen] = useState(false)
+  const [pageManagerOpen, setPageManagerOpen] = useState(false)
 
   const refresh = useAccountStore((s) => s.refresh)
   const refreshFolders = useAccountStore((s) => s.refreshFolders)
@@ -153,6 +155,7 @@ function Dashboard({
         onGeneralSettings={() => setGeneralSettingsOpen(true)}
         onToolsUtilities={() => setToolsUtilitiesOpen(true)}
         onHelpAbout={() => setHelpAboutOpen(true)}
+        onOpenPageManager={() => setPageManagerOpen(true)}
       />
       <RibbonToolbar
         onImport={() => setImportOpen(true)}
@@ -166,6 +169,10 @@ function Dashboard({
       <StatusBar />
 
       <ImportModal open={importOpen} onClose={() => setImportOpen(false)} />
+      <DeletePagePostsModal
+        open={pageManagerOpen}
+        onClose={() => setPageManagerOpen(false)}
+      />
       <ColumnVisibilityModal
         open={columnsOpen}
         onClose={() => setColumnsOpen(false)}

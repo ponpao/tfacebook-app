@@ -58,6 +58,8 @@ export function ChangeInfoModal({
   const threadCount = useAccountStore((s) => s.threadCount)
   const showToast = useAccountStore((s) => s.showToast)
   const refresh = useAccountStore((s) => s.refresh)
+  const withQueueRunning = useAccountStore((s) => s.withQueueRunning)
+  const stopQueueRun = useAccountStore((s) => s.stopQueueRun)
 
   const [doPassword, setDoPassword] = useState(false)
   const [passwordPattern, setPasswordPattern] = useState('Aa1!XXXXXXXX')
@@ -124,55 +126,55 @@ export function ChangeInfoModal({
       return
     }
 
-    setRunning(true)
+    onClose()
     showToast(`Change Info: running on ${ids.length} account(s)…`)
     try {
-      const summary = await window.api.automation.runChangeInfo({
-        accountIds: ids,
-        concurrency: threadCount,
-        changePassword: doPassword ? { pattern: passwordPattern || undefined } : undefined,
-        updateAbout: anyAbout
-          ? {
-              bio: doBio && bioTemplate.trim() ? { template: bioTemplate } : undefined,
-              work: doWork && workTemplate.trim() ? { template: workTemplate } : undefined,
-              currentCity:
-                doCurrentCity && currentCityTemplate.trim()
-                  ? { template: currentCityTemplate }
-                  : undefined,
-              hometown:
-                doHometown && hometownTemplate.trim() ? { template: hometownTemplate } : undefined,
-              highSchool:
-                doHighSchool && highSchoolTemplate.trim()
-                  ? { template: highSchoolTemplate }
-                  : undefined,
-              skipIfAlreadySet
-            }
-          : undefined,
-        changeAvatar:
-          doAvatar && avatarFolder
+      await withQueueRunning(async () => {
+        const summary = await window.api.automation.runChangeInfo({
+          accountIds: ids,
+          concurrency: threadCount,
+          changePassword: doPassword ? { pattern: passwordPattern || undefined } : undefined,
+          updateAbout: anyAbout
             ? {
-                folderPath: avatarFolder,
-                skipIfExists: avatarSkipIfExists,
-                deleteUsedImage: avatarDeleteUsed
+                bio: doBio && bioTemplate.trim() ? { template: bioTemplate } : undefined,
+                work: doWork && workTemplate.trim() ? { template: workTemplate } : undefined,
+                currentCity:
+                  doCurrentCity && currentCityTemplate.trim()
+                    ? { template: currentCityTemplate }
+                    : undefined,
+                hometown:
+                  doHometown && hometownTemplate.trim() ? { template: hometownTemplate } : undefined,
+                highSchool:
+                  doHighSchool && highSchoolTemplate.trim()
+                    ? { template: highSchoolTemplate }
+                    : undefined,
+                skipIfAlreadySet
               }
             : undefined,
-        changeCover:
-          doCover && coverFolder
-            ? {
-                folderPath: coverFolder,
-                skipIfExists: coverSkipIfExists,
-                deleteUsedImage: coverDeleteUsed
-              }
-            : undefined,
-        enable2FA: do2FA
+          changeAvatar:
+            doAvatar && avatarFolder
+              ? {
+                  folderPath: avatarFolder,
+                  skipIfExists: avatarSkipIfExists,
+                  deleteUsedImage: avatarDeleteUsed
+                }
+              : undefined,
+          changeCover:
+            doCover && coverFolder
+              ? {
+                  folderPath: coverFolder,
+                  skipIfExists: coverSkipIfExists,
+                  deleteUsedImage: coverDeleteUsed
+                }
+              : undefined,
+          enable2FA: do2FA
+        })
+        showToast(
+          `Change Info done: ${summary.succeeded}/${summary.total} succeeded, ${summary.failed} failed.`,
+          6000
+        )
       })
-      showToast(
-        `Change Info done: ${summary.succeeded}/${summary.total} succeeded, ${summary.failed} failed.`,
-        6000
-      )
-      onClose()
     } finally {
-      setRunning(false)
       await refresh()
     }
   }
@@ -180,7 +182,12 @@ export function ChangeInfoModal({
   return (
     <ModalShell
       open={open}
-      onClose={onClose}
+      onClose={() => {
+        if (running) {
+          void stopQueueRun()
+        }
+        onClose()
+      }}
       title="Change Info"
       icon={UserCog}
       width="max-w-2xl"
@@ -189,8 +196,16 @@ export function ChangeInfoModal({
           <span className="mr-auto text-[11px] text-slate-500">
             {count} account(s) selected · {threadCount} thread(s)
           </span>
-          <button className="win-btn" onClick={onClose} disabled={running}>
-            Cancel
+          <button
+            className="win-btn"
+            onClick={() => {
+              if (running) {
+                void stopQueueRun()
+              }
+              onClose()
+            }}
+          >
+            {running ? 'Stop / Cancel' : 'Cancel'}
           </button>
           <button className="win-btn-accent" onClick={() => void run()} disabled={running}>
             {running ? 'Running…' : 'Apply Changes'}

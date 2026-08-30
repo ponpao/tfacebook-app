@@ -27,8 +27,28 @@
 // ---------------------------------------------------------------------------
 import { BrowserWindow } from 'electron'
 import type { Page } from 'playwright'
-import { launchContext, trackContext, untrackContext, validateCookieString } from '../automation/browserContext'
-import { classifyPage, extractAllMetadata } from '../automation/autoLogin'
+import {
+  launchContext,
+  trackContext,
+  untrackContext,
+  validateCookieString,
+  applyWindowTitle,
+  buildWindowTitle
+} from '../automation/browserContext'
+import {
+  classifyPage,
+  extractCookiesAndToken,
+  extractFromInlineScripts,
+  extractProfileName,
+  extractFriendsAndFollowers,
+  extractCreatedDateFromActivityLog,
+  extractPrimaryLocation,
+  extractCurrentDeviceLocation,
+  extractGroupsCount,
+  extractPagesCount
+} from '../automation/autoLogin'
+import { getAppSettings } from '../db/settingsRepo'
+import type { Account } from '../../types/account'
 import * as accounts from '../db/accountsRepo'
 import { IPC } from '../ipc/channels'
 
@@ -64,65 +84,23 @@ function looksLikeRealName(s: string | null | undefined): s is string {
   return !NON_NAME_HINTS.some((h) => lower.includes(h))
 }
 
-/**
- * Extracts a display name from an already-logged-in feed page via three
- * fallbacks, tried in order, specifically for accounts that arrived with no
- * saved UID (so the UID-scoped selector extractAllMetadata's own name
- * extraction relies on can't be used):
- *   1. The composer placeholder — "What's on your mind, {Name}?" — reading
- *      the text after the comma.
- *   2. The top nav bar's own profile link/icon aria-label or link text.
- *   3. A raw NAME field inside one of the page's inline hydration script
- *      payloads (Facebook embeds the viewer's own name in its initial JSON
- *      state under a "NAME" key on most page variants).
- * Best-effort throughout — a missing/changed selector just means no name.
- */
-async function extractNameFromLiveFeed(page: Page): Promise<string | undefined> {
-  const composerText = await page
-    .locator(
-      'div[role="main"] span:has-text("What\'s on your mind"), div[role="region"] span:has-text("What\'s on your mind")'
-    )
-    .first()
-    .textContent()
-    .catch(() => null)
-  const composerMatch = composerText?.match(/,\s*([^,?]+)\?/)
-  if (looksLikeRealName(composerMatch?.[1])) return composerMatch[1].trim()
 
-  const navProfile = page.locator(
-    'svg[aria-label="Your profile"], div[role="navigation"] a[href*="/me/"], a[aria-label="Your profile"]'
-  ).first()
-  const navRaw = await navProfile
-    .getAttribute('aria-label')
-    .catch(() => null)
-    .then((v) => v ?? navProfile.textContent().catch(() => null))
-  if (looksLikeRealName(navRaw)) return navRaw.trim()
-
-  const scriptName = await page
-    .evaluate(() => {
-      const w = window as unknown as { __fb_currentUser?: { NAME?: string; name?: string } }
-      if (w.__fb_currentUser?.NAME) return w.__fb_currentUser.NAME
-      if (w.__fb_currentUser?.name) return w.__fb_currentUser.name
-      const scripts = Array.from(document.querySelectorAll('script'))
-      for (const script of scripts) {
-        const match = script.textContent?.match(/"NAME":"([^"]+)"/)
-        if (match) return match[1]
-      }
-      return null
-    })
-    .catch(() => null)
-  if (looksLikeRealName(scriptName)) return scriptName.trim()
-
-  return undefined
-}
 
 /** Runs `items` through `worker` with at most `limit` in flight at once. */
 async function runWithConcurrency<T>(items: T[], limit: number, worker: (item: T, index: number) => Promise<void>): Promise<void> {
   let cursor = 0
   const runners = Array.from({ length: Math.min(Math.max(1, limit), items.length) }, async () => {
     for (;;) {
-      const index = cursor
+      // Claim an index ATOMICALLY: post-increment reads and advances the
+      // cursor in one expression, with no statement in between where another
+      // worker could resume. The previous `const index = cursor; if (...);
+      // cursor += 1` sequence had a real race — every worker awaits inside
+      // this loop, so two could both read the same cursor value before
+      // either incremented it, then process the SAME account twice while
+      // silently skipping another (the "dropped task" symptom with 2+
+      // threads).
+      const index = cursor++
       if (index >= items.length) return
-      cursor += 1
       await worker(items[index], index)
     }
   })
@@ -150,7 +128,12 @@ async function runWithConcurrency<T>(items: T[], limit: number, worker: (item: T
  * block — success, failure, or a thrown error all release the browser
  * process rather than leaving it open.
  */
-export async function loginWithCookieBatch(accountIds: number[], concurrency: number): Promise<CookieLoginSummary> {
+export async function loginWithCookieBatch(
+  accountIds: number[],
+  concurrency: number,
+  /** Optional map of accountId -> the account's 1-based row number in the grid as the user sees it, used only for the Chrome window title. */
+  rowNumbers?: Record<number, number>
+): Promise<CookieLoginSummary> {
   const rows = accounts.getAccountsByIds(accountIds)
   const total = rows.length
   let succeeded = 0
@@ -159,11 +142,23 @@ export async function loginWithCookieBatch(accountIds: number[], concurrency: nu
   await runWithConcurrency(rows, concurrency, async (account, index) => {
     const key = `cookie-login:${account.uid ?? account.id}`
     let context: Awaited<ReturnType<typeof launchContext>> | null = null
+
+    // Writes the in-progress step to the account's live_status AND pushes a
+    // progress event so the grid's Activity Status column updates in real
+    // time instead of only flipping once at the very end. Keyed on
+    // account.id — with 2+ threads each worker reports only its own account,
+    // and the renderer matches strictly on accountId (never row index).
+    const step = (detail: string): void => {
+      accounts.updateAccount(account.id, { live_status: detail })
+      broadcast({ accountId: account.id, uid: account.uid, index: index + 1, total, ok: true, detail })
+    }
+
     try {
       const raw = account.cookie?.trim()
       if (!raw) {
         throw new Error('No saved cookie for this account')
       }
+      step('Injecting Cookies...')
       const { cookies, valid } = validateCookieString(raw)
       if (!valid) {
         accounts.updateAccount(account.id, { live_status: 'Invalid/Incomplete Cookie' })
@@ -187,6 +182,7 @@ export async function loginWithCookieBatch(accountIds: number[], concurrency: nu
         headless: false,
         account,
         slotIndex: index,
+        rowNumber: rowNumbers?.[account.id],
         // A persistent profile dir can carry a stale, different Facebook
         // identity from an earlier run — left in place, that surfaces
         // Facebook's own account-chooser interstitial ("Continue as X /
@@ -199,56 +195,217 @@ export async function loginWithCookieBatch(accountIds: number[], concurrency: nu
       trackContext(key, context)
 
       const page = context.pages()[0] ?? (await context.newPage())
-      await page.goto('https://www.facebook.com/', { timeout: 45000, waitUntil: 'domcontentloaded' })
-      await page.waitForTimeout(1500)
-      const result = await classifyPage(page)
+
+      // ---- STEP 1: cookie injection (done by launchContext above) + fast load ----
+      step('Opening Facebook...')
+      // waitUntil 'commit' resolves as soon as the navigation response
+      // starts, rather than blocking on 'domcontentloaded' — Facebook's
+      // white Meta splash screen can hold DOMContentLoaded for a long time
+      // while it hydrates, which is what made cookie login feel hung. The
+      // readiness we actually care about is checked below by polling
+      // classifyPage(), so waiting for the document event bought nothing.
+      await page.goto('https://www.facebook.com/', { timeout: 25000, waitUntil: 'commit' })
+
+      // ---- STEP 2: explicit Live/Die check, BEFORE any scraping ----
+      // Poll for a definitive classification instead of a flat sleep: a
+      // fast session resolves almost immediately, and only a slow-hydrating
+      // one pays the extra wait (capped).
+      step('Checking Live Status...')
+      let result = await classifyPage(page)
+      const settleDeadline = Date.now() + 8000
+      while (result.status === 'Unknown' && Date.now() < settleDeadline) {
+        await page.waitForTimeout(300)
+        result = await classifyPage(page)
+      }
 
       if (result.status !== 'Live') {
-        accounts.updateAccount(account.id, { live_status: 'Invalid/Incomplete Cookie' })
+        // Checkpoint/suspension classifies as its own status; anything else
+        // that isn't Live means the saved cookie no longer authenticates.
+        const isCheckpoint = result.status === 'Checkpoint' || result.status === 'Die'
+        const detail = isCheckpoint ? result.detail : 'Cookie Expired / Invalid'
+        accounts.updateAccount(account.id, {
+          ...(isCheckpoint ? { status: result.status, status_detail: result.detail } : {}),
+          live_status: detail
+        })
         failed += 1
-        broadcast({ accountId: account.id, uid: account.uid, index: index + 1, total, ok: false, detail: 'Invalid/Incomplete Cookie' })
+        broadcast({ accountId: account.id, uid: account.uid, index: index + 1, total, ok: false, detail })
         return
       }
 
-      // Metadata Extraction Mode (General Settings) governs how much
-      // post-login enrichment runs here too, same as a full credential
-      // login — 'fast' skips location/created-date, 'full' runs everything.
-      // extractAllMetadata always re-extracts the live cookie jar as its
-      // first step, so the DB's saved cookie gets refreshed to whatever
-      // Facebook currently has (rotated tokens, newly-set cookies) rather
-      // than staying pinned to the value that was there before this login.
-      const metadata = await extractAllMetadata(page, context, resolvedUid, undefined)
+      // Step 1: Base Script Parse (Immediate DB commit)
+      step('Extracting Profile Info...')
+      await page.waitForTimeout(1000)
+      const { cookie: liveCookie, token: liveToken } = await extractCookiesAndToken(context)
+      const scriptData = await extractFromInlineScripts(page)
+      const cUser = liveCookie
+        ? liveCookie.split(';').map((p) => p.trim()).find((p) => p.startsWith('c_user='))?.slice('c_user='.length)
+        : undefined
+      resolvedUid = account.uid?.trim() ? account.uid : (scriptData.userId ?? cUser ?? resolvedUid)
+      let dtsgToken = scriptData.dtsg
+      const fastName = looksLikeRealName(scriptData.name)
+        ? scriptData.name.trim()
+        : (await extractProfileName(page, resolvedUid)) || account.name?.trim()
 
-      // STEP 2: extractAllMetadata's own name extraction is scoped to a
-      // profile.php?id={uid} link when a uid is available — for an account
-      // that just got its uid backfilled from c_user (above) that link may
-      // not resolve on the first try, so a name-less result here falls back
-      // to the composer/nav/script extraction tailored for exactly this
-      // "no reliable uid yet" case. Only used to fill in a currently-empty
-      // name, never to overwrite one already on file.
-      let resolvedName = metadata.name
-      if (!resolvedName && !account.name?.trim()) {
-        resolvedName = await extractNameFromLiveFeed(page)
+      const step1Update: Partial<Account> = {
+        status: 'Live',
+        status_detail: 'Cookie Login Success',
+        live_status: 'Live — verifying profile...',
+        ...(liveCookie ? { cookie: liveCookie } : {}),
+        ...(liveToken ? { token: liveToken } : {}),
+        ...(resolvedUid ? { uid: resolvedUid } : {}),
+        ...(dtsgToken ? { dtsg_token: dtsgToken } : {}),
+        ...(fastName ? { name: fastName } : {})
+      }
+      accounts.updateAccount(account.id, step1Update)
+      broadcast({
+        accountId: account.id,
+        uid: resolvedUid || null,
+        index: index + 1,
+        total,
+        ok: true,
+        detail: 'Live — verifying profile...'
+      })
+
+      if (fastName) {
+        await applyWindowTitle(
+          context,
+          buildWindowTitle({ ...account, name: fastName, uid: resolvedUid }, rowNumbers?.[account.id])
+        )
       }
 
+      const isFastMode = getAppSettings().metadataExtractionMode === 'fast'
+
+      if (!isFastMode) {
+        // Step 2: Friends & Followers Extraction (via /me?sk=friends)
+        try {
+          step('Extracting Friends & Followers...')
+          const ff = await extractFriendsAndFollowers(page, resolvedUid)
+          const step2Update: Partial<Account> = {
+            ...(ff.friendsCount != null ? { friends_count: ff.friendsCount } : {}),
+            ...(ff.followers ? { followers: ff.followers } : {}),
+            ...(ff.following ? { following: ff.following } : {}),
+            ...(ff.friendsList ? { friends_list: JSON.stringify(ff.friendsList) } : {})
+          }
+          if (!dtsgToken) {
+            const extra = await extractFromInlineScripts(page)
+            if (extra.dtsg) {
+              dtsgToken = extra.dtsg
+              step2Update.dtsg_token = dtsgToken
+            }
+          }
+          if (Object.keys(step2Update).length > 0) {
+            accounts.updateAccount(account.id, step2Update)
+            broadcast({
+              accountId: account.id,
+              uid: resolvedUid || null,
+              index: index + 1,
+              total,
+              ok: true,
+              detail: 'Extracting Friends & Followers...'
+            })
+          }
+        } catch (err) {
+          console.warn('[CookieLogin] Step 2 friends/followers error:', err)
+        }
+
+        // Step 3: Created Date Extraction (via /me/allactivity)
+        try {
+          step('Extracting Created Date...')
+          const createdDate = await extractCreatedDateFromActivityLog(page)
+          const step3Update: Partial<Account> = {}
+          if (createdDate) step3Update.created_date = createdDate
+          if (!dtsgToken) {
+            const extra = await extractFromInlineScripts(page)
+            if (extra.dtsg) {
+              dtsgToken = extra.dtsg
+              step3Update.dtsg_token = dtsgToken
+            }
+          }
+          if (Object.keys(step3Update).length > 0) {
+            accounts.updateAccount(account.id, step3Update)
+            broadcast({
+              accountId: account.id,
+              uid: resolvedUid || null,
+              index: index + 1,
+              total,
+              ok: true,
+              detail: 'Extracting Created Date...'
+            })
+          }
+        } catch (err) {
+          console.warn('[CookieLogin] Step 3 created date error:', err)
+        }
+
+        // Step 4: Location Extractions
+        try {
+          step('Extracting Locations...')
+          const primaryLoc = await extractPrimaryLocation(page)
+          const currentLoc = await extractCurrentDeviceLocation(page)
+          const step4Update: Partial<Account> = {
+            ...(primaryLoc ? { location: primaryLoc } : {}),
+            ...(currentLoc ? { current_location: currentLoc } : {})
+          }
+          if (Object.keys(step4Update).length > 0) {
+            accounts.updateAccount(account.id, step4Update)
+            broadcast({
+              accountId: account.id,
+              uid: resolvedUid || null,
+              index: index + 1,
+              total,
+              ok: true,
+              detail: 'Extracting Locations...'
+            })
+          }
+        } catch (err) {
+          console.warn('[CookieLogin] Step 4 location error:', err)
+        }
+
+        // Step 5: Groups & Pages Extractions
+        try {
+          step('Extracting Groups & Pages...')
+          const groupsCount = await extractGroupsCount(page)
+          const pagesResult = await extractPagesCount(page)
+          const step5Update: Partial<Account> = {
+            ...(groupsCount != null ? { groups_count: groupsCount } : {}),
+            ...(pagesResult != null
+              ? {
+                  pages_count: pagesResult.count,
+                  pages_data: JSON.stringify(pagesResult.pages)
+                }
+              : {})
+          }
+          if (Object.keys(step5Update).length > 0) {
+            accounts.updateAccount(account.id, step5Update)
+            broadcast({
+              accountId: account.id,
+              uid: resolvedUid || null,
+              index: index + 1,
+              total,
+              ok: true,
+              detail: 'Extracting Groups & Pages...'
+            })
+          }
+        } catch (err) {
+          console.warn('[CookieLogin] Step 5 groups/pages error:', err)
+        }
+      }
+
+      // Step 6: completion
       accounts.updateAccount(account.id, {
         status: 'Live',
         status_detail: 'Cookie Login Success',
         live_status: 'Cookie Login Success',
-        ...(metadata.cookie ? { cookie: metadata.cookie } : {}),
-        ...(metadata.token ? { token: metadata.token } : {}),
-        ...(!account.name?.trim() && resolvedName ? { name: resolvedName } : {}),
-        ...(metadata.friendsCount != null ? { friends_count: metadata.friendsCount } : {}),
-        ...(metadata.groupsCount != null ? { groups_count: metadata.groupsCount } : {}),
-        ...(metadata.location ? { location: metadata.location } : {}),
-        ...(metadata.createdDate ? { created_date: metadata.createdDate } : {}),
         last_active: new Date().toISOString().slice(0, 19).replace('T', ' ')
       })
       succeeded += 1
-      // uid may have just been backfilled above — broadcast the resolved
-      // value so the UI table's live patch reflects it immediately rather
-      // than the stale (empty) uid captured at the top of this closure.
-      broadcast({ accountId: account.id, uid: resolvedUid, index: index + 1, total, ok: true, detail: 'Cookie Login Success' })
+      broadcast({
+        accountId: account.id,
+        uid: resolvedUid || null,
+        index: index + 1,
+        total,
+        ok: true,
+        detail: 'Cookie Login Success'
+      })
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       accounts.updateAccount(account.id, { live_status: `Cookie login failed: ${message}` })

@@ -108,8 +108,8 @@ const api: AppApi = {
     isMaximized: () => ipcRenderer.invoke(IPC.window.isMaximized)
   },
   automation: {
-    openProfile: (accountId, slotIndex) =>
-      ipcRenderer.invoke(IPC.automation.openProfile, accountId, slotIndex),
+    openProfile: (accountId, slotIndex, rowNumber) =>
+      ipcRenderer.invoke(IPC.automation.openProfile, accountId, slotIndex, rowNumber),
     checkLive: (accountId) => ipcRenderer.invoke(IPC.automation.checkLive, accountId),
     getMailOtp: (accountId) => ipcRenderer.invoke(IPC.automation.getMailOtp, accountId),
     autoLogin: (accountId) => ipcRenderer.invoke(IPC.automation.autoLogin, accountId),
@@ -136,8 +136,8 @@ const api: AppApi = {
     runWatchLive: (req: WatchLiveRequest) =>
       ipcRenderer.invoke(IPC.automation.runWatchLive, req),
     unlock282: (accountIds: number[]) => ipcRenderer.invoke(IPC.automation.unlock282, accountIds),
-    loginWithCookieBatch: (accountIds: number[], concurrency: number) =>
-      ipcRenderer.invoke(IPC.automation.loginWithCookieBatch, accountIds, concurrency),
+    loginWithCookieBatch: (accountIds: number[], concurrency: number, rowNumbers?: Record<number, number>) =>
+      ipcRenderer.invoke(IPC.automation.loginWithCookieBatch, accountIds, concurrency, rowNumbers),
     onCookieLoginProgress: (cb) => {
       const listener = (_e: unknown, payload: unknown): void => cb(payload as Parameters<typeof cb>[0])
       ipcRenderer.on(IPC.automation.onCookieLoginProgress, listener)
@@ -189,6 +189,7 @@ const api: AppApi = {
       return () => ipcRenderer.removeListener(IPC.tools.onProxyCheckProgress, listener)
     }
   },
+
   updater: {
     check: () => ipcRenderer.invoke(IPC.updater.check),
     startDownload: () => ipcRenderer.invoke(IPC.updater.startDownload),
@@ -260,6 +261,35 @@ const api: AppApi = {
       const listener = (_e: unknown, payload: unknown): void => cb(payload as Parameters<typeof cb>[0])
       ipcRenderer.on(IPC.avatars.onProgress, listener)
       return () => ipcRenderer.removeListener(IPC.avatars.onProgress, listener)
+    }
+  },
+  pages: {
+    getManagedPages: (accountId, forceRefresh, headless) =>
+      ipcRenderer.invoke(IPC.pages.getManagedPages, accountId, forceRefresh, headless),
+    batchScanPages: (accountIds) =>
+      ipcRenderer.invoke(IPC.pages.batchScanPages, accountIds),
+    clearPageData: (accountIds) =>
+      ipcRenderer.invoke(IPC.pages.clearPageData, accountIds),
+    fetchPosts: (accountId, assetId, filter, headless) =>
+      ipcRenderer.invoke(IPC.pages.fetchPosts, accountId, assetId, filter, headless),
+    deletePosts: (accountId, assetId, postIds, headless, batchSize) =>
+      ipcRenderer.invoke(IPC.pages.deletePosts, accountId, assetId, postIds, headless, batchSize),
+    stopOperation: () =>
+      ipcRenderer.invoke(IPC.pages.stopOperation),
+    onFetchProgress: (cb) => {
+      const listener = (_e: unknown, payload: unknown): void => cb(payload as Parameters<typeof cb>[0])
+      ipcRenderer.on(IPC.pages.onFetchProgress, listener)
+      return () => ipcRenderer.removeListener(IPC.pages.onFetchProgress, listener)
+    },
+    onDeleteProgress: (cb) => {
+      const listener = (_e: unknown, payload: unknown): void => cb(payload as Parameters<typeof cb>[0])
+      ipcRenderer.on(IPC.pages.onDeleteProgress, listener)
+      return () => ipcRenderer.removeListener(IPC.pages.onDeleteProgress, listener)
+    },
+    onBatchScanProgress: (cb) => {
+      const listener = (_e: unknown, payload: unknown): void => cb(payload as Parameters<typeof cb>[0])
+      ipcRenderer.on(IPC.pages.onBatchScanProgress, listener)
+      return () => ipcRenderer.removeListener(IPC.pages.onBatchScanProgress, listener)
     }
   }
 }
