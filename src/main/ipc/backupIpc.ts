@@ -146,16 +146,19 @@ async function exportBackup(win: BrowserWindow | undefined, accountIds: number[]
  * place rather than duplicated), and restores each included profile folder
  * back to its resolveProfileDir(uid) location.
  */
-async function importBackup(win: BrowserWindow | undefined): Promise<BackupImportResult> {
-  const result = await dialog.showOpenDialog(win as BrowserWindow, {
-    title: 'Select Backup Zip',
-    properties: ['openFile'],
-    filters: [{ name: 'Zip Archive', extensions: ['zip'] }]
-  })
-  if (result.canceled || result.filePaths.length === 0) {
-    return { success: false, importedCount: 0, skippedCount: 0, profilesRestoredCount: 0, message: 'Import canceled.' }
+async function importBackup(win: BrowserWindow | undefined, explicitZipPath?: string): Promise<BackupImportResult> {
+  let zipPath = explicitZipPath
+  if (!zipPath) {
+    const result = await dialog.showOpenDialog(win as BrowserWindow, {
+      title: 'Select Backup Zip',
+      properties: ['openFile'],
+      filters: [{ name: 'Zip Archive', extensions: ['zip'] }]
+    })
+    if (result.canceled || result.filePaths.length === 0) {
+      return { success: false, importedCount: 0, skippedCount: 0, profilesRestoredCount: 0, message: 'Import canceled.' }
+    }
+    zipPath = result.filePaths[0]
   }
-  const zipPath = result.filePaths[0]
 
   const tempDir = join(app.getPath('temp'), `tfacebook-restore-${Date.now()}`)
   await mkdir(tempDir, { recursive: true })
@@ -283,10 +286,10 @@ export function registerBackupIpcHandlers(): void {
     }
   })
 
-  ipcMain.handle(IPC.backup.import, async (e) => {
+  ipcMain.handle(IPC.backup.import, async (e, explicitPath?: string) => {
     const win = BrowserWindow.fromWebContents(e.sender) ?? undefined
     try {
-      const outcome = await importBackup(win)
+      const outcome = await importBackup(win, explicitPath)
       // Notify the renderer to refresh the grid + folder manager — the
       // caller's own IPC response already carries the summary, but a
       // broadcast event lets any open window/component react without

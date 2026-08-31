@@ -71,7 +71,7 @@ export interface FoldersApi {
 export interface ScenariosApi {
   getAll(): Promise<Scenario[]>
   create(input: NewScenario): Promise<Scenario>
-  update(id: number, patch: { name?: string; steps?: ScenarioStep[] }): Promise<Scenario | null>
+  update(id: number, patch: Partial<NewScenario>): Promise<Scenario | null>
   delete(id: number): Promise<boolean>
 }
 
@@ -109,6 +109,8 @@ export interface OpenProfileResult {
   detail: string
 }
 export interface LiveDieResult {
+  accountId?: number
+  uid?: string | null
   status: 'Live' | 'Checkpoint' | 'Die' | 'Changed Pass' | 'Unknown'
   detail: string
 }
@@ -183,7 +185,7 @@ export interface AutomationApi {
    */
   /** `rowNumber` is the account's 1-based position in the grid as the user currently sees it (filtered/sorted view) — used only for the Chrome window title, distinct from `slotIndex`, which is the position within this launch batch and drives window tiling. */
   openProfile(accountId: number, slotIndex?: number, rowNumber?: number): Promise<OpenProfileResult>
-  checkLive(accountId: number): Promise<LiveDieResult>
+  checkLive(target: number | number[]): Promise<LiveDieResult | LiveDieResult[]>
   getMailOtp(accountId: number): Promise<MailOtpResult>
   autoLogin(accountId: number): Promise<AutoLoginResult>
   closeAllBrowsers(): Promise<{ closed: number }>
@@ -268,6 +270,10 @@ export interface SystemApi {
   scheduleShutdown(seconds: number): Promise<{ ok: boolean; message?: string }>
   /** Cancels a previously scheduled shutdown (`shutdown /a`). */
   cancelShutdown(): Promise<{ ok: boolean }>
+  /** Checks if Kantumruy Pro font is installed in the system. */
+  checkFont(): Promise<{ installed: boolean }>
+  /** Installs Kantumruy Pro font to the OS system fonts directory. */
+  installFont(): Promise<{ ok: boolean; message: string }>
 }
 
 export interface UpdateAvailableInfo {
@@ -339,8 +345,8 @@ export interface LicenseApi {
 export interface BackupApi {
   /** Prompts a native save dialog, then packs the given accounts (DB records + folder names + Chrome profile folders) into a .zip. */
   export(accountIds: number[]): Promise<BackupExportResult>
-  /** Prompts a native open dialog, then restores accounts/folders/profiles from the selected .zip into the "Receive Account" folder. */
-  import(): Promise<BackupImportResult>
+  /** Prompts a native open dialog (or uses explicit path), then restores accounts/folders/profiles from the selected .zip into the "Receive Account" folder. */
+  import(explicitPath?: string): Promise<BackupImportResult>
   /** Fires after a successful import so any open window can refresh its grid/folder list without re-deriving the summary from the invoke() return value. */
   onImported(cb: (result: BackupImportResult) => void): () => void
 }

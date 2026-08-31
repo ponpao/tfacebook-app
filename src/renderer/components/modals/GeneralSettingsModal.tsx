@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react'
 import { Settings, FolderOpen, Eye, EyeOff } from 'lucide-react'
 import { ModalShell } from './ModalShell'
 import { useAccountStore } from '../../store/useAccountStore'
+import { useLanguageStore } from '../../store/useLanguageStore'
 import { DEFAULT_SETTINGS, type AppSettings, type BrowserMode, type HardwareMode } from '../../../types/settings'
 
 export function GeneralSettingsModal({
@@ -77,20 +78,22 @@ export function GeneralSettingsModal({
     }
   }
 
+  const t = useLanguageStore((s) => s.t)
+
   return (
     <ModalShell
       open={open}
       onClose={onClose}
-      title="General Settings"
+      title={t('generalSettingsTitle')}
       icon={Settings}
       width="max-w-lg"
       footer={
         <>
           <button className="win-btn" onClick={onClose} disabled={saving}>
-            Cancel
+            {t('cancel')}
           </button>
           <button className="win-btn-accent" onClick={() => void save()} disabled={saving || loading}>
-            {saving ? 'Saving…' : 'Save Settings'}
+            {saving ? 'Saving…' : t('saveSettings')}
           </button>
         </>
       }
@@ -102,7 +105,7 @@ export function GeneralSettingsModal({
       ) : (
         <div className="flex flex-col gap-4 text-[12px]">
           <fieldset className="win-fieldset flex items-center gap-3">
-            <legend>Default Concurrency / Threads</legend>
+            <legend>{t('defaultConcurrency')}</legend>
             <input
               type="number"
               min={1}
@@ -111,11 +114,11 @@ export function GeneralSettingsModal({
               value={settings.defaultConcurrency}
               onChange={(e) => patch({ defaultConcurrency: Number(e.target.value) })}
             />
-            <span className="text-[11px] text-slate-500">accounts run in parallel (1–10)</span>
+            <span className="text-[11px] text-slate-500">{t('accountsRunInParallel')}</span>
           </fieldset>
 
           <fieldset className="win-fieldset">
-            <legend>Browser Mode</legend>
+            <legend>{t('browserMode')}</legend>
             <div className="flex gap-4 py-1">
               <label className="flex items-center gap-1.5">
                 <input
@@ -124,7 +127,7 @@ export function GeneralSettingsModal({
                   checked={settings.browserMode === 'headless'}
                   onChange={() => patch({ browserMode: 'headless' as BrowserMode })}
                 />
-                Headless (background, no window)
+                {t('headlessDesc')}
               </label>
               <label className="flex items-center gap-1.5">
                 <input
@@ -133,13 +136,13 @@ export function GeneralSettingsModal({
                   checked={settings.browserMode === 'headed'}
                   onChange={() => patch({ browserMode: 'headed' as BrowserMode })}
                 />
-                Headed (Visible Chrome)
+                {t('headedDesc')}
               </label>
             </div>
           </fieldset>
 
           <fieldset className="win-fieldset">
-            <legend>Hardware Running Mode</legend>
+            <legend>{t('hardwareRunningMode')}</legend>
             <div className="flex gap-4 py-1">
               <label className="flex items-center gap-1.5" title="Forces software rendering — most compatible when running many concurrent instances without a capable/stable GPU driver.">
                 <input
@@ -148,7 +151,7 @@ export function GeneralSettingsModal({
                   checked={settings.hardwareMode === 'cpu'}
                   onChange={() => patch({ hardwareMode: 'cpu' as HardwareMode })}
                 />
-                CPU Only
+                {t('cpuOnly')}
               </label>
               <label className="flex items-center gap-1.5" title="Forces GPU rasterization, WebGL, and hardware acceleration on.">
                 <input
@@ -157,7 +160,7 @@ export function GeneralSettingsModal({
                   checked={settings.hardwareMode === 'gpu'}
                   onChange={() => patch({ hardwareMode: 'gpu' as HardwareMode })}
                 />
-                GPU Acceleration
+                {t('gpuAcceleration')}
               </label>
               <label className="flex items-center gap-1.5" title="Chromium's own default hybrid behavior — no extra flags either way.">
                 <input
@@ -166,33 +169,33 @@ export function GeneralSettingsModal({
                   checked={settings.hardwareMode === 'auto'}
                   onChange={() => patch({ hardwareMode: 'auto' as HardwareMode })}
                 />
-                Auto / Both
+                {t('autoBoth')}
               </label>
             </div>
           </fieldset>
 
           <label className="flex flex-col gap-1.5">
             <span className="font-medium text-slate-700">
-              Custom Chromium Path <span className="text-slate-400">(optional override)</span>
+              {t('customChromiumPath')}
             </span>
             <div className="flex gap-1.5">
               <input
                 className="win-input flex-1"
-                placeholder="Leave empty to use the bundled Chromium"
+                placeholder={t('customChromiumPlaceholder')}
                 value={settings.customChromiumPath}
                 onChange={(e) => patch({ customChromiumPath: e.target.value })}
               />
               <button className="win-btn" onClick={() => void browseChromium()}>
                 <FolderOpen size={13} className="text-[#4a6a8a]" />
-                Browse…
+                {t('browse')}
               </button>
             </div>
           </label>
 
           <fieldset className="win-fieldset flex items-center gap-3">
-            <legend>Delay Range Between Actions</legend>
+            <legend>{t('delayRangeBetweenActions')}</legend>
             <label className="flex items-center gap-1.5">
-              Min (s)
+              {t('minS')}
               <input
                 type="number"
                 min={0}
@@ -203,7 +206,7 @@ export function GeneralSettingsModal({
               />
             </label>
             <label className="flex items-center gap-1.5">
-              Max (s)
+              {t('maxS')}
               <input
                 type="number"
                 min={0}
@@ -221,7 +224,7 @@ export function GeneralSettingsModal({
               checked={settings.autoSaveCookies}
               onChange={(e) => patch({ autoSaveCookies: e.target.checked })}
             />
-            Auto-save cookies after a successful login
+            {t('autoSaveCookies')}
           </label>
 
           <label className="flex items-center gap-1.5" title="When a queued account's saved cookie is still valid, go straight to the warm-up scenario instead of running full auto-login — credentials are only ever entered if the session turns out to be dead/logged out.">
@@ -230,7 +233,7 @@ export function GeneralSettingsModal({
               checked={settings.directWarmup}
               onChange={(e) => patch({ directWarmup: e.target.checked })}
             />
-            Direct Warm-up (Skip Login if Session/Cookie is Valid)
+            {t('directWarmup')}
           </label>
 
           <label className="flex items-center gap-1.5" title="Once a login-queue run finishes with no other batch running, shows a 60-second countdown you can cancel before this PC actually shuts down. Windows only.">
@@ -239,12 +242,12 @@ export function GeneralSettingsModal({
               checked={settings.autoShutdownAfterQueue}
               onChange={(e) => patch({ autoShutdownAfterQueue: e.target.checked })}
             />
-            Auto Shutdown PC after queue completes
+            {t('autoShutdownPc')}
           </label>
 
           <label className="flex flex-col gap-1.5">
             <span className="font-medium text-slate-700">
-              Chrome Profile Storage Path <span className="text-slate-400">(optional override)</span>
+              {t('chromeProfilePath')}
             </span>
             <div className="flex gap-1.5">
               <input
@@ -255,14 +258,14 @@ export function GeneralSettingsModal({
               />
               <button className="win-btn" onClick={() => void browseProfileDirectory()}>
                 <FolderOpen size={13} className="text-[#4a6a8a]" />
-                Browse…
+                {t('browse')}
               </button>
             </div>
           </label>
 
           <label className="flex flex-col gap-1.5">
             <span className="font-medium text-slate-700">
-              Avatar Download Directory <span className="text-slate-400">(optional override)</span>
+              {t('avatarDownloadDir')}
             </span>
             <div className="flex gap-1.5">
               <input
@@ -273,7 +276,7 @@ export function GeneralSettingsModal({
               />
               <button className="win-btn" onClick={() => void browseAvatarDirectory()}>
                 <FolderOpen size={13} className="text-[#4a6a8a]" />
-                Browse…
+                {t('browse')}
               </button>
             </div>
           </label>
@@ -339,7 +342,7 @@ export function GeneralSettingsModal({
 
           <label className="flex flex-col gap-1.5">
             <span className="font-medium text-slate-700">
-              2Captcha API Key <span className="text-slate-400">(optional)</span>
+              {t('twoCaptchaApiKey')} <span className="text-slate-400">(optional)</span>
             </span>
             <div className="flex gap-1.5">
               <input
@@ -369,7 +372,7 @@ export function GeneralSettingsModal({
               checked={settings.blockMedia}
               onChange={(e) => patch({ blockMedia: e.target.checked })}
             />
-            Block Media &amp; Images (Saves ~60% RAM &amp; CPU)
+            {t('blockMediaImages')}
           </label>
         </div>
       )}

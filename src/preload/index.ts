@@ -38,7 +38,9 @@ const api: AppApi = {
       return () => ipcRenderer.removeListener(IPC.system.onNetworkStatus, listener)
     },
     scheduleShutdown: (seconds: number) => ipcRenderer.invoke(IPC.system.scheduleShutdown, seconds),
-    cancelShutdown: () => ipcRenderer.invoke(IPC.system.cancelShutdown)
+    cancelShutdown: () => ipcRenderer.invoke(IPC.system.cancelShutdown),
+    checkFont: () => ipcRenderer.invoke(IPC.system.checkFont),
+    installFont: () => ipcRenderer.invoke(IPC.system.installFont)
   },
   accounts: {
     list: (query: AccountQuery) => ipcRenderer.invoke(IPC.accounts.list, query),
@@ -77,7 +79,7 @@ const api: AppApi = {
   scenarios: {
     getAll: () => ipcRenderer.invoke(IPC.scenarios.getAll),
     create: (input: NewScenario) => ipcRenderer.invoke(IPC.scenarios.create, input),
-    update: (id, patch: { name?: string; steps?: ScenarioStep[] }) =>
+    update: (id, patch: Partial<NewScenario>) =>
       ipcRenderer.invoke(IPC.scenarios.update, id, patch),
     delete: (id) => ipcRenderer.invoke(IPC.scenarios.delete, id)
   },
@@ -110,7 +112,7 @@ const api: AppApi = {
   automation: {
     openProfile: (accountId, slotIndex, rowNumber) =>
       ipcRenderer.invoke(IPC.automation.openProfile, accountId, slotIndex, rowNumber),
-    checkLive: (accountId) => ipcRenderer.invoke(IPC.automation.checkLive, accountId),
+    checkLive: (target) => ipcRenderer.invoke(IPC.automation.checkLive, target),
     getMailOtp: (accountId) => ipcRenderer.invoke(IPC.automation.getMailOtp, accountId),
     autoLogin: (accountId) => ipcRenderer.invoke(IPC.automation.autoLogin, accountId),
     closeAllBrowsers: () => ipcRenderer.invoke(IPC.automation.closeAllBrowsers),
@@ -236,7 +238,7 @@ const api: AppApi = {
   },
   backup: {
     export: (accountIds: number[]) => ipcRenderer.invoke(IPC.backup.export, accountIds),
-    import: () => ipcRenderer.invoke(IPC.backup.import),
+    import: (explicitPath?: string) => ipcRenderer.invoke(IPC.backup.import, explicitPath),
     onImported: (cb) => {
       const listener = (_e: unknown, payload: unknown): void => cb(payload as Parameters<typeof cb>[0])
       ipcRenderer.on(IPC.backup.onImported, listener)

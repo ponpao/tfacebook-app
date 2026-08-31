@@ -13,7 +13,7 @@ import { fetchFacebookOtp } from './imapWorker'
 import { generateTOTP } from './totp'
 import { getAppSettings } from '../db/settingsRepo'
 
-export type LoginStatus = 'Live' | 'Checkpoint' | 'Die' | 'Changed Pass' | 'Unknown'
+export type LoginStatus = 'Live' | 'Checkpoint' | 'Die' | 'Session Expired' | 'Changed Pass' | 'Unknown'
 
 export interface AutoLoginResult {
   success: boolean
@@ -58,6 +58,7 @@ export type ProgressStage =
   | 'Live'
   | 'Checkpoint'
   | 'Die'
+  | 'Session Expired'
   | 'Changed Pass'
   | 'Unknown'
   | 'Cancelled'
@@ -340,7 +341,7 @@ export class AbortedError extends Error {
   }
 }
 
-function checkAborted(signal?: AbortSignal): void {
+export function checkAborted(signal?: AbortSignal): void {
   if (signal?.aborted) throw new AbortedError()
 }
 
@@ -349,7 +350,7 @@ function checkAborted(signal?: AbortSignal): void {
  * (e.g. a locator timeout) can't block cancellation — Stop takes effect
  * immediately instead of waiting out the operation's own timeout.
  */
-function raceAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+export function raceAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
   if (!signal) return promise
   return new Promise<T>((resolve, reject) => {
     const onAbort = (): void => reject(new AbortedError())
@@ -604,7 +605,13 @@ const ACCOUNT_LOCKED_PATTERNS = [
   'days left to appeal',
   'day left to appeal',
   'appeal this decision',
-  'your account is disabled'
+  'your account is disabled',
+  'you can no longer request a review',
+  "couldn't create multiple sessions",
+  'could not create multiple sessions',
+  'we removed some content or messages',
+  'we removed some posts',
+  'account status'
 ]
 
 /**
@@ -629,39 +636,32 @@ function is282LockText(body: string): boolean {
  */
 export async function classifyPage(page: Page): Promise<{ status: LoginStatus; detail: string }> {
   const url = page.url()
-  const body = await visibleText(page)
+  const body = (await visibleText(page)) || ''
+  const lowerBody = body.toLowerCase()
 
-  // ---- Case D: wrong password (checked first — takes priority over any
-  // superficial "checkpoint" wording/URL on the same error response) ----
-  if (WRONG_PASSWORD_PATTERNS.some((p) => body.includes(p))) {
+  // ---- Case D: wrong password ----
+  if (WRONG_PASSWORD_PATTERNS.some((p) => lowerBody.includes(p.toLowerCase()))) {
     return { status: 'Changed Pass', detail: 'Wrong Password' }
   }
 
-  // ---- Case C: locked / disabled / suspended ----
-  if (ACCOUNT_LOCKED_PATTERNS.some((p) => body.includes(p)) || url.includes('/disabled')) {
+  // ---- Case C: locked / disabled / suspended / review restricted ----
+  if (
+    ACCOUNT_LOCKED_PATTERNS.some((p) => lowerBody.includes(p.toLowerCase())) ||
+    url.includes('/disabled') ||
+    url.includes('/restriction') ||
+    lowerBody.includes('you can no longer request a review') ||
+    lowerBody.includes("couldn't create multiple sessions")
+  ) {
     return { status: 'Die', detail: 'Account Disabled / Suspended' }
   }
 
-  // ---- Real checkpoint: the /checkpoint/ URL PATH ITSELF is the
-  // unconditional, highest-priority signal — Facebook never puts a
-  // logged-out visitor or a normal 2FA step at this specific path, only an
-  // actual account-level checkpoint/suspension screen. This must NOT
-  // additionally require matching a hardcoded body-text pattern before
-  // counting as Checkpoint: Facebook varies its suspension copy (the
-  // account's own name interpolated, "N days left to appeal" instead of a
-  // fixed phrase, etc.), and a URL clearly on /checkpoint/ that happens not
-  // to match any of ACCOUNT_LOCKED_PATTERNS/CHECKPOINT_282_PATTERNS must
-  // still be reported as Checkpoint — never silently fall through to the
-  // generic Live fallback below just because the profile nav bar still
-  // renders the account's name/avatar (which it does even on a suspension
-  // screen). The body text is used only to pick the more specific detail
-  // label; it is never a gate on whether this counts as Checkpoint at all. ----
+  // ---- Real checkpoint: the /checkpoint/ URL PATH ITSELF is the unconditional signal ----
   if (url.includes('/checkpoint/')) {
     if (is282LockText(body)) {
       return { status: 'Checkpoint', detail: 'Checkpoint 282' }
     }
     const lockCodeMatch = body.match(/\b(956|282)\b/)
-    const lockedText = ACCOUNT_LOCKED_PATTERNS.some((p) => body.includes(p))
+    const lockedText = ACCOUNT_LOCKED_PATTERNS.some((p) => lowerBody.includes(p.toLowerCase()))
     return {
       status: 'Checkpoint',
       detail: lockCodeMatch
@@ -672,30 +672,57 @@ export async function classifyPage(page: Page): Promise<{ status: LoginStatus; d
     }
   }
 
-  // ---- Still on a login page — checked by URL, body text, AND DOM presence
-  // of the login form (isLoginPage), since web.facebook.com stays at the bare
-  // "/" path (no "login" substring) even when the login form is showing. ----
-  if (
-    url.includes('login') ||
-    body.includes('log in to facebook') ||
-    body.includes('log into facebook') ||
-    (await isLoginPage(page))
-  ) {
-    return { status: 'Unknown', detail: 'Not logged in (login page)' }
-  }
-
-  // ---- Trust-device interstitial: c_user is already set here (the page
-  // literally says "You're logged in"), so without this check it would fall
-  // through to Live below and every extraction step afterward would scrape
-  // this blank screen instead of the real feed. Callers should resolve it
-  // (resolveTrustDeviceScreen) before calling classifyPage, but this is kept
-  // as a defensive check in case that ever changes. ----
+  // ---- Trust-device interstitial ----
   if (await isTrustDeviceScreen(page)) {
     return { status: 'Unknown', detail: 'Trust this device prompt not yet resolved' }
   }
 
-  // ---- Live: home feed / profile reachable ----
-  return { status: 'Live', detail: 'Session active' }
+  // ---- Logged Out / Profile Chooser ("Continue as...") / Session Expired / Login Page ----
+  const hasLoginForm = await page
+    .locator('input#email, input#pass, input[name="email"], input[name="pass"], button[name="login"], #loginbutton, input[type="password"]')
+    .first()
+    .isVisible()
+    .catch(() => false)
+
+  const isLoggedOut =
+    url.includes('facebook.com/login') ||
+    url.endsWith('/login') ||
+    url.includes('/recover') ||
+    url.includes('/login.php') ||
+    url.includes('/login/reauth.php') ||
+    lowerBody.includes('log in to facebook') ||
+    lowerBody.includes('log into facebook') ||
+    lowerBody.includes('session expired') ||
+    lowerBody.includes('please log in again') ||
+    lowerBody.includes('recent logins') ||
+    lowerBody.includes('choose an account') ||
+    lowerBody.includes('continue as') ||
+    lowerBody.includes('log in as') ||
+    lowerBody.includes('log into another account') ||
+    lowerBody.includes('not you?') ||
+    (lowerBody.includes('continue') && (lowerBody.includes('password') || lowerBody.includes('profile') || lowerBody.includes('account'))) ||
+    hasLoginForm ||
+    (await isLoginPage(page))
+
+  if (isLoggedOut) {
+    return { status: 'Session Expired', detail: 'Cookie Expired / Logged Out' }
+  }
+
+  // ---- Check for genuine LIVE navigation / feed / profile elements ----
+  const hasLiveNav = await page
+    .locator(
+      'div[role="navigation"], div[aria-label="Your profile"], svg[aria-label="Your profile"], a[href*="/me"], a[href*="/profile.php"], div[role="feed"], div[role="main"], div[aria-label="Account controls and settings"], div[aria-label="Facebook"]'
+    )
+    .first()
+    .isVisible()
+    .catch(() => false)
+
+  if (hasLiveNav) {
+    return { status: 'Live', detail: 'Session active' }
+  }
+
+  // Page still loading or empty React container
+  return { status: 'Unknown', detail: 'Page still loading...' }
 }
 
 /**
@@ -1384,46 +1411,82 @@ const NON_NAME_HINTS = [
   'marketplace',
   'groups',
   'gaming',
-  'menu'
+  'menu',
+  'មិនទាន់',
+  'មិនទាន់មានឈ្មោះ',
+  'មិនទាន់ទាញឈ្មោះ',
+  'unnamed',
+  'unknown'
 ]
 
 function looksLikeRealName(s: string | null | undefined): s is string {
   if (!s) return false
   const name = s.trim()
   if (name.length < 2 || name.length > 60) return false
+  if (/^\d+\s*[-–—]\s*/.test(name)) return false
   const lower = name.toLowerCase()
   return !NON_NAME_HINTS.some((h) => lower.includes(h))
 }
 
 /**
+ * Dismiss any blocking overlays like "You're in sleep mode" or general dialogs.
+ */
+export async function dismissFacebookDialogs(page: Page): Promise<void> {
+  try {
+    await page.keyboard.press('Escape').catch(() => void 0)
+    const closeBtn = page
+      .locator(
+        'div[role="dialog"] div[aria-label="Close"], div[role="dialog"] button[aria-label="Close"], div[aria-label="Close"], button[aria-label="Close"], div[role="dialog"] [aria-label*="Close" i], div[role="dialog"] [aria-label*="Not now" i], div[role="dialog"] [aria-label*="Dismiss" i], div[role="dialog"] [aria-label*="Skip" i]'
+      )
+      .first()
+    if (await closeBtn.isVisible().catch(() => false)) {
+      await closeBtn.click({ timeout: 1000, force: true }).catch(() => void 0)
+    }
+  } catch {
+    /* best-effort */
+  }
+}
+
+/**
  * Best-effort extraction of the account's display name.
  *
- * The single most reliable source is the nav bar's link to the account's OWN
- * profile — `a[href*="profile.php?id={uid}"]` — whose text content is
- * exactly the display name Facebook shows for that account. This is scoped
- * to the account's own UID specifically so it can never pick up a friend's
- * name from an unrelated profile link elsewhere on the feed. Falls back to
- * the document title, then generic nav-bar selectors, if the UID link isn't
- * present (e.g. a vanity-username account with no numeric UID on file).
+ * 1. Checks feed composer text (e.g. "What's on your mind, Instalaciones?")
+ * 2. Nav bar's link to the account's OWN profile — `a[href*="profile.php?id={uid}"]`
+ * 3. Generic semantic selectors
  */
 export async function extractProfileName(page: Page, uid?: string | null): Promise<string | undefined> {
+  // 1. From composer greeting on the home feed
+  try {
+    const composer = page
+      .locator(
+        'span:has-text("What\'s on your mind"), span:has-text("Bạn đang nghĩ gì"), span:has-text("តើអ្នកកំពុងគិតអ្វី")'
+      )
+      .first()
+    const composerText = await composer.textContent({ timeout: 1500 }).catch(() => null)
+    if (composerText) {
+      const m = composerText.match(
+        /(?:What's on your mind|Bạn đang nghĩ gì|តើអ្នកកំពុងគិតអ្វី)[,\s]+([^?]+)\?/i
+      )
+      if (m && looksLikeRealName(m[1])) return m[1].trim()
+    }
+  } catch {
+    /* ignore */
+  }
+
+  // 2. From UID-scoped profile link
   if (uid) {
     const ownProfileLink = page.locator(`a[href*="profile.php?id=${uid}"]`).first()
-    const raw = await ownProfileLink.textContent().catch(() => null)
+    const raw = await ownProfileLink.textContent({ timeout: 1500 }).catch(() => null)
     if (looksLikeRealName(raw)) return raw.trim()
   }
 
-  // Title form: "Saniyah Lopez • Facebook" or "Saniyah Lopez | Facebook".
-  const title = await page.title().catch(() => '')
-  const titleName = title.split(/[•|]/)[0]?.trim()
-  if (looksLikeRealName(titleName)) return titleName
-
+  // 3. Fallback semantic selectors
   for (const sel of PROFILE_NAME_SELECTORS) {
     const loc = page.locator(sel).first()
     const raw = await loc
-      .getAttribute('aria-label')
+      .getAttribute('aria-label', { timeout: 1000 })
       .catch(() => null)
-      .then((v) => v ?? loc.textContent().catch(() => null))
+      .then((v) => v ?? loc.textContent({ timeout: 1000 }).catch(() => null))
     if (looksLikeRealName(raw)) return raw.trim()
   }
   return undefined
@@ -1459,8 +1522,8 @@ export async function extractFromInlineScripts(
   page: Page
 ): Promise<{ userId?: string; name?: string; dtsg?: string }> {
   return (
-    (await page
-      .evaluate(() => {
+    (await Promise.race([
+      page.evaluate(() => {
         let name: string | null = null
         let userId: string | null = null
         let dtsg: string | null = null
@@ -1496,8 +1559,9 @@ export async function extractFromInlineScripts(
           if (inputEl?.value) dtsg = inputEl.value
         }
         return { userId: userId ?? undefined, name: name ?? undefined, dtsg: dtsg ?? undefined }
-      })
-      .catch(() => ({}))) || {}
+      }),
+      new Promise<any>((resolve) => setTimeout(() => resolve({}), 3000))
+    ]).catch(() => ({}))) || {}
   )
 }
 
@@ -1511,60 +1575,84 @@ export async function extractFriendsAndFollowers(
 ): Promise<{ friendsCount?: number; friendsList?: string[]; followers?: string; following?: string }> {
   try {
     checkAborted(signal)
+    await dismissFacebookDialogs(page)
+    const base = page.url().includes('web.facebook.com') ? 'https://web.facebook.com' : 'https://www.facebook.com'
+    const targetUrl = myUserId
+      ? `${base}/profile.php?id=${myUserId}&sk=friends`
+      : `${base}/me?sk=friends`
     await raceAbort(
-      page.goto('https://www.facebook.com/me?sk=friends', {
-        waitUntil: 'domcontentloaded',
-        timeout: 8000
-      }),
+      page
+        .goto(targetUrl, {
+          waitUntil: 'domcontentloaded',
+          timeout: 6000
+        })
+        .catch(() => null),
       signal
     )
-    await raceAbort(page.waitForTimeout(1500), signal)
-    const info = await page.evaluate((myId: string) => {
-      const main = document.querySelector('div[role="main"]') || document.body
-      const pageText = ((main as HTMLElement).innerText || '').replace(/ /g, ' ')
-      const followerMatch = pageText.match(/(\d[\d,.]*\s*(?:followers?|អ្នកតាមដាន))/i)
-      const followingMatch = pageText.match(/(\d[\d,.]*\s*(?:following|កំពុងតាមដាន))/i)
-      const friendMatch =
-        pageText.match(/Friends\s*·?\s*(\d[\d,.]*)/i) ||
-        pageText.match(/(\d[\d,.]*)\s*(?:friends?|មិត្តភក្តិ)/i) ||
-        pageText.match(/(?:friends?|មិត្តភក្តិ)\s*·?\s*(\d[\d,.]*)/i)
-      const NON_NAMES = [
-        'Friends', 'Find Friends', 'Friend requests', 'Recently Added', 'Followers',
-        'Following', 'More', 'All', 'About', 'Reels', 'Photos', 'Check-ins', 'Edit', 'Dashboard'
-      ]
-      const friendList: string[] = []
-      const seen = new Set<string>()
-      for (const a of Array.from(main.querySelectorAll('a[role="link"]'))) {
-        const href = (a as HTMLAnchorElement).href || ''
-        const text = ((a as HTMLElement).innerText || '').trim()
-        const isNotSelf = myId ? !href.includes(myId) && !href.includes('/me') : !href.includes('/me')
-        const isProfile =
-          href.includes('profile.php?id=') ||
-          (!href.includes('/groups/') && !href.includes('/pages/') && !href.includes('/messages/'))
-        if (isNotSelf && isProfile && !NON_NAMES.includes(text) && text.length > 1 && !text.includes('\n')) {
-          if (!seen.has(href)) {
-            seen.add(href)
-            friendList.push(text)
+    if (page.url().includes('_rdc=1') || page.url().endsWith('.facebook.com/')) {
+      // If direct friends link bounced to feed, go directly to profile /me
+      await raceAbort(
+        page.goto(`${base}/me`, { waitUntil: 'domcontentloaded', timeout: 6000 }).catch(() => null),
+        signal
+      )
+    }
+    await raceAbort(
+      page.waitForSelector('div[role="main"], a[role="link"]', { timeout: 3000 }).catch(() => void 0),
+      signal
+    )
+    await raceAbort(page.waitForTimeout(800), signal)
+    const info = await raceAbort(
+      Promise.race([
+        page.evaluate((myId: string) => {
+          const main = document.querySelector('div[role="main"]') || document.body
+          const pageText = ((main as HTMLElement).innerText || '').replace(/\u00a0/g, ' ')
+          const followerMatch = pageText.match(/(\d[\d,.]*\s*(?:followers?|អ្នកតាមដាន))/i)
+          const followingMatch = pageText.match(/(\d[\d,.]*\s*(?:following|កំពុងតាមដាន))/i)
+          const friendMatch =
+            pageText.match(/Friends\s*·?\s*(\d[\d,.]*)/i) ||
+            pageText.match(/(\d[\d,.]*)\s*(?:friends?|មិត្តភក្តិ)/i) ||
+            pageText.match(/(?:friends?|មិត្តភក្តិ)\s*·?\s*(\d[\d,.]*)/i)
+          const NON_NAMES = [
+            'Friends', 'Find Friends', 'Friend requests', 'Recently Added', 'Followers',
+            'Following', 'More', 'All', 'About', 'Reels', 'Photos', 'Check-ins', 'Edit', 'Dashboard'
+          ]
+          const friendList: string[] = []
+          const seen = new Set<string>()
+          for (const a of Array.from(main.querySelectorAll('a[role="link"]'))) {
+            const href = (a as HTMLAnchorElement).href || ''
+            const text = ((a as HTMLElement).innerText || '').trim()
+            const isNotSelf = myId ? !href.includes(myId) && !href.includes('/me') : !href.includes('/me')
+            const isProfile =
+              href.includes('profile.php?id=') ||
+              (!href.includes('/groups/') && !href.includes('/pages/') && !href.includes('/messages/'))
+            if (isNotSelf && isProfile && !NON_NAMES.includes(text) && text.length > 1 && !text.includes('\n')) {
+              if (!seen.has(href)) {
+                seen.add(href)
+                friendList.push(text)
+              }
+            }
           }
-        }
-      }
-      const parseNum = (s: string | undefined): number | undefined => {
-        if (!s) return undefined
-        const m = s.match(/\d[\d,.]*/)
-        if (!m) return undefined
-        const n = parseInt(m[0].replace(/[,.]/g, ''), 10)
-        return Number.isFinite(n) ? n : undefined
-      }
-      return {
-        friendsCount: parseNum(friendMatch?.[1]) ?? (friendList.length > 0 ? friendList.length : undefined),
-        friendsList: friendList.length ? friendList : undefined,
-        followers: followerMatch ? followerMatch[1].trim() : undefined,
-        following: followingMatch ? followingMatch[1].trim() : undefined
-      }
-    }, myUserId ?? '')
-    return info
+          const parseNum = (s: string | undefined): number | undefined => {
+            if (!s) return undefined
+            const m = s.match(/\d[\d,.]*/)
+            if (!m) return undefined
+            const n = parseInt(m[0].replace(/[,.]/g, ''), 10)
+            return Number.isFinite(n) ? n : undefined
+          }
+          return {
+            friendsCount: parseNum(friendMatch?.[1]) ?? (friendList.length > 0 ? friendList.length : undefined),
+            friendsList: friendList.length ? friendList : undefined,
+            followers: followerMatch ? followerMatch[1].trim() : undefined,
+            following: followingMatch ? followingMatch[1].trim() : undefined
+          }
+        }, myUserId ?? ''),
+        new Promise<any>((resolve) => setTimeout(() => resolve({}), 4000))
+      ]),
+      signal
+    )
+    return info || {}
   } catch (err) {
-    console.warn('[extractFriendsAndFollowers] error:', err)
+    if (signal?.aborted || err instanceof AbortedError) throw err
     return {}
   }
 }
@@ -1578,28 +1666,58 @@ export async function extractCreatedDateFromActivityLog(
 ): Promise<string | undefined> {
   try {
     checkAborted(signal)
+    // Quick check on current page first before navigating
+    const quickDate = await raceAbort(
+      Promise.race([
+        page.evaluate(() => {
+          const bodyText = document.body.innerText || ''
+          const m = bodyText.match(/(?:Joined|បានចូលរួម)\s*([A-Za-z]+\s+\d{4}|\d{1,2}\s+[A-Za-z]+\s+\d{4})/i)
+          return m ? m[1] : null
+        }),
+        new Promise<string | null>((resolve) => setTimeout(() => resolve(null), 1000))
+      ]),
+      signal
+    ).catch(() => null)
+    if (quickDate) return quickDate
+
+    await dismissFacebookDialogs(page)
+    const base = page.url().includes('web.facebook.com') ? 'https://web.facebook.com' : 'https://www.facebook.com'
     await raceAbort(
-      page.goto('https://www.facebook.com/me/allactivity', {
-        waitUntil: 'domcontentloaded',
-        timeout: 8000
-      }),
+      page
+        .goto(`${base}/me/allactivity`, {
+          waitUntil: 'domcontentloaded',
+          timeout: 6000
+        })
+        .catch(() => null),
       signal
     )
-    await raceAbort(page.waitForTimeout(2500), signal)
-    const date = await page.evaluate(() => {
-      const main = document.querySelector('div[role="main"]') || document.body
-      const lines = (main as HTMLElement).innerText.split('\n').map((l) => l.trim()).filter(Boolean)
-      const dateRegex =
-        /^(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}$/i
-      const dates = lines.filter((l) => dateRegex.test(l))
-      if (dates.length > 0) return dates[dates.length - 1]
-      const joinedMatch = (main as HTMLElement).innerText.match(/Joined\s+([A-Za-z]+\s+\d{4})/i)
-      if (joinedMatch) return joinedMatch[1]
-      return null
-    })
+    await raceAbort(
+      page.waitForSelector('div[role="main"], div[role="feed"]', { timeout: 3000 }).catch(() => void 0),
+      signal
+    )
+    await raceAbort(page.waitForTimeout(800), signal)
+    const date = await raceAbort(
+      Promise.race([
+        page.evaluate(() => {
+          const main = document.querySelector('div[role="main"]') || document.body
+          const lines = (main as HTMLElement).innerText.split('\n').map((l) => l.trim()).filter(Boolean)
+          const dateRegex =
+            /^(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}$/i
+          const dates = lines.filter((l) => dateRegex.test(l))
+          if (dates.length > 0) return dates[dates.length - 1]
+          const joinedMatch =
+            (main as HTMLElement).innerText.match(/Joined\s+([A-Za-z]+\s+\d{4})/i) ||
+            document.body.innerText.match(/(?:Joined|បានចូលរួម)\s*([A-Za-z0-9\s,]+)/i)
+          if (joinedMatch) return joinedMatch[1]
+          return null
+        }),
+        new Promise<string | null>((resolve) => setTimeout(() => resolve(null), 4000))
+      ]),
+      signal
+    )
     return date ?? undefined
   } catch (err) {
-    console.warn('[extractCreatedDateFromActivityLog] error:', err)
+    if (signal?.aborted || err instanceof AbortedError) throw err
     return undefined
   }
 }
@@ -1613,22 +1731,40 @@ export async function extractPrimaryLocation(
 ): Promise<string | undefined> {
   try {
     checkAborted(signal)
+    await dismissFacebookDialogs(page)
+    const base = page.url().includes('web.facebook.com') ? 'https://web.facebook.com' : 'https://www.facebook.com'
     await raceAbort(
-      page.goto('https://www.facebook.com/primary_location/info', {
-        waitUntil: 'domcontentloaded',
-        timeout: 8000
-      }),
+      page
+        .goto(`${base}/primary_location/info`, {
+          waitUntil: 'domcontentloaded',
+          timeout: 6000
+        })
+        .catch(() => null),
       signal
     )
-    await raceAbort(page.waitForTimeout(1500), signal)
-    const location = await page.evaluate(() => {
-      const bodyText = (document.body.innerText || '').replace(/ /g, ' ')
-      const match = bodyText.match(/Your primary location is near:\s*([^\n\r]+)/i)
-      return match ? match[1].trim().replace(/\s+/g, ' ') : null
-    })
+    await raceAbort(
+      page.waitForSelector('div[role="main"], body', { timeout: 3000 }).catch(() => void 0),
+      signal
+    )
+    await raceAbort(page.waitForTimeout(800), signal)
+    const location = await raceAbort(
+      Promise.race([
+        page.evaluate(() => {
+          const bodyText = (document.body.innerText || '').replace(/\u00a0/g, ' ')
+          const match =
+            bodyText.match(/Your primary location is near:\s*([^\n\r]+)/i) ||
+            bodyText.match(/Your primary location:\s*([^\n\r]+)/i) ||
+            bodyText.match(/ទីតាំងចម្បងរបស់អ្នកគឺនៅជិត:\s*([^\n\r]+)/i) ||
+            bodyText.match(/ទីតាំងចម្បង:\s*([^\n\r]+)/i)
+          return match ? match[1].trim().replace(/\s+/g, ' ') : null
+        }),
+        new Promise<string | null>((resolve) => setTimeout(() => resolve(null), 4000))
+      ]),
+      signal
+    )
     return location ?? undefined
   } catch (err) {
-    console.warn('[extractPrimaryLocation] error:', err)
+    if (signal?.aborted || err instanceof AbortedError) throw err
     return undefined
   }
 }
@@ -1642,44 +1778,63 @@ export async function extractCurrentDeviceLocation(
 ): Promise<string | undefined> {
   try {
     checkAborted(signal)
+    await dismissFacebookDialogs(page)
     await raceAbort(
-      page.goto('https://accountscenter.facebook.com/password_and_security/login_activity', {
-        waitUntil: 'domcontentloaded',
-        timeout: 8000
-      }),
+      page
+        .goto('https://accountscenter.facebook.com/password_and_security/login_activity', {
+          waitUntil: 'domcontentloaded',
+          timeout: 7000
+        })
+        .catch(() => null),
       signal
     )
-    await raceAbort(page.waitForTimeout(2500), signal)
+    await raceAbort(
+      page.waitForSelector('div[role="main"], body', { timeout: 3000 }).catch(() => void 0),
+      signal
+    )
+    await raceAbort(page.waitForTimeout(800), signal)
 
     // Click the account row to expand device login activity
     try {
-      await page.evaluate(() => {
-        const clickables = Array.from(document.querySelectorAll('div[role="button"], a[role="link"]'))
-        const target = clickables.find((el) => {
-          const txt = (el as HTMLElement).innerText || ''
-          const label = el.getAttribute('aria-label') || ''
-          return (
-            /more|Facebook|This device|Active now/i.test(txt) &&
-            !/Learn more|Preferences|Back|Close|Settings|Password|Two-factor|Saved|Passkey|Security/i.test(txt + label)
-          )
-        })
-        if (target) (target as HTMLElement).click()
-      })
-      await raceAbort(page.waitForTimeout(2500), signal)
+      await raceAbort(
+        Promise.race([
+          page.evaluate(() => {
+            const clickables = Array.from(document.querySelectorAll('div[role="button"], a[role="link"]'))
+            const target = clickables.find((el) => {
+              const txt = (el as HTMLElement).innerText || ''
+              const label = el.getAttribute('aria-label') || ''
+              return (
+                /more|Facebook|This device|Active now/i.test(txt) &&
+                !/Learn more|Preferences|Back|Close|Settings|Password|Two-factor|Saved|Passkey|Security/i.test(txt + label)
+              )
+            })
+            if (target) (target as HTMLElement).click()
+          }),
+          new Promise((resolve) => setTimeout(resolve, 2000))
+        ]),
+        signal
+      )
+      await raceAbort(page.waitForTimeout(800), signal)
     } catch {
       /* best-effort row click */
     }
 
-    const loc = await page.evaluate(() => {
-      const lines = document.body.innerText.split('\n').map((l) => l.trim()).filter(Boolean)
-      for (let i = 0; i < lines.length; i++) {
-        if (/this device/i.test(lines[i]) && i > 0) return lines[i - 1]
-      }
-      return null
-    })
+    const loc = await raceAbort(
+      Promise.race([
+        page.evaluate(() => {
+          const lines = document.body.innerText.split('\n').map((l) => l.trim()).filter(Boolean)
+          for (let i = 0; i < lines.length; i++) {
+            if (/this device/i.test(lines[i]) && i > 0) return lines[i - 1]
+          }
+          return null
+        }),
+        new Promise<string | null>((resolve) => setTimeout(() => resolve(null), 3000))
+      ]),
+      signal
+    )
     return loc ?? undefined
   } catch (err) {
-    console.warn('[extractCurrentDeviceLocation] error:', err)
+    if (signal?.aborted || err instanceof AbortedError) throw err
     return undefined
   }
 }
@@ -1690,43 +1845,59 @@ export async function extractCurrentDeviceLocation(
 export async function extractGroupsCount(page: Page, signal?: AbortSignal): Promise<number | undefined> {
   try {
     checkAborted(signal)
+    await dismissFacebookDialogs(page)
+    const base = page.url().includes('web.facebook.com') ? 'https://web.facebook.com' : 'https://www.facebook.com'
     await raceAbort(
-      page.goto('https://www.facebook.com/groups/joins', {
-        waitUntil: 'domcontentloaded',
-        timeout: 8000
-      }),
+      page
+        .goto(`${base}/groups/joins/?nav_source=tab`, {
+          waitUntil: 'domcontentloaded',
+          timeout: 6000
+        })
+        .catch(() => null),
       signal
     )
-    await raceAbort(page.waitForTimeout(2000), signal)
-    const count = await page.evaluate(() => {
-      const main = document.querySelector('div[role="main"]') || document.body
-      const bodyText = (document.body.innerText || '').replace(/ /g, ' ')
-      const mainText = ((main as HTMLElement).innerText || '').replace(/ /g, ' ')
+    await raceAbort(
+      page.waitForSelector('div[role="main"], a[href*="/groups/"]', { timeout: 3000 }).catch(() => void 0),
+      signal
+    )
+    await raceAbort(page.waitForTimeout(800), signal)
+    const count = await raceAbort(
+      Promise.race([
+        page.evaluate(() => {
+          const main = document.querySelector('div[role="main"]') || document.body
+          const bodyText = (document.body.innerText || '').replace(/\u00a0/g, ' ')
+          const mainText = ((main as HTMLElement).innerText || '').replace(/\u00a0/g, ' ')
 
-      // 1. Check heading number in parentheses: "All groups you've joined (2)"
-      const headingMatch =
-        bodyText.match(/all groups you.ve joined\s*\((\d+)\)/i) ||
-        mainText.match(/all groups you.ve joined\s*\((\d+)\)/i) ||
-        bodyText.match(/(\d+)\s*groups? you.ve joined/i)
-      if (headingMatch) {
-        const n = parseInt(headingMatch[1], 10)
-        if (Number.isFinite(n)) return n
-      }
+          // 1. Check heading number in parentheses: "All groups you've joined (2)"
+          const headingMatch =
+            bodyText.match(/all groups you.ve joined\s*\((\d+)\)/i) ||
+            mainText.match(/all groups you.ve joined\s*\((\d+)\)/i) ||
+            bodyText.match(/ក្រុមទាំងអស់ដែលអ្នកបានចូលរួម\s*\((\d+)\)/i) ||
+            bodyText.match(/(\d+)\s*groups? you.ve joined/i) ||
+            bodyText.match(/(\d+)\s*ក្រុម/i)
+          if (headingMatch) {
+            const n = parseInt(headingMatch[1], 10)
+            if (Number.isFinite(n)) return n
+          }
 
-      // 2. Count distinct group IDs inside main container only
-      const uniqueGroupIds = new Set<string>()
-      for (const a of Array.from(main.querySelectorAll('a[href*="/groups/"]'))) {
-        const href = a.getAttribute('href') || ''
-        const m = href.match(/\/groups\/(\d+|[a-zA-Z0-9._-]+)\/?/)
-        if (m && !['joins', 'feed', 'discover', 'categories', 'create', 'user'].includes(m[1])) {
-          uniqueGroupIds.add(m[1])
-        }
-      }
-      return uniqueGroupIds.size
-    })
+          // 2. Count distinct group IDs inside main container only
+          const uniqueGroupIds = new Set<string>()
+          for (const a of Array.from(main.querySelectorAll('a[href*="/groups/"]'))) {
+            const href = a.getAttribute('href') || ''
+            const m = href.match(/\/groups\/(\d+|[a-zA-Z0-9._-]+)\/?/)
+            if (m && !['joins', 'feed', 'discover', 'categories', 'create', 'user'].includes(m[1])) {
+              uniqueGroupIds.add(m[1])
+            }
+          }
+          return uniqueGroupIds.size
+        }),
+        new Promise<number>((resolve) => setTimeout(() => resolve(0), 4000))
+      ]),
+      signal
+    )
     return typeof count === 'number' && Number.isFinite(count) ? count : 0
   } catch (err) {
-    console.warn('[extractGroupsCount] error:', err)
+    if (signal?.aborted || err instanceof AbortedError) throw err
     return undefined
   }
 }
@@ -1742,74 +1913,88 @@ export interface ExtractedPagesResult {
 export async function extractPagesCount(page: Page, signal?: AbortSignal): Promise<ExtractedPagesResult | undefined> {
   try {
     checkAborted(signal)
+    await dismissFacebookDialogs(page)
+    const base = page.url().includes('web.facebook.com') ? 'https://web.facebook.com' : 'https://www.facebook.com'
     await raceAbort(
-      page.goto('https://www.facebook.com/pages/?category=your_pages', {
-        waitUntil: 'domcontentloaded',
-        timeout: 8000
-      }),
+      page
+        .goto(`${base}/pages/?category=your_pages`, {
+          waitUntil: 'domcontentloaded',
+          timeout: 6000
+        })
+        .catch(() => null),
       signal
     )
-    await raceAbort(page.waitForTimeout(2000), signal)
-    const data = await page.evaluate(() => {
-      const main = document.querySelector('div[role="main"]') || document.body
-      const text = ((main as HTMLElement).innerText || '').replace(/\u00a0/g, ' ')
-      const allLinks = Array.from(main.querySelectorAll('a'))
-      const pages: Array<{ pageId: string; name: string; assetId?: string; url?: string }> = []
+    await raceAbort(
+      page.waitForSelector('div[role="main"], a', { timeout: 3000 }).catch(() => void 0),
+      signal
+    )
+    await raceAbort(page.waitForTimeout(800), signal)
+    const data = await raceAbort(
+      Promise.race([
+        page.evaluate(() => {
+          const main = document.querySelector('div[role="main"]') || document.body
+          const text = ((main as HTMLElement).innerText || '').replace(/\u00a0/g, ' ')
+          const allLinks = Array.from(main.querySelectorAll('a'))
+          const pages: Array<{ pageId: string; name: string; assetId?: string; url?: string }> = []
 
-      // 1. Header count match: "Pages you manage (N)"
-      const match = text.match(/Pages you manage\s*\((\d+)\)/i) || document.body.innerText.match(/Pages you manage\s*\((\d+)\)/i)
-      const headerCount = match ? parseInt(match[1], 10) : undefined
+          // 1. Header count match: "Pages you manage (N)"
+          const match = text.match(/Pages you manage\s*\((\d+)\)/i) || document.body.innerText.match(/Pages you manage\s*\((\d+)\)/i)
+          const headerCount = match ? parseInt(match[1], 10) : undefined
 
-      // Look for page links and corresponding asset_ids
-      const pageLinks = allLinks.filter((a) => {
-        const aText = (a.innerText || '').trim()
-        const href = a.href || ''
-        return (
-          aText &&
-          !/^(Pages|Create Page|Meta Business Suite|Discover|Followed Pages|Invites|Promote|Notifications|Messages|\d+\s*(Notifications|Messages)|Create post)$/i.test(
-            aText
-          ) &&
-          !href.includes('/inbox/') &&
-          !href.includes('/ad_center/') &&
-          !href.includes('/settings') &&
-          !href.includes('category=')
-        )
-      })
-
-      // Extract assetId from inbox or ad_center link if available
-      const bizLink = allLinks.find((a) => a.href.includes('asset_id=') || a.href.includes('page_id='))
-      let defaultAssetId: string | undefined
-      if (bizLink) {
-        const m = bizLink.href.match(/(?:asset_id|page_id)=(\d+)/)
-        if (m) defaultAssetId = m[1]
-      }
-
-      for (const a of pageLinks) {
-        const name = (a.innerText || '').trim()
-        let pageId = ''
-        const m = a.href.match(/profile\.php\?id=(\d+)/)
-        if (m) {
-          pageId = m[1]
-        } else {
-          const clean = a.href.split('?')[0].replace(/^https?:\/\/[^/]+/, '').replace(/^\//, '')
-          if (clean) pageId = clean
-        }
-        if (pageId && !pages.some((p) => p.pageId === pageId)) {
-          pages.push({
-            pageId,
-            name,
-            assetId: defaultAssetId || pageId,
-            url: a.href.split('&')[0]
+          const pageLinks = allLinks.filter((a) => {
+            const aText = (a.innerText || '').trim()
+            const href = a.href || ''
+            return (
+              aText &&
+              !/^(Pages|Create Page|Meta Business Suite|Discover|Followed Pages|Invites|Promote|Notifications|Messages|\d+\s*(Notifications|Messages)|Create post)$/i.test(
+                aText
+              ) &&
+              !href.includes('/inbox/') &&
+              !href.includes('/ad_center/') &&
+              !href.includes('/settings') &&
+              !href.includes('category=')
+            )
           })
-        }
-      }
 
-      const count = headerCount ?? (pages.length > 0 ? pages.length : 0)
-      return { count, pages }
-    })
+          // Extract assetId from inbox or ad_center link if available
+          const bizLink = allLinks.find((a) => a.href.includes('asset_id=') || a.href.includes('page_id='))
+          let defaultAssetId: string | undefined
+          if (bizLink) {
+            const m = bizLink.href.match(/(?:asset_id|page_id)=(\d+)/)
+            if (m) defaultAssetId = m[1]
+          }
+
+          for (const a of pageLinks) {
+            const name = (a.innerText || '').trim()
+            let pageId = ''
+            const m = a.href.match(/profile\.php\?id=(\d+)/)
+            if (m) {
+              pageId = m[1]
+            } else {
+              const clean = a.href.split('?')[0].replace(/^https?:\/\/[^/]+/, '').replace(/^\//, '')
+              if (clean) pageId = clean
+            }
+            if (pageId && !pages.some((p) => p.pageId === pageId)) {
+              pages.push({
+                pageId,
+                name,
+                assetId: defaultAssetId || pageId,
+                url: a.href.split('&')[0]
+              })
+            }
+          }
+
+          const count = headerCount ?? (pages.length > 0 ? pages.length : 0)
+          return { count, pages }
+        }),
+        new Promise<any>((resolve) => setTimeout(() => resolve(undefined), 4000))
+      ]),
+      signal
+    )
 
     return data
   } catch (err) {
+    if (signal?.aborted || err instanceof AbortedError) throw err
     console.warn('[extractPagesCount] error:', err)
     return undefined
   }

@@ -8,7 +8,9 @@ export const IPC = {
     getAppVersion: 'system:getAppVersion',
     onNetworkStatus: 'system:onNetworkStatus',
     scheduleShutdown: 'system:scheduleShutdown',
-    cancelShutdown: 'system:cancelShutdown'
+    cancelShutdown: 'system:cancelShutdown',
+    checkFont: 'system:checkFont',
+    installFont: 'system:installFont'
   },
   accounts: {
     list: 'accounts:list',

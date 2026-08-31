@@ -10,7 +10,6 @@ import type { LicenseStatus } from '../../types/license'
 export function StatusBar(): React.JSX.Element {
   const accounts = useAccountStore((s) => s.accounts)
   const total = useAccountStore((s) => s.total)
-  const rowSelection = useAccountStore((s) => s.rowSelection)
   const toast = useAccountStore((s) => s.toast)
   const [license, setLicense] = useState<LicenseStatus | null>(null)
   const [machineId, setMachineId] = useState<string | null>(null)
@@ -34,7 +33,13 @@ export function StatusBar(): React.JSX.Element {
     }
   }
 
-  const selectedCount = Object.values(rowSelection).filter(Boolean).length
+  const selectedCount = useAccountStore((s) => {
+    let c = 0
+    for (const k in s.rowSelection) {
+      if (s.rowSelection[k]) c++
+    }
+    return c
+  })
 
   const statusCounts = useMemo(() => {
     let live = 0

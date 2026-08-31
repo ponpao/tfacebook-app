@@ -284,6 +284,8 @@ function disablePasswordManagerPrefs(dir: string): void {
       unknown
     >
     profile.password_manager_enabled = false
+    profile.exit_type = 'Normal'
+    profile.exited_cleanly = true
     const contentSettings = ((profile.default_content_setting_values && typeof profile.default_content_setting_values === 'object'
       ? profile.default_content_setting_values
       : {}) as Record<string, unknown>)
@@ -476,18 +478,20 @@ export async function getProxyGeoData(host: string): Promise<ProxyGeoData | null
 }
 
 /** Shown in place of the account name in the browser window title when the name hasn't been scraped yet. */
-export const UNNAMED_ACCOUNT_TITLE = 'មិនទាន់ទាញឈ្មោះ'
+export const UNNAMED_ACCOUNT_TITLE = 'មិនទាន់ទាញ'
 
 /**
- * Builds the Chrome window title for an account: `{rowNumber} - {name}`,
- * falling back to the Khmer "name not scraped yet" label when the account
- * has no name on file. Exported so callers that launch a context can apply
- * it (see applyWindowTitle) with the row number the user actually sees in
- * the grid.
+ * Builds the Chrome window title for an account: `{rowNumber} - {name}` when a real
+ * name exists, or `{rowNumber} - មិនទាន់ទាញ` when not yet scraped.
  */
 export function buildWindowTitle(account: Account, rowNumber?: number): string {
-  const name = account.name?.trim() || UNNAMED_ACCOUNT_TITLE
-  return rowNumber != null ? `${rowNumber} - ${name}` : name
+  const raw = account.name?.trim()
+  const cleanName =
+    raw && !raw.includes('មិនទាន់') && !/^\d+\s*[-–—]/.test(raw) && !raw.toLowerCase().includes('unnamed')
+      ? raw
+      : UNNAMED_ACCOUNT_TITLE
+
+  return rowNumber != null ? `${rowNumber} - ${cleanName}` : cleanName
 }
 
 /**
@@ -578,7 +582,10 @@ export async function applyWindowTitle(context: BrowserContext, title: string): 
   const script = buildWindowTitleScript(title)
   await context.addInitScript(script).catch(() => void 0)
   for (const page of context.pages()) {
-    await page.evaluate(script).catch(() => void 0)
+    await Promise.race([
+      page.evaluate(script).catch(() => void 0),
+      new Promise((resolve) => setTimeout(resolve, 1500))
+    ])
   }
 }
 
@@ -659,7 +666,8 @@ export async function launchContext({
       ? settings.customChromiumPath.trim()
       : undefined
 
-  const dir = profileDir(account.uid ?? 'unknown')
+  const profileKey = account.uid?.trim() || `acc_${account.id}`
+  const dir = profileDir(profileKey)
   disablePasswordManagerPrefs(dir)
 
   const args = [
@@ -670,6 +678,11 @@ export async function launchContext({
     '--disable-notifications',
     '--disable-dev-shm-usage',
     '--disable-save-password-bubble',
+    '--disable-session-crashed-bubble',
+    '--hide-crash-restore-bubble',
+    '--disable-component-update',
+    '--disable-background-networking',
+    '--no-first-run',
     '--disable-features=PasswordManager,PasswordManagerUI,OptimizationGuideModelDownloading',
     '--no-default-browser-check'
   ]
@@ -733,10 +746,14 @@ export async function launchContext({
   }
 
   // Restore the saved session cookie before any navigation happens in the
-  // caller — see injectSavedCookies()'s doc comment for why this matters
-  // specifically for a profile that arrived via Backup/Restore or Cloud
-  // Sync from a different machine.
-  await injectSavedCookies(context, account)
+  // caller. If the profile already has a valid session cookie in its on-disk
+  // store (e.g. user manually logged in), do not overwrite it with a potentially
+  // stale database cookie.
+  const existingCookies = await context.cookies().catch(() => [])
+  const hasExistingSession = existingCookies.some((c) => c.name === 'c_user')
+  if (!hasExistingSession || resetProfileBeforeCookieInject) {
+    await injectSavedCookies(context, account)
+  }
 
   // Anti-detect init script — runs before any page script on every document
   // (including iframes) in this context, patching the JS-visible automation
@@ -783,6 +800,11 @@ export async function launchContext({
     })
   }
 
+  allActiveContexts.add(context)
+  context.on('close', () => {
+    allActiveContexts.delete(context)
+  })
+
   return context
 }
 
@@ -791,13 +813,16 @@ export async function launchContext({
 // or in-flight context regardless of which module opened it.
 // ---------------------------------------------------------------------------
 
+const allActiveContexts = new Set<BrowserContext>()
 const trackedContexts = new Map<string, BrowserContext>()
 
 /** Register a context under a key (usually the account UID). */
 export function trackContext(key: string, context: BrowserContext): void {
   trackedContexts.set(key, context)
+  allActiveContexts.add(context)
   context.on('close', () => {
     if (trackedContexts.get(key) === context) trackedContexts.delete(key)
+    allActiveContexts.delete(context)
   })
 }
 
@@ -807,6 +832,10 @@ export function untrackContext(key: string): void {
 
 export function isTracked(key: string): boolean {
   return trackedContexts.has(key)
+}
+
+export function getTrackedContext(key: string): BrowserContext | undefined {
+  return trackedContexts.get(key)
 }
 
 /**
@@ -822,18 +851,30 @@ export async function closeTrackedContext(key: string): Promise<boolean> {
   const ctx = trackedContexts.get(key)
   if (!ctx) return false
   trackedContexts.delete(key)
+  allActiveContexts.delete(ctx)
+  for (const page of ctx.pages()) {
+    await page.close({ runBeforeUnload: false }).catch(() => void 0)
+  }
   await ctx.close().catch(() => void 0)
   return true
 }
 
 /** Close every tracked context (headed profiles + in-flight queue runs). */
 export async function closeAllTrackedContexts(): Promise<number> {
-  const contexts = [...trackedContexts.values()]
+  const contexts = Array.from(new Set([...allActiveContexts, ...trackedContexts.values()]))
+  allActiveContexts.clear()
   trackedContexts.clear()
   let n = 0
   for (const ctx of contexts) {
-    await ctx.close().catch(() => void 0)
-    n += 1
+    try {
+      for (const page of ctx.pages()) {
+        await page.close({ runBeforeUnload: false }).catch(() => void 0)
+      }
+      await ctx.close().catch(() => void 0)
+      n += 1
+    } catch {
+      /* best-effort close */
+    }
   }
   return n
 }

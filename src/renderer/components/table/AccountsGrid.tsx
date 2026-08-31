@@ -6,7 +6,7 @@
 //   * column visibility driven by the store
 //   * right-click context menu with account actions
 // ---------------------------------------------------------------------------
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import type { Account } from '../../../types/account'
 import { useAccountStore } from '../../store/useAccountStore'
@@ -88,6 +88,116 @@ interface MenuState {
   account: Account
 }
 
+interface GridRowProps {
+  account: Account
+  index: number
+  selected: boolean
+  virtualStart: number
+  columns: Array<(typeof GRID_COLUMNS)[number] & { width: number }>
+  isDragging: boolean
+  stickyLeft: string
+  LEFT_EDGE_W: number
+  cellBorder: string
+  onRowMouseDown: (index: number, e: React.MouseEvent) => void
+  onRowMouseEnter: (index: number, e: React.MouseEvent) => void
+  onRowClick: (index: number, a: Account, selected: boolean, e: React.MouseEvent) => void
+  onRowContextMenu: (e: React.MouseEvent, a: Account) => void
+  onToggleRow: (id: number, checked: boolean) => void
+}
+
+const GridRow = memo(function GridRow({
+  account: a,
+  index,
+  selected,
+  virtualStart,
+  columns,
+  isDragging,
+  stickyLeft,
+  LEFT_EDGE_W,
+  cellBorder,
+  onRowMouseDown,
+  onRowMouseEnter,
+  onRowClick,
+  onRowContextMenu,
+  onToggleRow
+}: GridRowProps) {
+  const rowBg = rowStatusTint(a.status ?? 'Unknown', index)
+  return (
+    <div
+      className={`absolute left-0 flex w-full ${
+        selected ? 'bg-mc-sel text-mc-selText' : `${rowBg} text-[#1a1a1a]`
+      }`}
+      style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: ROW_HEIGHT,
+        transform: `translateY(${virtualStart}px)`,
+        willChange: 'transform',
+        userSelect: isDragging ? 'none' : undefined
+      }}
+      onMouseDown={(e) => onRowMouseDown(index, e)}
+      onMouseEnter={(e) => onRowMouseEnter(index, e)}
+      onClick={(e) => onRowClick(index, a, selected, e)}
+      onContextMenu={(e) => onRowContextMenu(e, a)}
+    >
+      {/* Locked left edge: checkbox + row number */}
+      <div
+        className={`flex shrink-0 items-center ${stickyLeft} ${
+          selected ? 'bg-mc-sel' : rowBg
+        }`}
+        style={{ width: LEFT_EDGE_W }}
+      >
+        <div
+          className={`flex h-full shrink-0 items-center justify-center ${cellBorder}`}
+          style={{ width: CHECKBOX_W }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <input
+            type="checkbox"
+            className="accent-[#0078d4]"
+            checked={selected}
+            onChange={(e) => onToggleRow(a.id, e.target.checked)}
+          />
+        </div>
+        <div
+          className={`flex h-full shrink-0 items-center justify-center text-2xs ${cellBorder}`}
+          style={{ width: ROW_NUMBER_COLUMN.width }}
+        >
+          {ROW_NUMBER_COLUMN.render(a, index)}
+        </div>
+      </div>
+
+      {/* Resizable middle columns */}
+      {columns.map((c) => {
+        const extra = !selected && c.className ? c.className(a) : ''
+        return (
+          <div
+            key={c.key}
+            className={`flex shrink-0 items-center overflow-hidden whitespace-nowrap px-1.5 text-2xs ${cellBorder} ${extra}`}
+            style={{
+              width: c.width,
+              justifyContent:
+                c.align === 'center'
+                  ? 'center'
+                  : c.align === 'right'
+                    ? 'flex-end'
+                    : 'flex-start'
+            }}
+            title={c.title ? c.title(a) : String(c.render(a, index) ?? '')}
+          >
+            <span className="truncate">{c.render(a, index)}</span>
+          </div>
+        )
+      })}
+
+      {/* Flexible filler */}
+      <div className={`flex-1 ${cellBorder}`} />
+    </div>
+  )
+})
+
 export function AccountsGrid(): React.JSX.Element {
   const accounts = useAccountStore((s) => s.accounts)
   const rowSelection = useAccountStore((s) => s.rowSelection)
@@ -108,24 +218,24 @@ export function AccountsGrid(): React.JSX.Element {
   const [dragAnchorIndex, setDragAnchorIndex] = useState<number | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const lastClickedIndexRef = useRef<number | null>(null)
+  const dragBaseSelectionRef = useRef<Record<string, boolean>>({})
   // Selection as it was when the current drag started. A Ctrl-drag adds its
   // range on top of this snapshot, so every mouseenter recomputes from the
   // original set rather than compounding onto the previous frame's result
   // (which would make rows dragged over and then back off stay selected).
-  const dragBaseSelectionRef = useRef<Record<string, boolean>>({})
-
-  const selectRange = (fromIndex: number, toIndex: number, additive = false): void => {
-    const lo = Math.min(fromIndex, toIndex)
-    const hi = Math.max(fromIndex, toIndex)
-    // Additive (Ctrl held): start from the pre-drag selection and add the
-    // range. Non-additive: the range becomes the entire selection.
-    const next: Record<string, boolean> = additive ? { ...dragBaseSelectionRef.current } : {}
-    for (let i = lo; i <= hi; i++) {
-      const acc = accounts[i]
-      if (acc) next[acc.id] = true
-    }
-    setRowSelection(next)
-  }
+  const selectRange = useCallback(
+    (fromIndex: number, toIndex: number, additive = false): void => {
+      const lo = Math.min(fromIndex, toIndex)
+      const hi = Math.max(fromIndex, toIndex)
+      const next: Record<string, boolean> = additive ? { ...dragBaseSelectionRef.current } : {}
+      for (let i = lo; i <= hi; i++) {
+        const acc = accounts[i]
+        if (acc) next[acc.id] = true
+      }
+      setRowSelection(next)
+    },
+    [accounts, setRowSelection]
+  )
 
   // A drag that never left its starting row is just a click (handled by the
   // row's own onClick) — only commit the drag-selected range on mouseup if
@@ -181,9 +291,6 @@ export function AccountsGrid(): React.JSX.Element {
     const onUp = (): void => {
       resizeState.current = null
       setResizingKey(null)
-      // Persist once at the end of the drag rather than on every pixel of
-      // movement — setColumnWidths above already re-renders live during the
-      // drag; this just avoids hammering localStorage on every mousemove.
       setColumnWidths((current) => {
         saveColumnWidths(current)
         return current
@@ -202,11 +309,20 @@ export function AccountsGrid(): React.JSX.Element {
     count: accounts.length,
     getScrollElement: () => parentRef.current,
     estimateSize: () => ROW_HEIGHT,
-    overscan: 15
+    overscan: 8
   })
 
-  const allChecked = accounts.length > 0 && accounts.every((a) => rowSelection[a.id])
-  const someChecked = accounts.some((a) => rowSelection[a.id]) && !allChecked
+  const { allChecked, someChecked } = useMemo(() => {
+    if (accounts.length === 0) return { allChecked: false, someChecked: false }
+    let count = 0
+    for (const a of accounts) {
+      if (rowSelection[a.id]) count++
+    }
+    return {
+      allChecked: count === accounts.length,
+      someChecked: count > 0 && count < accounts.length
+    }
+  }, [accounts, rowSelection])
 
   const LEFT_EDGE_W = CHECKBOX_W + ROW_NUMBER_COLUMN.width
   const totalWidth = LEFT_EDGE_W + columns.reduce((sum, c) => sum + c.width, 0)
@@ -214,34 +330,61 @@ export function AccountsGrid(): React.JSX.Element {
 
   const cellBorder = 'border-r border-b border-[#b8cbb0]'
   const headBorder = 'border-r border-b border-slate-200'
-  // The checkbox/row-number block used to be pinned via `sticky left-0` so
-  // it stayed visible while middle columns scrolled underneath it. Removed:
-  // every column (including this one) now scrolls together horizontally,
-  // with nothing frozen in place — this constant is kept as an empty string
-  // rather than deleted outright so the two render call sites below don't
-  // need their own separate edits if a locked edge is ever reintroduced.
   const stickyLeft = ''
 
-  const onRowContextMenu = (e: React.MouseEvent, a: Account): void => {
+  const onRowContextMenu = useCallback((e: React.MouseEvent, a: Account): void => {
     e.preventDefault()
-    // If the right-clicked row isn't part of the current selection, select just it.
-    if (!rowSelection[a.id]) {
+    if (!useAccountStore.getState().rowSelection[a.id]) {
       setRowSelection({ [a.id]: true })
     }
     setMenu({ x: e.clientX, y: e.clientY, account: a })
-  }
+  }, [setRowSelection])
+
+  const onRowMouseDown = useCallback((index: number, e: React.MouseEvent) => {
+    if (e.button !== 0) return
+    dragBaseSelectionRef.current = { ...useAccountStore.getState().rowSelection }
+    setDragAnchorIndex(index)
+    setIsDragging(true)
+  }, [])
+
+  const onRowMouseEnter = useCallback(
+    (index: number, e: React.MouseEvent) => {
+      if (isDragging && dragAnchorIndex !== null) {
+        selectRange(dragAnchorIndex, index, e.ctrlKey || e.metaKey)
+      }
+    },
+    [isDragging, dragAnchorIndex, selectRange]
+  )
+
+  const onRowClick = useCallback(
+    (index: number, a: Account, selected: boolean, e: React.MouseEvent) => {
+      if (dragAnchorIndex !== null && dragAnchorIndex !== index) {
+        lastClickedIndexRef.current = index
+        setDragAnchorIndex(null)
+        return
+      }
+      setDragAnchorIndex(null)
+      if (e.shiftKey && lastClickedIndexRef.current !== null) {
+        selectRange(lastClickedIndexRef.current, index, e.ctrlKey || e.metaKey)
+      } else if (e.ctrlKey || e.metaKey) {
+        toggleRow(a.id, !selected)
+        lastClickedIndexRef.current = index
+      } else {
+        setRowSelection({ [a.id]: true })
+        lastClickedIndexRef.current = index
+      }
+    },
+    [dragAnchorIndex, selectRange, toggleRow, setRowSelection]
+  )
 
   return (
-    <div className="flex w-full min-w-full flex-1 flex-col overflow-hidden rounded-md border-[1.5px] border-slate-300 bg-white shadow-sm">
-      <div ref={parentRef} className="relative flex-1 overflow-auto">
+    <div className="flex w-full flex-1 flex-col overflow-hidden rounded-md border border-slate-300 bg-white shadow-2xs select-none">
+      <div ref={parentRef} className="relative flex-1 overflow-x-auto overflow-y-auto">
         {/* Inner width = at least the window width, expanding to fit all columns */}
         <div className="w-full" style={{ minWidth: totalWidth }}>
-          {/* Header — clean, flat bg-slate-100 (no pattern); text
-              force-centered + semibold regardless of each column's own data
-              alignment (left-aligned data cells still read naturally below
-              a centered header label). */}
+          {/* Header */}
           <div className="sticky top-0 z-10 flex w-full bg-slate-100">
-            {/* Checkbox + row number — fixed width, never resizable, but scrolls horizontally with everything else (not pinned/frozen). */}
+            {/* Checkbox + row number */}
             <div
               className={`flex shrink-0 items-center ${stickyLeft}`}
               style={{ width: LEFT_EDGE_W, height: ROW_HEIGHT }}
@@ -276,7 +419,6 @@ export function AccountsGrid(): React.JSX.Element {
                 style={{ width: c.width, height: ROW_HEIGHT }}
               >
                 <span className="truncate">{c.header}</span>
-                {/* Drag handle — a thin hit-zone straddling the header's right border. */}
                 <div
                   className="absolute right-0 top-0 z-10 h-full w-1.5 -mr-0.5 cursor-col-resize hover:bg-[#0078d4]/40"
                   onMouseDown={beginResize(c.key, c.width)}
@@ -284,128 +426,35 @@ export function AccountsGrid(): React.JSX.Element {
               </div>
             ))}
 
-            {/* Flexible filler so a short column set doesn't leave a gap of
-                bare background after the last middle column. */}
             <div className={`flex-1 bg-transparent ${headBorder}`} />
           </div>
 
-          {/* Body (virtualized) */}
+          {/* Body (virtualized + GPU hardware composited) */}
           <div
             className="w-full"
             style={{ height: virtualizer.getTotalSize(), position: 'relative' }}
           >
             {virtualRows.map((vRow) => {
               const a = accounts[vRow.index]
-              const selected = !!rowSelection[a.id]
-              // Every row's background is status-driven — never over the
-              // selection highlight, though: a selected row must stay
-              // clearly, unambiguously highlighted regardless of status.
-              const rowBg = rowStatusTint(a.status ?? 'Unknown', vRow.index)
+              if (!a) return null
               return (
-                <div
+                <GridRow
                   key={a.id}
-                  className={`absolute left-0 flex w-full ${
-                    selected ? 'bg-mc-sel text-mc-selText' : `${rowBg} text-[#1a1a1a]`
-                  }`}
-                  style={{ top: vRow.start, height: ROW_HEIGHT, userSelect: isDragging ? 'none' : undefined }}
-                  onMouseDown={(e) => {
-                    // Only the primary button starts a drag-select; a
-                    // checkbox click already stops propagation before this
-                    // fires, and right-click is handled separately below.
-                    if (e.button !== 0) return
-                    // Snapshot the selection at drag start so a Ctrl-drag can
-                    // add to it (see selectRange's `additive` branch).
-                    dragBaseSelectionRef.current = { ...rowSelection }
-                    setDragAnchorIndex(vRow.index)
-                    setIsDragging(true)
-                  }}
-                  onMouseEnter={(e) => {
-                    if (isDragging && dragAnchorIndex !== null) {
-                      // Ctrl/Cmd held -> add this range to the pre-drag
-                      // selection; otherwise the range replaces it entirely.
-                      selectRange(dragAnchorIndex, vRow.index, e.ctrlKey || e.metaKey)
-                    }
-                  }}
-                  onClick={(e) => {
-                    // A drag that moved across rows already committed its
-                    // range on mouseenter — the trailing click on mouseup
-                    // must not then collapse the selection back to one row.
-                    if (dragAnchorIndex !== null && dragAnchorIndex !== vRow.index) {
-                      lastClickedIndexRef.current = vRow.index
-                      setDragAnchorIndex(null)
-                      return
-                    }
-                    setDragAnchorIndex(null)
-                    if (e.shiftKey && lastClickedIndexRef.current !== null) {
-                      selectRange(lastClickedIndexRef.current, vRow.index, e.ctrlKey || e.metaKey)
-                    } else if (e.ctrlKey || e.metaKey) {
-                      // Ctrl+Click toggles just this row, preserving the rest
-                      // of the selection (5 selected + 1 new = 6).
-                      toggleRow(a.id, !selected)
-                      lastClickedIndexRef.current = vRow.index
-                    } else {
-                      // Plain click resets the selection to exactly this row —
-                      // 5 selected, click a 6th, and only that 6th stays
-                      // selected. (toggleRow alone would leave the other 5.)
-                      setRowSelection({ [a.id]: true })
-                      lastClickedIndexRef.current = vRow.index
-                    }
-                  }}
-                  onContextMenu={(e) => onRowContextMenu(e, a)}
-                >
-                  {/* Locked left edge: checkbox + row number — same fixed width as the header's, own background (matching the row's status tint) so it opaquely covers scrolled-under middle columns with no mismatched stripe. */}
-                  <div
-                    className={`flex shrink-0 items-center ${stickyLeft} ${
-                      selected ? 'bg-mc-sel' : rowBg
-                    }`}
-                    style={{ width: LEFT_EDGE_W }}
-                  >
-                    <div
-                      className={`flex h-full shrink-0 items-center justify-center ${cellBorder}`}
-                      style={{ width: CHECKBOX_W }}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <input
-                        type="checkbox"
-                        className="accent-[#0078d4]"
-                        checked={selected}
-                        onChange={(e) => toggleRow(a.id, e.target.checked)}
-                      />
-                    </div>
-                    <div
-                      className={`flex h-full shrink-0 items-center justify-center text-2xs ${cellBorder}`}
-                      style={{ width: ROW_NUMBER_COLUMN.width }}
-                    >
-                      {ROW_NUMBER_COLUMN.render(a, vRow.index)}
-                    </div>
-                  </div>
-
-                  {/* Resizable middle columns */}
-                  {columns.map((c) => {
-                    const extra = !selected && c.className ? c.className(a) : ''
-                    return (
-                      <div
-                        key={c.key}
-                        className={`flex shrink-0 items-center overflow-hidden whitespace-nowrap px-1.5 text-2xs ${cellBorder} ${extra}`}
-                        style={{
-                          width: c.width,
-                          justifyContent:
-                            c.align === 'center'
-                              ? 'center'
-                              : c.align === 'right'
-                                ? 'flex-end'
-                                : 'flex-start'
-                        }}
-                        title={c.title ? c.title(a) : String(c.render(a, vRow.index) ?? '')}
-                      >
-                        <span className="truncate">{c.render(a, vRow.index)}</span>
-                      </div>
-                    )
-                  })}
-
-                  {/* Flexible filler — matches the header's, so a short column set doesn't leave a gap of bare background. */}
-                  <div className={`flex-1 ${cellBorder}`} />
-                </div>
+                  account={a}
+                  index={vRow.index}
+                  selected={!!rowSelection[a.id]}
+                  virtualStart={vRow.start}
+                  columns={columns}
+                  isDragging={isDragging}
+                  stickyLeft={stickyLeft}
+                  LEFT_EDGE_W={LEFT_EDGE_W}
+                  cellBorder={cellBorder}
+                  onRowMouseDown={onRowMouseDown}
+                  onRowMouseEnter={onRowMouseEnter}
+                  onRowClick={onRowClick}
+                  onRowContextMenu={onRowContextMenu}
+                  onToggleRow={toggleRow}
+                />
               )
             })}
           </div>

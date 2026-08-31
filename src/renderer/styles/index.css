@@ -17,12 +17,44 @@ body,
   overflow: hidden;
 }
 
+@font-face {
+  font-family: 'Kantumruy Pro';
+  font-style: normal;
+  font-weight: 400;
+  src: local('Kantumruy Pro'), local('Kantumruy Pro Regular'),
+       url('../assets/fonts/KantumruyPro-Regular.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Kantumruy Pro';
+  font-style: normal;
+  font-weight: 600;
+  src: local('Kantumruy Pro SemiBold'), local('Kantumruy Pro Medium'),
+       url('../assets/fonts/KantumruyPro-Bold.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Kantumruy Pro';
+  font-style: normal;
+  font-weight: 700;
+  src: local('Kantumruy Pro Bold'),
+       url('../assets/fonts/KantumruyPro-Bold.ttf') format('truetype');
+}
+
 body {
   background: #f0f0f0;
   color: #1a1a1a;
-  font-family: 'Segoe UI', Tahoma, system-ui, sans-serif;
+  font-family: 'Kantumruy Pro', 'Segoe UI', Tahoma, system-ui, sans-serif;
   font-size: 12px;
   user-select: none;
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
 /* Window drag regions for the frameless title bar */

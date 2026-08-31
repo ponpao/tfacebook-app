@@ -6,6 +6,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Minus, Square, X, Copy, Timer } from 'lucide-react'
 import { AppLogo } from './AppLogo'
+import { AmbientBuddies } from './AmbientBuddies'
 import { HEADER_HEX_PATTERN_URL } from '../assets/headerHexPattern'
 import { useAccountStore } from '../store/useAccountStore'
 
@@ -101,6 +102,9 @@ export function TitleBar(): React.JSX.Element {
         </span>
         <ExecutionTimer />
       </div>
+
+      {/* Ambient Buddy Characters (Easter Egg) */}
+      <AmbientBuddies />
 
       {/* Far right: window controls */}
       <div className="no-drag flex h-full items-stretch">

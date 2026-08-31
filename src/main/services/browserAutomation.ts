@@ -45,9 +45,12 @@ import {
   extractPrimaryLocation,
   extractCurrentDeviceLocation,
   extractGroupsCount,
-  extractPagesCount
+  extractPagesCount,
+  raceAbort,
+  AbortedError
 } from '../automation/autoLogin'
 import { getAppSettings } from '../db/settingsRepo'
+import { beginRun, endRun } from '../automation/activeRun'
 import type { Account } from '../../types/account'
 import * as accounts from '../db/accountsRepo'
 import { IPC } from '../ipc/channels'
@@ -84,24 +87,21 @@ function looksLikeRealName(s: string | null | undefined): s is string {
   return !NON_NAME_HINTS.some((h) => lower.includes(h))
 }
 
-
-
-/** Runs `items` through `worker` with at most `limit` in flight at once. */
-async function runWithConcurrency<T>(items: T[], limit: number, worker: (item: T, index: number) => Promise<void>): Promise<void> {
+/** Runs `items` through `worker` with at most `limit` in flight at once, abortable via `signal`. */
+async function runWithConcurrency<T>(
+  items: T[],
+  limit: number,
+  signal: AbortSignal,
+  worker: (item: T, index: number, signal: AbortSignal) => Promise<void>
+): Promise<void> {
   let cursor = 0
   const runners = Array.from({ length: Math.min(Math.max(1, limit), items.length) }, async () => {
     for (;;) {
-      // Claim an index ATOMICALLY: post-increment reads and advances the
-      // cursor in one expression, with no statement in between where another
-      // worker could resume. The previous `const index = cursor; if (...);
-      // cursor += 1` sequence had a real race — every worker awaits inside
-      // this loop, so two could both read the same cursor value before
-      // either incremented it, then process the SAME account twice while
-      // silently skipping another (the "dropped task" symptom with 2+
-      // threads).
+      if (signal.aborted) return
       const index = cursor++
       if (index >= items.length) return
-      await worker(items[index], index)
+      if (signal.aborted) return
+      await worker(items[index], index, signal)
     }
   })
   await Promise.all(runners)
@@ -111,22 +111,7 @@ async function runWithConcurrency<T>(items: T[], limit: number, worker: (item: T
  * Opens a headed, cookie-authenticated browser for each of the given
  * accounts, `concurrency` at a time (the caller passes the current
  * Threads setting from the toolbar — same convention as
- * automation:runQueue). Each account's status is set to "Live" with
- * status_detail "Cookie Login Success" only once BOTH (a) the saved cookie
- * actually contains the c_user and xs session cookies Facebook requires,
- * and (b) the post-navigation page genuinely classifies as logged in
- * (classifyPage) rather than having merely reached facebook.com's login
- * page without throwing. A cookie missing those fields (e.g. only
- * _GRECAPTCHA=... saved) is reported as "Invalid/Incomplete Cookie" and
- * never claims success. Any other failure reason lands on status_detail
- * without changing `status` — a browser that didn't come up logged in
- * doesn't necessarily mean the account is Die/Checkpoint, just that this
- * particular attempt didn't confirm it, so this deliberately doesn't
- * downgrade status the way a real Check Live/Die classification would.
- * Once verification (and, unless Metadata Extraction Mode is "None",
- * metadata extraction) finishes, the context is ALWAYS closed in a finally
- * block — success, failure, or a thrown error all release the browser
- * process rather than leaving it open.
+ * automation:runQueue).
  */
 export async function loginWithCookieBatch(
   accountIds: number[],
@@ -134,14 +119,19 @@ export async function loginWithCookieBatch(
   /** Optional map of accountId -> the account's 1-based row number in the grid as the user sees it, used only for the Chrome window title. */
   rowNumbers?: Record<number, number>
 ): Promise<CookieLoginSummary> {
+  const { controller } = beginRun()
+  const signal = controller.signal
+
   const rows = accounts.getAccountsByIds(accountIds)
   const total = rows.length
   let succeeded = 0
   let failed = 0
 
-  await runWithConcurrency(rows, concurrency, async (account, index) => {
-    const key = `cookie-login:${account.uid ?? account.id}`
-    let context: Awaited<ReturnType<typeof launchContext>> | null = null
+  try {
+    await runWithConcurrency(rows, concurrency, signal, async (account, index, sig) => {
+      if (sig.aborted) return
+      const key = `cookie-login:${account.uid ?? account.id}`
+      let context: Awaited<ReturnType<typeof launchContext>> | null = null
 
     // Writes the in-progress step to the account's live_status AND pushes a
     // progress event so the grid's Activity Status column updates in real
@@ -178,8 +168,11 @@ export async function loginWithCookieBatch(
         resolvedUid = cUserFromCookie
       }
 
+      const settings = getAppSettings()
+      const isHeadless = settings.browserMode === 'headless'
+
       context = await launchContext({
-        headless: false,
+        headless: isHeadless,
         account,
         slotIndex: index,
         rowNumber: rowNumbers?.[account.id],
@@ -204,7 +197,7 @@ export async function loginWithCookieBatch(
       // while it hydrates, which is what made cookie login feel hung. The
       // readiness we actually care about is checked below by polling
       // classifyPage(), so waiting for the document event bought nothing.
-      await page.goto('https://www.facebook.com/', { timeout: 25000, waitUntil: 'commit' })
+      await raceAbort(page.goto('https://www.facebook.com/', { timeout: 25000, waitUntil: 'commit' }), sig)
 
       // ---- STEP 2: explicit Live/Die check, BEFORE any scraping ----
       // Poll for a definitive classification instead of a flat sleep: a
@@ -212,19 +205,20 @@ export async function loginWithCookieBatch(
       // one pays the extra wait (capped).
       step('Checking Live Status...')
       let result = await classifyPage(page)
-      const settleDeadline = Date.now() + 8000
-      while (result.status === 'Unknown' && Date.now() < settleDeadline) {
-        await page.waitForTimeout(300)
+      const settleDeadline = Date.now() + 6000
+      while (result.status === 'Unknown' && Date.now() < settleDeadline && !sig.aborted) {
+        await raceAbort(page.waitForTimeout(300), sig)
         result = await classifyPage(page)
       }
 
       if (result.status !== 'Live') {
-        // Checkpoint/suspension classifies as its own status; anything else
-        // that isn't Live means the saved cookie no longer authenticates.
-        const isCheckpoint = result.status === 'Checkpoint' || result.status === 'Die'
-        const detail = isCheckpoint ? result.detail : 'Cookie Expired / Invalid'
+        const isCheckpoint = result.status === 'Checkpoint'
+        const isDie = result.status === 'Die'
+        const status = isCheckpoint ? 'Checkpoint' : isDie ? 'Die' : 'Session Expired'
+        const detail = isCheckpoint ? (result.detail || 'Checkpoint') : 'Cookie Expired / Logged Out'
         accounts.updateAccount(account.id, {
-          ...(isCheckpoint ? { status: result.status, status_detail: result.detail } : {}),
+          status,
+          status_detail: detail,
           live_status: detail
         })
         failed += 1
@@ -234,7 +228,7 @@ export async function loginWithCookieBatch(
 
       // Step 1: Base Script Parse (Immediate DB commit)
       step('Extracting Profile Info...')
-      await page.waitForTimeout(1000)
+      await raceAbort(page.waitForTimeout(800), sig)
       const { cookie: liveCookie, token: liveToken } = await extractCookiesAndToken(context)
       const scriptData = await extractFromInlineScripts(page)
       const cUser = liveCookie
@@ -276,10 +270,19 @@ export async function loginWithCookieBatch(
       const isFastMode = getAppSettings().metadataExtractionMode === 'fast'
 
       if (!isFastMode) {
-        // Step 2: Friends & Followers Extraction (via /me?sk=friends)
+        // Step 2: Friends & Followers Extraction (via /me?sk=friends or /me)
         try {
+          if (sig.aborted) return
           step('Extracting Friends & Followers...')
-          const ff = await extractFriendsAndFollowers(page, resolvedUid)
+          const ff = await raceAbort(
+            Promise.race([
+              extractFriendsAndFollowers(page, resolvedUid, sig),
+              new Promise<{ friendsCount?: number; friendsList?: string[]; followers?: string; following?: string }>((resolve) =>
+                setTimeout(() => resolve({}), 8000)
+              )
+            ]),
+            sig
+          )
           const step2Update: Partial<Account> = {
             ...(ff.friendsCount != null ? { friends_count: ff.friendsCount } : {}),
             ...(ff.followers ? { followers: ff.followers } : {}),
@@ -295,23 +298,30 @@ export async function loginWithCookieBatch(
           }
           if (Object.keys(step2Update).length > 0) {
             accounts.updateAccount(account.id, step2Update)
-            broadcast({
-              accountId: account.id,
-              uid: resolvedUid || null,
-              index: index + 1,
-              total,
-              ok: true,
-              detail: 'Extracting Friends & Followers...'
-            })
           }
+          broadcast({
+            accountId: account.id,
+            uid: resolvedUid || null,
+            index: index + 1,
+            total,
+            ok: true,
+            detail: 'Extracting Friends & Followers...'
+          })
         } catch (err) {
           console.warn('[CookieLogin] Step 2 friends/followers error:', err)
         }
 
         // Step 3: Created Date Extraction (via /me/allactivity)
         try {
+          if (sig.aborted) return
           step('Extracting Created Date...')
-          const createdDate = await extractCreatedDateFromActivityLog(page)
+          const createdDate = await raceAbort(
+            Promise.race([
+              extractCreatedDateFromActivityLog(page, sig),
+              new Promise<string | undefined>((resolve) => setTimeout(() => resolve(undefined), 8000))
+            ]),
+            sig
+          )
           const step3Update: Partial<Account> = {}
           if (createdDate) step3Update.created_date = createdDate
           if (!dtsgToken) {
@@ -323,48 +333,74 @@ export async function loginWithCookieBatch(
           }
           if (Object.keys(step3Update).length > 0) {
             accounts.updateAccount(account.id, step3Update)
-            broadcast({
-              accountId: account.id,
-              uid: resolvedUid || null,
-              index: index + 1,
-              total,
-              ok: true,
-              detail: 'Extracting Created Date...'
-            })
           }
+          broadcast({
+            accountId: account.id,
+            uid: resolvedUid || null,
+            index: index + 1,
+            total,
+            ok: true,
+            detail: 'Extracting Created Date...'
+          })
         } catch (err) {
           console.warn('[CookieLogin] Step 3 created date error:', err)
         }
 
         // Step 4: Location Extractions
         try {
+          if (sig.aborted) return
           step('Extracting Locations...')
-          const primaryLoc = await extractPrimaryLocation(page)
-          const currentLoc = await extractCurrentDeviceLocation(page)
+          const primaryLoc = await raceAbort(
+            Promise.race([
+              extractPrimaryLocation(page, sig),
+              new Promise<string | undefined>((resolve) => setTimeout(() => resolve(undefined), 8000))
+            ]),
+            sig
+          )
+          const currentLoc = await raceAbort(
+            Promise.race([
+              extractCurrentDeviceLocation(page, sig),
+              new Promise<string | undefined>((resolve) => setTimeout(() => resolve(undefined), 8000))
+            ]),
+            sig
+          )
           const step4Update: Partial<Account> = {
             ...(primaryLoc ? { location: primaryLoc } : {}),
             ...(currentLoc ? { current_location: currentLoc } : {})
           }
           if (Object.keys(step4Update).length > 0) {
             accounts.updateAccount(account.id, step4Update)
-            broadcast({
-              accountId: account.id,
-              uid: resolvedUid || null,
-              index: index + 1,
-              total,
-              ok: true,
-              detail: 'Extracting Locations...'
-            })
           }
+          broadcast({
+            accountId: account.id,
+            uid: resolvedUid || null,
+            index: index + 1,
+            total,
+            ok: true,
+            detail: 'Extracting Locations...'
+          })
         } catch (err) {
           console.warn('[CookieLogin] Step 4 location error:', err)
         }
 
         // Step 5: Groups & Pages Extractions
         try {
+          if (sig.aborted) return
           step('Extracting Groups & Pages...')
-          const groupsCount = await extractGroupsCount(page)
-          const pagesResult = await extractPagesCount(page)
+          const groupsCount = await raceAbort(
+            Promise.race([
+              extractGroupsCount(page, sig),
+              new Promise<number | undefined>((resolve) => setTimeout(() => resolve(undefined), 8000))
+            ]),
+            sig
+          )
+          const pagesResult = await raceAbort(
+            Promise.race([
+              extractPagesCount(page, sig),
+              new Promise<any>((resolve) => setTimeout(() => resolve(undefined), 8000))
+            ]),
+            sig
+          )
           const step5Update: Partial<Account> = {
             ...(groupsCount != null ? { groups_count: groupsCount } : {}),
             ...(pagesResult != null
@@ -376,21 +412,21 @@ export async function loginWithCookieBatch(
           }
           if (Object.keys(step5Update).length > 0) {
             accounts.updateAccount(account.id, step5Update)
-            broadcast({
-              accountId: account.id,
-              uid: resolvedUid || null,
-              index: index + 1,
-              total,
-              ok: true,
-              detail: 'Extracting Groups & Pages...'
-            })
           }
+          broadcast({
+            accountId: account.id,
+            uid: resolvedUid || null,
+            index: index + 1,
+            total,
+            ok: true,
+            detail: 'Extracting Groups & Pages...'
+          })
         } catch (err) {
           console.warn('[CookieLogin] Step 5 groups/pages error:', err)
         }
       }
 
-      // Step 6: completion
+      // Step 6: Completion
       accounts.updateAccount(account.id, {
         status: 'Live',
         status_detail: 'Cookie Login Success',
@@ -407,6 +443,11 @@ export async function loginWithCookieBatch(
         detail: 'Cookie Login Success'
       })
     } catch (err) {
+      if (sig.aborted || err instanceof AbortedError) {
+        accounts.updateAccount(account.id, { live_status: 'Stopped' })
+        broadcast({ accountId: account.id, uid: account.uid, index: index + 1, total, ok: false, detail: 'Stopped' })
+        return
+      }
       const message = err instanceof Error ? err.message : String(err)
       accounts.updateAccount(account.id, { live_status: `Cookie login failed: ${message}` })
       failed += 1
@@ -415,7 +456,10 @@ export async function loginWithCookieBatch(
       untrackContext(key)
       await context?.close().catch(() => void 0)
     }
-  })
+    })
 
-  return { total, succeeded, failed }
+    return { total, succeeded, failed }
+  } finally {
+    endRun(controller)
+  }
 }

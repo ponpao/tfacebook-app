@@ -16,8 +16,10 @@
 //     executes/cancels the actual command since a renderer can't spawn
 //     processes directly.
 // ---------------------------------------------------------------------------
-import { ipcMain, clipboard, app } from 'electron'
+import { ipcMain, clipboard, app, shell } from 'electron'
 import { exec } from 'child_process'
+import { existsSync, promises as fs } from 'fs'
+import { join } from 'path'
 import { IPC } from './channels'
 
 export function registerSystemIpcHandlers(): void {
@@ -46,5 +48,77 @@ export function registerSystemIpcHandlers(): void {
       if (err && !err.message.includes('1116')) console.error('[shutdown] cancel failed:', err.message)
     })
     return { ok: true }
+  })
+
+  ipcMain.handle(IPC.system.checkFont, async () => {
+    if (process.platform !== 'win32') return { installed: true }
+    try {
+      const userFonts = join(process.env.LOCALAPPDATA ?? '', 'Microsoft', 'Windows', 'Fonts')
+      const winFonts = join(process.env.WINDIR ?? 'C:\\Windows', 'Fonts')
+      const hasReg =
+        existsSync(join(userFonts, 'KantumruyPro-Regular.ttf')) ||
+        existsSync(join(winFonts, 'KantumruyPro-Regular.ttf')) ||
+        existsSync(join(winFonts, 'KantumruyPro.ttf'))
+      return { installed: hasReg }
+    } catch {
+      return { installed: false }
+    }
+  })
+
+  ipcMain.handle(IPC.system.installFont, async () => {
+    if (process.platform !== 'win32') {
+      return { ok: false, message: 'Font installation is only supported on Windows.' }
+    }
+    try {
+      const userFontsDir = join(process.env.LOCALAPPDATA ?? '', 'Microsoft', 'Windows', 'Fonts')
+      if (!existsSync(userFontsDir)) {
+        await fs.mkdir(userFontsDir, { recursive: true })
+      }
+
+      const candidateDirs = [
+        join(process.cwd(), 'resources', 'fonts'),
+        join(app.getAppPath(), 'resources', 'fonts'),
+        join(process.resourcesPath ?? '', 'fonts'),
+        join(process.resourcesPath ?? '', 'app.asar.unpacked', 'resources', 'fonts')
+      ]
+
+      let fontDir = ''
+      for (const dir of candidateDirs) {
+        if (existsSync(join(dir, 'KantumruyPro-Regular.ttf'))) {
+          fontDir = dir
+          break
+        }
+      }
+
+      if (!fontDir) {
+        return { ok: false, message: 'Font files not found in application directory.' }
+      }
+
+      const regSrc = join(fontDir, 'KantumruyPro-Regular.ttf')
+      const boldSrc = join(fontDir, 'KantumruyPro-Bold.ttf')
+      const regDst = join(userFontsDir, 'KantumruyPro-Regular.ttf')
+      const boldDst = join(userFontsDir, 'KantumruyPro-Bold.ttf')
+
+      await fs.copyFile(regSrc, regDst)
+      if (existsSync(boldSrc)) {
+        await fs.copyFile(boldSrc, boldDst)
+      }
+
+      // Register font for the current user in Windows Registry
+      exec(
+        `reg add "HKCU\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Fonts" /v "Kantumruy Pro (TrueType)" /t REG_SZ /d "KantumruyPro-Regular.ttf" /f`
+      )
+      exec(
+        `reg add "HKCU\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Fonts" /v "Kantumruy Pro Bold (TrueType)" /t REG_SZ /d "KantumruyPro-Bold.ttf" /f`
+      )
+
+      // Also trigger open in Windows font viewer for direct confirmation
+      void shell.openPath(regDst)
+
+      return { ok: true, message: 'Kantumruy Pro installed successfully!' }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      return { ok: false, message: `Font installation failed: ${message}` }
+    }
   })
 }

@@ -30,6 +30,7 @@ import {
 } from 'lucide-react'
 import { ModalShell } from './ModalShell'
 import { useAccountStore } from '../../store/useAccountStore'
+import { useLanguageStore } from '../../store/useLanguageStore'
 import type { ManagedPage, PagePost, PagePostType, Account } from '../../../types/account'
 import type { BatchScanProgressEvent } from '../../../types/ipc'
 
@@ -667,13 +668,15 @@ export function DeletePagePostsModal({ open, onClose }: DeletePagePostsModalProp
     )
   }, [visiblePosts])
 
+  const t = useLanguageStore((s) => s.t)
+
   if (!open) return null
 
   return (
     <ModalShell
       open={open}
       onClose={onClose}
-      title="Delete Post in Page (Meta Business Suite)"
+      title={t('deletePostTitle')}
       icon={Trash2}
       width="max-w-[1300px]"
       height="h-[88vh] max-h-[760px]"
@@ -737,7 +740,7 @@ export function DeletePagePostsModal({ open, onClose }: DeletePagePostsModalProp
               {headlessMode ? (
                 <>
                   <Zap size={12} className="text-emerald-600" />
-                  <span>Headless</span>
+                  <span>{t('headless')}</span>
                 </>
               ) : (
                 <>
@@ -755,7 +758,7 @@ export function DeletePagePostsModal({ open, onClose }: DeletePagePostsModalProp
               className="win-btn-primary px-3 py-1 font-semibold flex items-center gap-1 text-xs"
             >
               <Search size={13} className={loadingPosts ? 'animate-spin' : ''} />
-              <span>{loadingPosts ? 'Getting Data...' : 'Get Data'}</span>
+              <span>{loadingPosts ? 'Getting Data...' : t('getData')}</span>
             </button>
 
             {/* Stop button */}
@@ -771,7 +774,7 @@ export function DeletePagePostsModal({ open, onClose }: DeletePagePostsModalProp
 
             {/* Close button */}
             <button className="win-btn px-4 py-1 text-xs font-medium" onClick={onClose}>
-              Close
+              {t('close')}
             </button>
           </div>
         </div>
@@ -786,7 +789,7 @@ export function DeletePagePostsModal({ open, onClose }: DeletePagePostsModalProp
           <div className="flex items-center justify-between border-b border-slate-200 bg-slate-100 px-3 py-2">
             <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
               <User size={14} className="text-[#0067c0]" />
-              <span>Accounts & Pages ({filteredAccountPageList.length})</span>
+              <span>{t('accountsAndPages')} ({filteredAccountPageList.length})</span>
             </div>
             {selectedLeftKeys.size > 0 && (
               <span className="text-[10px] font-bold text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded">
@@ -801,7 +804,7 @@ export function DeletePagePostsModal({ open, onClose }: DeletePagePostsModalProp
               <Search size={12} className="text-slate-400" />
               <input
                 type="text"
-                placeholder="Search UID, Name, Page ID..."
+                placeholder={t('searchPlaceholder')}
                 className="w-full text-xs text-slate-800 focus:outline-none bg-transparent"
                 value={searchAccountQuery}
                 onChange={(e) => setSearchAccountQuery(e.target.value)}
@@ -1191,10 +1194,9 @@ export function DeletePagePostsModal({ open, onClose }: DeletePagePostsModalProp
             ) : (
               <div className="flex h-full min-h-[300px] flex-col items-center justify-center text-center p-6 text-slate-400">
                 <Layers size={36} className="text-slate-300 mb-2" />
-                <h4 className="text-sm font-semibold text-slate-700">No Posts Loaded</h4>
+                <h4 className="text-sm font-semibold text-slate-700">{t('noPostsLoaded')}</h4>
                 <p className="text-xs text-slate-500 max-w-sm mt-0.5">
-                  Select an account & page on the left, choose a date range, and click{' '}
-                  <strong className="text-blue-600">Get Data</strong>.
+                  {t('noPostsDesc')}
                 </p>
               </div>
             )}

@@ -1,16 +1,16 @@
 {
-  "version": "1.1.7",
+  "version": "1.1.8",
   "releaseDate": "2026-08-31",
   "changelog": {
     "en": [
-      "Meta Business Suite Posts Management: integrated automated full post extraction with Virtual Grid Mouse Wheel scrolling and real-time metrics parsing (Views, Likes, Reach)",
-      "Instant client-side type tab filtering (ALL, REEL, PHOTO, STATUS) and thread-aware bulk deletion with live progress metrics",
-      "UI optimizations: single-line top bar, elevated high-density data grid, and consolidated footer action bar"
+      "Direct Google Drive link converter: paste a shareable Google Drive URL and it's auto-converted to a direct download link",
+      "Multi-line UID inputs across the Friends/Groups dialogs for faster bulk paste",
+      "Various tool optimizations and UI refinements"
     ],
     "km": [
-      "ការគ្រប់គ្រងផុស Meta Business Suite៖ ភ្ជាប់មុខងារទាញយកទិន្នន័យផុសពេញលេញស្វ័យប្រវត្តិជាមួយ Virtual Grid Mouse Wheel Scroll និងស្រង់យកលេខស្ថិតិពិតប្រាកដ (Views, Likes, Reach)",
-      "ច្រោះប្រភេទផុសភ្លាមៗតាម Tab (ALL, REEL, PHOTO, STATUS) និងមុខងារលុបជាបាច់តាមចំនួន Thread ជាមួយរបាយការណ៍បច្ចុប្បន្នភាពផ្ទាល់",
-      "កែលម្អ UI៖ បង្រួម Top Bar មួយជួរស្អាត បង្កើនកម្ពស់តារាងទិន្នន័យ និងរៀបចំប៊ូតុងសកម្មភាពនៅ Footer ខាងក្រោម"
+      "កម្មវិធីបំប្លែងតំណ Google Drive ដោយផ្ទាល់៖ បិទភ្ជាប់ URL Google Drive ដែលអាចចែករំលែក នោះវានឹងបំប្លែងទៅជាតំណទាញយកដោយផ្ទាល់ដោយស្វ័យប្រវត្តិ",
+      "ការបញ្ចូល UID ច្រើនជួរនៅក្នុងប្រអប់ Friends/Groups សម្រាប់ការបិទភ្ជាប់ជាបាច់លឿនជាងមុន",
+      "ការបង្កើនប្រសិទ្ធភាពឧបករណ៍ផ្សេងៗ និងការកែលម្អ UI"
     ]
   }
 }

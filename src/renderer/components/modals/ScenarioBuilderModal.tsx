@@ -20,6 +20,7 @@ import {
   Timer
 } from 'lucide-react'
 import { useAccountStore } from '../../store/useAccountStore'
+import { useLanguageStore } from '../../store/useLanguageStore'
 import type { Scenario, ScenarioStep, ScenarioStepType } from '../../../types/scenario'
 import { STEP_LABELS, defaultStep } from '../../../types/scenario'
 import { HEADER_HEX_PATTERN_URL } from '../../assets/headerHexPattern'
@@ -188,10 +189,12 @@ export function ScenarioBuilderModal({
   const activeScenarioId = useAccountStore((s) => s.activeScenarioId)
   const setActiveScenarioId = useAccountStore((s) => s.setActiveScenarioId)
   const showToast = useAccountStore((s) => s.showToast)
+  const t = useLanguageStore((s) => s.t)
 
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [name, setName] = useState('')
   const [steps, setSteps] = useState<ScenarioStep[]>([])
+  const [randomizeOrder, setRandomizeOrder] = useState(false)
   const [dirty, setDirty] = useState(false)
   const [addType, setAddType] = useState<ScenarioStepType>('scroll_newsfeed')
 
@@ -209,6 +212,7 @@ export function ScenarioBuilderModal({
     setSelectedId(initial.id)
     setName(initial.name)
     setSteps(initial.steps)
+    setRandomizeOrder(!!initial.randomize_order)
     setDirty(false)
   }, [open, scenarios, activeScenarioId, selectedId])
 
@@ -227,6 +231,7 @@ export function ScenarioBuilderModal({
     setSelectedId(s.id)
     setName(s.name)
     setSteps(s.steps)
+    setRandomizeOrder(!!s.randomize_order)
     setDirty(false)
   }
 
@@ -276,7 +281,11 @@ export function ScenarioBuilderModal({
       showToast('Scenario name cannot be empty')
       return
     }
-    await window.api.scenarios.update(selectedId, { name: name.trim(), steps })
+    await window.api.scenarios.update(selectedId, {
+      name: name.trim(),
+      steps,
+      randomize_order: randomizeOrder
+    })
     await refreshScenarios()
     setDirty(false)
     showToast(`Saved scenario "${name.trim()}"`)
@@ -373,9 +382,9 @@ export function ScenarioBuilderModal({
 
           {/* Right panel: step pipeline editor */}
           <div className="flex flex-col overflow-hidden">
-            <div className="flex items-center gap-2 border-b border-slate-300 px-3 py-2">
+            <div className="flex items-center gap-2 border-b border-slate-300 px-3 py-2 bg-white">
               <input
-                className="win-input flex-1"
+                className="win-input flex-1 font-semibold"
                 value={name}
                 onChange={(e) => {
                   setName(e.target.value)
@@ -398,6 +407,25 @@ export function ScenarioBuilderModal({
                 <Plus size={13} className="text-[#1e9e4a]" />
                 Add Step
               </button>
+            </div>
+
+            {/* Randomize Step Order Toolbar */}
+            <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50/90 px-3 py-1.5 shadow-2xs">
+              <label className="flex items-center gap-2 text-xs font-bold text-slate-800 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={randomizeOrder}
+                  onChange={(e) => {
+                    setRandomizeOrder(e.target.checked)
+                    setDirty(true)
+                  }}
+                  className="rounded border-slate-400 text-blue-600 focus:ring-0 cursor-pointer"
+                />
+                <span>{t('randomizeStepOrder')}</span>
+              </label>
+              <span className="text-[11px] text-slate-500 font-medium">
+                {steps.length} {steps.length === 1 ? 'step' : 'steps'}
+              </span>
             </div>
 
             <div className="flex-1 overflow-auto p-2">

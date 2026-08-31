@@ -59,12 +59,17 @@ export interface Scenario {
   id: number
   name: string
   steps: ScenarioStep[]
+  randomize_order?: boolean
   is_default: boolean
   created_at: string
   updated_at: string
 }
 
-export type NewScenario = Pick<Scenario, 'name' | 'steps'>
+export interface NewScenario {
+  name: string
+  steps: ScenarioStep[]
+  randomize_order?: boolean
+}
 
 export const STEP_LABELS: Record<ScenarioStepType, string> = {
   scroll_newsfeed: 'Scroll Newsfeed',

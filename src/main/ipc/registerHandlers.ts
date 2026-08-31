@@ -21,10 +21,10 @@ import { parseSpinSyntax } from '../utils/spinSyntax'
 import { distributeValues } from '../utils/bulkAssign'
 import {
   openProfile,
-  checkLiveDie,
   closeAllBrowsers,
   autoLogin
 } from '../automation/playwrightManager'
+import { checkAccountsLiveBatch, probeAccountLiveFast } from '../automation/fastChecker'
 import { fetchFacebookOtp } from '../automation/imapWorker'
 import { runQueue, stopQueue, isQueueRunning } from '../automation/queueRunner'
 import { runBatch } from '../automation/batchRunner'
@@ -234,23 +234,36 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  ipcMain.handle(IPC.automation.checkLive, async (_e, accountId: number) => {
-    const acc = accounts.getAccount(accountId)
-    if (!acc) return { status: 'Unknown', detail: 'Account not found' }
-    accounts.updateAccount(accountId, { live_status: 'Checking…' })
-    const res = await checkLiveDie(acc)
-    accounts.updateAccount(accountId, {
-      status: res.status,
-      status_detail: res.detail,
-      live_status: res.status,
-      last_active: new Date().toISOString().slice(0, 19).replace('T', ' '),
-      // Only set on a confirmed-Live result (see checkLiveDie's doc
-      // comment) — keeps the DB's cookie current for the next Cloud Sync
-      // push even when the account was never re-logged-in, just checked.
-      ...(res.cookie ? { cookie: res.cookie } : {}),
-      ...(res.token ? { token: res.token } : {})
+  ipcMain.handle(IPC.automation.checkLive, async (_e, target: number | number[]) => {
+    const ids = Array.isArray(target) ? target : [target]
+    if (ids.length === 0) return { status: 'Unknown', detail: 'No accounts specified' }
+
+    if (ids.length === 1) {
+      const acc = accounts.getAccount(ids[0])
+      if (!acc) return { status: 'Unknown', detail: 'Account not found' }
+      const res = await probeAccountLiveFast(acc)
+      const dbStatus = res.status === 'Unknown' ? undefined : res.status
+      accounts.updateAccount(acc.id, {
+        ...(dbStatus ? { status: dbStatus } : {}),
+        status_detail: res.detail,
+        live_status: res.status,
+        last_active: new Date().toISOString().slice(0, 19).replace('T', ' ')
+      })
+      return Array.isArray(target) ? [res] : res
+    }
+
+    const results = await checkAccountsLiveBatch(ids, (res) => {
+      if (res.accountId) {
+        const dbStatus = res.status === 'Unknown' ? undefined : res.status
+        accounts.updateAccount(res.accountId, {
+          ...(dbStatus ? { status: dbStatus } : {}),
+          status_detail: res.detail,
+          live_status: res.status,
+          last_active: new Date().toISOString().slice(0, 19).replace('T', ' ')
+        })
+      }
     })
-    return res
+    return Array.isArray(target) ? results : results[0]
   })
 
   ipcMain.handle(IPC.automation.getMailOtp, async (_e, accountId: number) => {

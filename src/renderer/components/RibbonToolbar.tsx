@@ -33,6 +33,7 @@ import {
   Trash2
 } from 'lucide-react'
 import { useAccountStore, type SearchField } from '../store/useAccountStore'
+import { useLanguageStore } from '../store/useLanguageStore'
 import { ALL_FOLDERS } from '../../types/folder'
 import type { FolderDialogMode } from './modals/FolderDialogs'
 import type { AccountStatus } from '../../types/account'
@@ -146,6 +147,7 @@ export function RibbonToolbar({
   const setActiveScenarioId = useAccountStore((s) => s.setActiveScenarioId)
   const shuffleDisplayOrder = useAccountStore((s) => s.shuffleDisplayOrder)
   const openExportModal = useAccountStore((s) => s.openExportModal)
+  const t = useLanguageStore((s) => s.t)
 
   const [autoPostOpen, setAutoPostOpen] = useState(false)
   const [deletePagePostsOpen, setDeletePagePostsOpen] = useState(false)
@@ -287,12 +289,15 @@ export function RibbonToolbar({
           row would otherwise wrap Import Accounts down into an unwanted 3rd
           row — it now scrolls horizontally within Row 1 instead, keeping
           Import pinned at the far right via ml-auto and staying on exactly
+      {/* ---- Row 1: controls + fieldsets + import ----
+          overflow-x-auto keeps the ribbon single-line (never wraps into 3+ rows)
+          on narrow displays; whitespace-nowrap ensures inputs stay in these
           two rows no matter how narrow the window gets. */}
-      <div className="flex flex-nowrap items-center gap-2 overflow-x-auto px-2 py-1.5">
+      <div className="flex flex-nowrap items-center gap-2 overflow-x-auto px-2 py-1.5 scrollbar-none">
         {/* Action group: Start / Run + Stop */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 shrink-0">
           <button
-            className="win-btn-start h-[38px]"
+            className="win-btn-start h-[38px] shrink-0 min-w-fit px-3.5"
             onClick={() => void runSelectedQueue()}
             disabled={queueRunning || selectedCount === 0}
             title={
@@ -302,26 +307,26 @@ export function RibbonToolbar({
             }
           >
             <Play size={15} className="fill-white text-white shrink-0" />
-            <span>Start / Run</span>
+            <span className="whitespace-nowrap font-bold">{t('startRun')}</span>
             {selectedCount > 0 && (
-              <span className="ml-1.5 rounded-full bg-emerald-800 px-1.5 py-0.5 text-xs font-bold text-white">
-                {selectedCount}
+              <span className="ml-1.5 rounded-full bg-emerald-800 px-2 py-0.5 text-xs font-bold text-white whitespace-nowrap min-w-[20px] text-center shadow-xs">
+                {selectedCount.toLocaleString()}
               </span>
             )}
           </button>
           <button
-            className="win-btn-stop h-[38px]"
+            className="win-btn-stop h-[38px] shrink-0 min-w-fit px-3"
             onClick={() => void stopQueueRun()}
             disabled={!queueRunning}
           >
-            <Square size={13} className="fill-[#c81e1e] text-[#c81e1e]" />
-            Stop
+            <Square size={13} className="fill-[#c81e1e] text-[#c81e1e] shrink-0" />
+            <span className="whitespace-nowrap font-semibold">{t('stop')}</span>
           </button>
         </div>
 
         {/* Threads fieldset */}
-        <fieldset className="win-fieldset flex h-[52px] items-center gap-1.5">
-          <legend>Threads</legend>
+        <fieldset className="win-fieldset flex h-[52px] items-center gap-1.5 shrink-0">
+          <legend>{t('threads')}</legend>
           <input
             type="number"
             min={1}
@@ -335,8 +340,8 @@ export function RibbonToolbar({
         </fieldset>
 
         {/* Scenario fieldset — chooses the warm-up pipeline Start/Run executes post-login */}
-        <fieldset className="win-fieldset flex h-[52px] items-center gap-1.5">
-          <legend>Scenario</legend>
+        <fieldset className="win-fieldset flex h-[52px] items-center gap-1.5 shrink-0">
+          <legend>{t('scenario')}</legend>
           <select
             className="win-select min-w-[160px]"
             value={activeScenarioId ?? ''}
@@ -356,10 +361,10 @@ export function RibbonToolbar({
         </fieldset>
 
         {/* Search fieldset */}
-        <fieldset className="win-fieldset flex h-[52px] items-center gap-1.5">
-          <legend>Search</legend>
+        <fieldset className="win-fieldset flex h-[52px] items-center gap-1.5 min-w-[160px] max-w-[260px] flex-1">
+          <legend>{t('search')}</legend>
           <select
-            className="win-select"
+            className="win-select shrink-0"
             value={searchField}
             onChange={(e) => setSearchField(e.target.value as SearchField)}
           >
@@ -370,22 +375,22 @@ export function RibbonToolbar({
             ))}
           </select>
           <input
-            className="win-input w-44"
+            className="win-input w-full min-w-0"
             placeholder="Search keyword..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && runSearch()}
           />
-          <button className="win-btn" onClick={runSearch} title="Search">
+          <button className="win-btn shrink-0" onClick={runSearch} title="Search">
             <Search size={14} className="text-[#0067c0]" />
           </button>
         </fieldset>
 
-        {/* Folder management fieldset */}
-        <fieldset className="win-fieldset flex h-[52px] items-center gap-1.5">
-          <legend>Folder Manager</legend>
+        {/* Folder management fieldset — firmly pinned to the right edge */}
+        <fieldset className="win-fieldset flex h-[52px] items-center gap-1.5 shrink-0 ml-auto">
+          <legend>{t('folderManager')}</legend>
           <select
-            className="win-select min-w-[190px]"
+            className="win-select min-w-[170px]"
             value={folderId}
             onChange={(e) => setFolderId(Number(e.target.value))}
           >
@@ -404,7 +409,7 @@ export function RibbonToolbar({
           >
             {STATUS_OPTIONS.map((s) => (
               <option key={s} value={s}>
-                {s === 'All' ? 'All Statuses' : s}
+                {s === 'All' ? t('allStatuses') : s}
               </option>
             ))}
           </select>
@@ -454,19 +459,32 @@ export function RibbonToolbar({
           onClick={onImport}
         >
           <Download size={14} />
-          Import Accounts
+          {t('importAccounts')}
         </button>
-        {ACTION_BUTTONS.map(({ icon: Icon, label, bg, border, text }) => (
-          <button
-            key={label}
-            className="action-pill"
-            style={{ backgroundColor: bg, borderColor: border, color: text }}
-            onClick={actionHandlers[ACTION_KEYS[label] ?? label]}
-          >
-            <Icon size={14} />
-            {label}
-          </button>
-        ))}
+        {ACTION_BUTTONS.map(({ icon: Icon, label, bg, border, text }) => {
+          let localizedLabel = label
+          if (label === 'Auto Post') localizedLabel = t('autoPost')
+          else if (label === 'Auto Share') localizedLabel = t('autoShare')
+          else if (label === 'Watch Live') localizedLabel = t('watchLive')
+          else if (label === 'Change Info') localizedLabel = t('changeInfo')
+          else if (label === 'Import UA') localizedLabel = t('importUa')
+          else if (label === 'Import Proxy') localizedLabel = t('importProxy')
+          else if (label === 'Export') localizedLabel = t('export')
+          else if (label === 'Randomize') localizedLabel = t('randomize')
+          else if (label === 'Close Browsers') localizedLabel = t('closeBrowsers')
+
+          return (
+            <button
+              key={label}
+              className="action-pill"
+              style={{ backgroundColor: bg, borderColor: border, color: text }}
+              onClick={actionHandlers[ACTION_KEYS[label] ?? label]}
+            >
+              <Icon size={14} />
+              {localizedLabel}
+            </button>
+          )
+        })}
       </div>
 
       <AutoPostModal open={autoPostOpen} onClose={() => setAutoPostOpen(false)} />

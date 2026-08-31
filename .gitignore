@@ -24,3 +24,6 @@ data.sqlite-*
 .env.*
 !.env.example
 firebase-service-account*.json
+
+# electron-vite leaves timestamped temp config files
+electron.vite.config.*.mjs

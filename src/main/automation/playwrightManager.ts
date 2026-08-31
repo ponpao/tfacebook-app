@@ -24,6 +24,8 @@ export interface LiveDieResult {
   token?: string
 }
 
+import * as accountsRepo from '../db/accountsRepo'
+
 export type { AutoLoginResult }
 
 /**
@@ -43,9 +45,43 @@ export async function openProfile(
   const context = await launchContext({ headless: false, account, slotIndex, rowNumber })
   trackContext(key, context)
 
+  // Auto-sync cookies: whenever the user logs in or browses, automatically
+  // extract and save the fresh session cookie to the database so it never goes stale.
+  const syncCookiesIfLoggedIn = async (): Promise<void> => {
+    try {
+      const cookies = await context.cookies()
+      const cUser = cookies.find((c) => c.name === 'c_user')?.value
+      const xs = cookies.find((c) => c.name === 'xs')?.value
+      if (cUser && xs) {
+        const freshCookie = cookies.map((c) => `${c.name}=${c.value}`).join('; ')
+        const current = accountsRepo.getAccount(account.id)
+        if (current && current.cookie !== freshCookie) {
+          accountsRepo.updateAccount(account.id, {
+            cookie: freshCookie,
+            status: 'Live',
+            status_detail: 'Cookie Synced from Browser',
+            live_status: 'Live',
+            last_active: new Date().toISOString().slice(0, 19).replace('T', ' ')
+          })
+        }
+      }
+    } catch {
+      /* ignore context closing errors */
+    }
+  }
+
+  const syncTimer = setInterval(() => void syncCookiesIfLoggedIn(), 2500)
+  context.on('close', () => {
+    clearInterval(syncTimer)
+    void syncCookiesIfLoggedIn()
+  })
+
   const page = context.pages()[0] ?? (await context.newPage())
+  page.on('load', () => void syncCookiesIfLoggedIn())
+  context.on('page', (p) => p.on('load', () => void syncCookiesIfLoggedIn()))
+
   await page
-    .goto('https://www.facebook.com', { timeout: 45000, waitUntil: 'domcontentloaded' })
+    .goto('https://web.facebook.com', { timeout: 45000, waitUntil: 'domcontentloaded' })
     .catch(() => void 0)
 
   return { ok: true, detail: 'Browser Active' }

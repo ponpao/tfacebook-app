@@ -77,7 +77,13 @@ function Dashboard({
   const folders = useAccountStore((s) => s.folders)
   const folderId = useAccountStore((s) => s.folderId)
   const selectedIds = useAccountStore((s) => s.selectedIds)
-  const rowSelection = useAccountStore((s) => s.rowSelection)
+  const selectedCount = useAccountStore((s) => {
+    let c = 0
+    for (const k in s.rowSelection) {
+      if (s.rowSelection[k]) c++
+    }
+    return c
+  })
 
   const initQueueListeners = useAccountStore((s) => s.initQueueListeners)
   const showToast = useAccountStore((s) => s.showToast)
@@ -126,7 +132,6 @@ function Dashboard({
 
   const activeFolder =
     folderId === ALL_FOLDERS ? null : folders.find((f) => f.id === folderId) ?? null
-  const selectedCount = Object.values(rowSelection).filter(Boolean).length
 
   const handleCreate = async (name: string): Promise<void> => {
     const created = await window.api.folders.create(name)
@@ -147,7 +152,7 @@ function Dashboard({
   }
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden border-t-4 border-blue-900 bg-mc-bg">
+    <div className="flex h-screen w-full min-w-full max-w-none flex-col overflow-hidden border-t-4 border-blue-900 bg-mc-bg">
       <TitleBar />
       <MenuBar
         onDisplayColumns={() => setColumnsOpen(true)}
@@ -162,7 +167,7 @@ function Dashboard({
         onFolderDialog={setFolderMode}
       />
 
-      <main className="flex flex-1 flex-col overflow-hidden p-1.5">
+      <main className="flex flex-1 flex-col overflow-hidden w-full min-w-full max-w-none px-1.5 pb-1 pt-0">
         <AccountsGrid />
       </main>
 

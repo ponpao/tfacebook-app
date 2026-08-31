@@ -33,6 +33,7 @@ export const STATUS_COLOR: Record<string, string> = {
   Live: 'text-[#1e9e4a] font-semibold',
   Checkpoint: 'text-[#c98a00] font-semibold',
   Die: 'text-[#c81e1e] font-semibold',
+  'Session Expired': 'text-[#c81e1e] font-semibold',
   'Changed Pass': 'text-[#d1721c] font-semibold',
   Unknown: 'text-[#6b7280]'
 }
@@ -100,11 +101,11 @@ function CopyableCell({
   }
   return (
     <span
-      className="cursor-pointer font-mono text-[#0067c0] hover:underline"
+      className="cursor-pointer font-mono text-[#0067c0] hover:underline truncate inline-block max-w-full"
       title={`Click to copy full ${label.toLowerCase()}`}
       onClick={copy}
     >
-      {masked} 📋
+      {masked}
     </span>
   )
 }
@@ -154,7 +155,18 @@ export const GRID_COLUMNS: GridColumn[] = [
     width: 130,
     render: (a) => a.email_pass ?? ''
   },
-  { key: 'name', header: 'Name', width: 130, render: (a) => a.name ?? '' },
+  {
+    key: 'name',
+    header: 'Name',
+    width: 130,
+    render: (a) => {
+      const n = (a.name ?? '').trim()
+      if (!n || /^\d+\s*[-–—]\s*(?:មិនទាន់|unnamed)/i.test(n) || n.includes('មិនទាន់')) {
+        return ''
+      }
+      return n
+    }
+  },
   {
     key: 'friends_count',
     header: 'Friends',

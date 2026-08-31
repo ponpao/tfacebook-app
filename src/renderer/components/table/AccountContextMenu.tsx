@@ -432,6 +432,7 @@ export function AccountContextMenu({ x, y, account, onClose }: Props): React.JSX
         )
       } finally {
         offProgress()
+        await refresh()
       }
     })
   }
@@ -501,10 +502,22 @@ export function AccountContextMenu({ x, y, account, onClose }: Props): React.JSX
   }
 
   const checkLiveDie = async (): Promise<void> => {
-    showToast('Checking Live / Die status…')
-    const res = await window.api.automation.checkLive(account.id)
-    showToast(`Status: ${res.status}${res.detail ? ` — ${res.detail}` : ''}`)
-    await refresh()
+    const targets = ids()
+    showToast(`Checking Live / Die for ${targets.length} account(s) (fast, no browser)…`)
+    try {
+      const summary = await window.api.automation.checkLive(targets)
+      if (!Array.isArray(summary)) {
+        showToast(`Status: ${summary.status}${summary.detail ? ` — ${summary.detail}` : ''}`)
+      } else {
+        const live = summary.filter((s) => s.status === 'Live').length
+        const die = summary.filter((s) => s.status === 'Die').length
+        const checkpoint = summary.filter((s) => s.status === 'Checkpoint').length
+        showToast(`Check Live done: ${live} Live, ${die} Die, ${checkpoint} Checkpoint`, 5000)
+      }
+      await refresh()
+    } catch (err) {
+      showToast(`Check Live failed: ${err instanceof Error ? err.message : String(err)}`)
+    }
   }
 
   const unlock282 = async (): Promise<void> => {
@@ -647,7 +660,7 @@ export function AccountContextMenu({ x, y, account, onClose }: Props): React.JSX
         />
         <Item
           icon={Zap}
-          label="Check Live / Die Status"
+          label={targetCount > 1 ? `Check Live / Die Status (${targetCount} Selected) ⚡` : 'Check Live / Die Status ⚡'}
           onClick={run(checkLiveDie)}
         />
       </Submenu>
@@ -730,21 +743,6 @@ export function AccountContextMenu({ x, y, account, onClose }: Props): React.JSX
           its own parent row) so nesting it inside another Submenu's children
           needs no changes to the component itself. */}
       <Submenu label="📁 Data & Batch Management" icon={FolderInput} width={230} registerPortalNode={registerPortalNode}>
-        <Submenu label="Copy Data" icon={Copy} width={180} registerPortalNode={registerPortalNode}>
-          <Item icon={Copy} label="Copy UID" onClick={run(() => copyField((a) => a.uid))} />
-          <Item icon={Copy} label="Copy Cookie" onClick={run(() => copyField((a) => a.cookie))} />
-          <Item icon={Copy} label="Copy 2FA Code" onClick={run(copy2FACode)} />
-          <Item
-            icon={Copy}
-            label="Copy Email|Pass"
-            onClick={run(() => copyField((a) => [a.email, a.password].map((v) => v ?? '').join('|')))}
-          />
-          <Item
-            icon={Copy}
-            label="Copy All Info"
-            onClick={run(() => copyField((a) => fullLineFor(a)))}
-          />
-        </Submenu>
         <Submenu label="Move to Folder..." icon={FolderInput} width={200} registerPortalNode={registerPortalNode}>
           {folders.length === 0 && (
             <div className="px-2.5 py-1.5 text-[12px] text-slate-400">No folders</div>

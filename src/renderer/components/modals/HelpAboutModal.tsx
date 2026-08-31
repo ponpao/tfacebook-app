@@ -3,10 +3,11 @@
 // proxy format), and cache/reset info. Triggered from the top menu bar.
 // ---------------------------------------------------------------------------
 import { useEffect, useState } from 'react'
-import { Info, RefreshCw, KeyRound } from 'lucide-react'
+import { Info, RefreshCw, KeyRound, CheckCircle2, AlertTriangle, Download } from 'lucide-react'
 import { ModalShell } from './ModalShell'
 import { AppLogo } from '../AppLogo'
 import { useAccountStore } from '../../store/useAccountStore'
+import { useLanguageStore } from '../../store/useLanguageStore'
 import type { LicenseStatus } from '../../../types/license'
 
 /** TFA-XXXX-XXXX-XXXX -> TFA-****-****-XXXX — only the last group stays visible. */
@@ -27,16 +28,46 @@ export function HelpAboutModal({
   onRequireActivation: () => void
 }): React.JSX.Element | null {
   const showToast = useAccountStore((s) => s.showToast)
+  const t = useLanguageStore((s) => s.t)
   const [checking, setChecking] = useState(false)
   const [license, setLicense] = useState<LicenseStatus | null>(null)
   const [deactivating, setDeactivating] = useState(false)
   const [appVersion, setAppVersion] = useState<string | null>(null)
+  const [fontInstalled, setFontInstalled] = useState<boolean | null>(null)
+  const [installingFont, setInstallingFont] = useState(false)
+
+  const checkFontStatus = async (): Promise<void> => {
+    try {
+      const res = await window.api.system.checkFont()
+      const docHas = document.fonts.check('16px "Kantumruy Pro"')
+      setFontInstalled(res.installed || docHas)
+    } catch {
+      setFontInstalled(document.fonts.check('16px "Kantumruy Pro"'))
+    }
+  }
 
   useEffect(() => {
     if (!open) return
     void window.api.license.getStatus().then(setLicense)
     void window.api.system.getAppVersion().then(setAppVersion)
+    void checkFontStatus()
   }, [open])
+
+  const handleInstallFont = async (): Promise<void> => {
+    setInstallingFont(true)
+    showToast(t('installingFont'), 3000)
+    try {
+      const res = await window.api.system.installFont()
+      if (res.ok) {
+        showToast(t('fontInstallSuccess'), 5000)
+        await checkFontStatus()
+      } else {
+        showToast(`${t('fontInstallFailed')}: ${res.message}`, 6000)
+      }
+    } finally {
+      setInstallingFont(false)
+    }
+  }
 
   const deactivate = async (): Promise<void> => {
     if (deactivating) return
@@ -102,6 +133,45 @@ export function HelpAboutModal({
             {checking ? 'Checking…' : 'Check for Updates'}
           </button>
         </div>
+
+        {/* System Font Status Section */}
+        <fieldset className="win-fieldset">
+          <legend>{t('systemFontStatus')}</legend>
+          <div className="flex flex-col gap-2 p-1">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-slate-800 text-xs">Kantumruy Pro</span>
+                {fontInstalled ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-800 border border-emerald-300">
+                    <CheckCircle2 size={12} className="text-emerald-700" />
+                    <span>{t('fontInstalled')}</span>
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-800 border border-amber-300">
+                    <AlertTriangle size={12} className="text-amber-700" />
+                    <span>{t('fontMissing')}</span>
+                  </span>
+                )}
+              </div>
+
+              {!fontInstalled && (
+                <button
+                  type="button"
+                  className="win-btn-accent flex items-center gap-1.5 px-3 py-1 font-semibold text-xs shadow-xs"
+                  onClick={() => void handleInstallFont()}
+                  disabled={installingFont}
+                >
+                  <Download size={13} className={installingFont ? 'animate-bounce' : ''} />
+                  <span>{installingFont ? t('installingFont') : t('installFontBtn')}</span>
+                </button>
+              )}
+            </div>
+
+            <p className="text-[11px] text-slate-600">
+              {fontInstalled ? t('fontInstalledDesc') : t('fontMissingDesc')}
+            </p>
+          </div>
+        </fieldset>
 
         <fieldset className="win-fieldset">
           <legend>License</legend>

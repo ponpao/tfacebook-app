@@ -8,6 +8,7 @@ export type AccountStatus =
   | 'Live'
   | 'Checkpoint'
   | 'Die'
+  | 'Session Expired'
   | 'Changed Pass'
   | 'Unknown'
   | string // allow custom user-defined statuses

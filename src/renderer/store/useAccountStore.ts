@@ -265,8 +265,7 @@ export const useAccountStore = create<AccountState>((set, get) => ({
       ) {
         return { scenarios }
       }
-      const fallback = scenarios.find((s) => s.is_default) ?? scenarios[0] ?? null
-      return { scenarios, activeScenarioId: fallback ? fallback.id : null }
+      return { scenarios, activeScenarioId: null }
     })
 
     // Cross-check against the durable SQLite-backed value in case
@@ -336,8 +335,10 @@ export const useAccountStore = create<AccountState>((set, get) => ({
   },
 
   stopQueueRun: async () => {
+    set({ queueRunning: false })
     await window.api.automation.stopQueue()
     get().showToast('Stopping queue and closing browsers…')
+    await get().refresh()
   },
 
   runSingleLogin: async (accountId) => {

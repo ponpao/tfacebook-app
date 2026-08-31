@@ -93,7 +93,7 @@ async function runScenarioStep(step: ScenarioStep, ctx: ScenarioStepContext): Pr
   }
 }
 
-/** Run every enabled step of a scenario, in order, against a logged-in page. */
+/** Run every enabled step of a scenario, in order (or randomized), against a logged-in page. */
 async function runScenario(
   scenario: Scenario,
   page: Page,
@@ -101,8 +101,18 @@ async function runScenario(
   onProgress: (label: string) => void
 ): Promise<void> {
   const ctx: ScenarioStepContext = { page, signal, onProgress }
-  for (const step of scenario.steps) {
-    if (!step.enabled) continue
+  let stepsToRun = scenario.steps.filter((s) => s.enabled)
+  if (scenario.randomize_order) {
+    // Fisher-Yates shuffle steps per account
+    stepsToRun = [...stepsToRun]
+    for (let i = stepsToRun.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1))
+      const temp = stepsToRun[i]
+      stepsToRun[i] = stepsToRun[j]
+      stepsToRun[j] = temp
+    }
+  }
+  for (const step of stepsToRun) {
     if (signal.aborted) throw new AbortedError()
     await runScenarioStep(step, ctx)
   }

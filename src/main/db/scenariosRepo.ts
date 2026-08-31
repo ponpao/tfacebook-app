@@ -17,8 +17,15 @@ interface ScenarioRow {
 
 function toScenario(row: ScenarioRow): Scenario {
   let steps: ScenarioStep[] = []
+  let randomize_order = false
   try {
-    steps = JSON.parse(row.steps_json)
+    const parsed = JSON.parse(row.steps_json)
+    if (Array.isArray(parsed)) {
+      steps = parsed
+    } else if (parsed && typeof parsed === 'object') {
+      steps = Array.isArray(parsed.steps) ? parsed.steps : []
+      randomize_order = !!parsed.randomize_order
+    }
   } catch {
     steps = []
   }
@@ -26,6 +33,7 @@ function toScenario(row: ScenarioRow): Scenario {
     id: row.id,
     name: row.name,
     steps,
+    randomize_order,
     is_default: row.is_default === 1,
     created_at: row.created_at,
     updated_at: row.updated_at
@@ -50,7 +58,10 @@ export function createScenario(input: NewScenario): Scenario {
   const db = getDb()
   const info = db
     .prepare(`INSERT INTO scenarios (name, steps_json) VALUES (@name, @steps)`)
-    .run({ name: input.name.trim(), steps: JSON.stringify(input.steps) })
+    .run({
+      name: input.name.trim(),
+      steps: JSON.stringify({ steps: input.steps, randomize_order: !!input.randomize_order })
+    })
   return getScenario(Number(info.lastInsertRowid)) as Scenario
 }
 
@@ -65,9 +76,15 @@ export function updateScenario(
     entries.push('name = @name')
     params.name = patch.name.trim()
   }
-  if (patch.steps != null) {
+  if (patch.steps != null || patch.randomize_order !== undefined) {
     entries.push('steps_json = @steps')
-    params.steps = JSON.stringify(patch.steps)
+    const current = getScenario(id)
+    const steps = patch.steps ?? current?.steps ?? []
+    const randomize_order =
+      patch.randomize_order !== undefined
+        ? patch.randomize_order
+        : (current?.randomize_order ?? false)
+    params.steps = JSON.stringify({ steps, randomize_order })
   }
   if (entries.length === 0) return getScenario(id)
   db.prepare(`UPDATE scenarios SET ${entries.join(', ')} WHERE id = @id`).run(params)
