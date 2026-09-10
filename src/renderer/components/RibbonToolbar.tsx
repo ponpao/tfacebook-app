@@ -30,8 +30,11 @@ import {
   XCircle,
   GripVertical,
   PinOff,
-  Trash2
+  Trash2,
+  LayoutGrid,
+  ChevronDown
 } from 'lucide-react'
+import type { ArrangeLayout } from '../../types/ipc'
 import { useAccountStore, type SearchField } from '../store/useAccountStore'
 import { useLanguageStore } from '../store/useLanguageStore'
 import { ALL_FOLDERS } from '../../types/folder'
@@ -64,6 +67,11 @@ const STATUS_OPTIONS: (AccountStatus | 'All')[] = [
 // Soft pastel pill colors per action — background/border/text triples kept
 // light enough that the pill reads as a badge, not a solid button, matching
 // the "Studio"-style toolbar's Row 2.
+// Auto Post / Auto Share / Watch Live and Import UA / Import Proxy are each
+// grouped under one "Interact" / "Import" dropdown pill (see PillDropdown)
+// instead of one standalone pill per action, so this list only holds the
+// remaining always-standalone Row 2 actions.
+// Rendered before the Arrange Windows dropdown pill.
 const ACTION_BUTTONS: {
   icon: typeof BookOpen
   label: string
@@ -71,24 +79,35 @@ const ACTION_BUTTONS: {
   border: string
   text: string
 }[] = [
-  { icon: BookOpen, label: 'Auto Post', bg: '#e8f2fd', border: '#bcdcf7', text: '#1a5c96' },
-  { icon: Share2, label: 'Auto Share', bg: '#e9f8ec', border: '#bfe8c8', text: '#1e7d34' },
-  { icon: Video, label: 'Watch Live', bg: '#fdeaec', border: '#f5c3c9', text: '#b8283c' },
   { icon: UserCog, label: 'Change Info', bg: '#fdf7e3', border: '#f0e2ad', text: '#8a6d10' },
-  { icon: Upload, label: 'Import UA', bg: '#eef0f4', border: '#d3d8e2', text: '#48505e' },
-  { icon: Globe, label: 'Import Proxy', bg: '#eef0f4', border: '#d3d8e2', text: '#48505e' },
   { icon: FileDown, label: 'Export', bg: '#eef0f4', border: '#d3d8e2', text: '#48505e' },
-  { icon: Shuffle, label: 'Randomize', bg: '#f3ecfb', border: '#ddc7f2', text: '#6b3aa0' },
+  { icon: Shuffle, label: 'Randomize', bg: '#f3ecfb', border: '#ddc7f2', text: '#6b3aa0' }
+]
+
+// Rendered after the Arrange Windows dropdown pill (Close Browsers stays
+// last, at the far right of Row 2, matching "arrange before close").
+const ACTION_BUTTONS_AFTER_ARRANGE: (typeof ACTION_BUTTONS)[number][] = [
   { icon: XCircle, label: 'Close Browsers', bg: '#fbebe8', border: '#f2c9c0', text: '#a8442e' }
 ]
 
 // Action-handler lookup keys stay stable (independent of any display-label
-// wording changes above) — Import UA/Import Proxy/Export map to the same
-// underlying actions as before under their fuller original names.
+// wording changes above) — Export maps to the same underlying action as
+// before under its fuller original name.
 const ACTION_KEYS: Record<string, string> = {
-  'Import UA': 'Import Useragent',
   Export: 'Export Accounts'
 }
+
+// "Arrange Browsers" dropdown — tiles/splits every currently-open headed
+// browser window via windowArranger.ts (main process, CDP-driven). Grid
+// 5x2 is the recommended default per spec (10 windows/screen).
+const ARRANGE_OPTIONS: { layout: ArrangeLayout; label: string }[] = [
+  { layout: 'grid5x2', label: '5x2' },
+  { layout: 'grid4x2', label: '4x2' },
+  { layout: 'leftHalf', label: 'Left Half PC' },
+  { layout: 'rightHalf', label: 'Right Half PC' },
+  { layout: 'maximized', label: 'Full Screen' },
+  { layout: 'restore', label: 'Original Size' }
+]
 
 const TOOLBAR_POS_KEY = 'ui.toolbarFloatPosition'
 const TOOLBAR_DOCKED_KEY = 'ui.toolbarDocked'
@@ -96,6 +115,73 @@ const TOOLBAR_DOCKED_KEY = 'ui.toolbarDocked'
 interface FloatPos {
   x: number
   y: number
+}
+
+/**
+ * A Row 2 action pill that opens a small dropdown of sub-actions instead of
+ * firing one action directly — used to group Auto Post / Auto Share / Watch
+ * Live under "Interact" and Import UA / Import Proxy under "Import", so Row
+ * 2 doesn't need one pill per individual action. Same open/close/outside-
+ * click/portal-free pattern the Arrange Windows pill already used, factored
+ * out here so it isn't duplicated three times.
+ */
+function PillDropdown({
+  icon: Icon,
+  label,
+  bg,
+  border,
+  text,
+  options
+}: {
+  icon: typeof Download
+  label: string
+  bg: string
+  border: string
+  text: string
+  options: { key: string; icon: typeof Download; label: string; onClick: () => void }[]
+}): React.JSX.Element {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onDocClick = (e: MouseEvent): void => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onDocClick)
+    return () => document.removeEventListener('mousedown', onDocClick)
+  }, [open])
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        className="action-pill"
+        style={{ backgroundColor: bg, borderColor: border, color: text }}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <Icon size={14} />
+        {label}
+        <ChevronDown size={12} />
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full z-50 mt-1 w-52 rounded border border-slate-300 bg-white py-1 shadow-lg">
+          {options.map((opt) => (
+            <button
+              key={opt.key}
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-slate-700 hover:bg-slate-100"
+              onClick={() => {
+                setOpen(false)
+                opt.onClick()
+              }}
+            >
+              <opt.icon size={14} className="text-[#4a6a8a]" />
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
 }
 
 function loadDocked(): boolean {
@@ -156,6 +242,8 @@ export function RibbonToolbar({
   const [importProxyOpen, setImportProxyOpen] = useState(false)
   const [importUseragentOpen, setImportUseragentOpen] = useState(false)
   const [watchLiveOpen, setWatchLiveOpen] = useState(false)
+  const [arrangeMenuOpen, setArrangeMenuOpen] = useState(false)
+  const arrangeMenuRef = useRef<HTMLDivElement>(null)
 
   // Docked (normal document flow) vs floating (position: fixed, draggable by
   // the grip handle) — both persisted so the choice survives a restart.
@@ -222,6 +310,29 @@ export function RibbonToolbar({
     const res = await window.api.automation.closeAllBrowsers()
     showToast(`Closed ${res.closed} browser(s)`)
     await refresh()
+  }
+
+  // Click-outside closes the Arrange Browsers dropdown, same pattern as any
+  // other transient popover in this toolbar.
+  useEffect(() => {
+    if (!arrangeMenuOpen) return
+    const onDocClick = (e: MouseEvent): void => {
+      if (arrangeMenuRef.current && !arrangeMenuRef.current.contains(e.target as Node)) {
+        setArrangeMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onDocClick)
+    return () => document.removeEventListener('mousedown', onDocClick)
+  }, [arrangeMenuOpen])
+
+  const arrangeWindows = async (layout: ArrangeLayout): Promise<void> => {
+    setArrangeMenuOpen(false)
+    const res = await window.api.automation.arrangeWindows(layout)
+    if (res.total === 0) {
+      showToast('No open browser windows to arrange')
+    } else {
+      showToast(`Arranged ${res.arranged}/${res.total} window(s)`)
+    }
   }
 
   const randomize = (): void => {
@@ -461,17 +572,38 @@ export function RibbonToolbar({
           <Download size={14} />
           {t('importAccounts')}
         </button>
+        {/* Interact — Auto Post / Auto Share / Watch Live grouped under one dropdown pill. */}
+        <PillDropdown
+          icon={BookOpen}
+          label="Interact"
+          bg="#e8f2fd"
+          border="#bcdcf7"
+          text="#1a5c96"
+          options={[
+            { key: 'autoPost', icon: BookOpen, label: t('autoPost'), onClick: () => setAutoPostOpen(true) },
+            { key: 'autoShare', icon: Share2, label: t('autoShare'), onClick: () => setAutoShareOpen(true) },
+            { key: 'watchLive', icon: Video, label: t('watchLive'), onClick: () => setWatchLiveOpen(true) }
+          ]}
+        />
+
+        {/* Import — Import UA / Import Proxy grouped under one dropdown pill (Import Accounts stays its own standalone pill above, it's a different action). */}
+        <PillDropdown
+          icon={Upload}
+          label="Import"
+          bg="#eef0f4"
+          border="#d3d8e2"
+          text="#48505e"
+          options={[
+            { key: 'importUa', icon: Upload, label: t('importUa'), onClick: () => setImportUseragentOpen(true) },
+            { key: 'importProxy', icon: Globe, label: t('importProxy'), onClick: () => setImportProxyOpen(true) }
+          ]}
+        />
+
         {ACTION_BUTTONS.map(({ icon: Icon, label, bg, border, text }) => {
           let localizedLabel = label
-          if (label === 'Auto Post') localizedLabel = t('autoPost')
-          else if (label === 'Auto Share') localizedLabel = t('autoShare')
-          else if (label === 'Watch Live') localizedLabel = t('watchLive')
-          else if (label === 'Change Info') localizedLabel = t('changeInfo')
-          else if (label === 'Import UA') localizedLabel = t('importUa')
-          else if (label === 'Import Proxy') localizedLabel = t('importProxy')
+          if (label === 'Change Info') localizedLabel = t('changeInfo')
           else if (label === 'Export') localizedLabel = t('export')
           else if (label === 'Randomize') localizedLabel = t('randomize')
-          else if (label === 'Close Browsers') localizedLabel = t('closeBrowsers')
 
           return (
             <button
@@ -485,6 +617,50 @@ export function RibbonToolbar({
             </button>
           )
         })}
+
+        {/* Arrange Windows — tiles/splits every currently-open headed
+            browser window (windowArranger.ts, CDP-driven). Kept before
+            Close Browsers so arranging what's open comes before closing it. */}
+        <div className="relative" ref={arrangeMenuRef}>
+          <button
+            className="action-pill"
+            style={{ backgroundColor: '#eef0f4', borderColor: '#d3d8e2', color: '#48505e' }}
+            onClick={() => setArrangeMenuOpen((v) => !v)}
+          >
+            <LayoutGrid size={14} />
+            Arrange Windows
+            <ChevronDown size={12} />
+          </button>
+          {arrangeMenuOpen && (
+            <div className="absolute left-0 top-full z-50 mt-1 w-44 rounded border border-slate-300 bg-white py-1 shadow-lg">
+              {ARRANGE_OPTIONS.map((opt) => (
+                <button
+                  key={opt.layout}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-slate-700 hover:bg-slate-100"
+                  onClick={() => void arrangeWindows(opt.layout)}
+                  title={opt.layout === 'grid5x2' ? `${opt.label} (Recommended)` : opt.label}
+                >
+                  <span className="whitespace-nowrap">{opt.label}</span>
+                  {opt.layout === 'grid5x2' && (
+                    <span className="ml-auto shrink-0 text-[10px] font-semibold text-[#1e7d34]">★</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {ACTION_BUTTONS_AFTER_ARRANGE.map(({ icon: Icon, label, bg, border, text }) => (
+          <button
+            key={label}
+            className="action-pill"
+            style={{ backgroundColor: bg, borderColor: border, color: text }}
+            onClick={actionHandlers[ACTION_KEYS[label] ?? label]}
+          >
+            <Icon size={14} />
+            {label === 'Close Browsers' ? t('closeBrowsers') : label}
+          </button>
+        ))}
       </div>
 
       <AutoPostModal open={autoPostOpen} onClose={() => setAutoPostOpen(false)} />

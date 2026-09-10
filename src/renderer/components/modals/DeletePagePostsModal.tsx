@@ -2,7 +2,7 @@
 // DeletePagePostsModal.tsx  — Page Posts Manager & Bulk Deletion via
 // Meta Business Suite table.
 // ---------------------------------------------------------------------------
-import React, { useState, useEffect, useMemo, useRef } from 'react'
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import {
   Trash2,
   Calendar,
@@ -33,6 +33,7 @@ import { useAccountStore } from '../../store/useAccountStore'
 import { useLanguageStore } from '../../store/useLanguageStore'
 import type { ManagedPage, PagePost, PagePostType, Account } from '../../../types/account'
 import type { BatchScanProgressEvent } from '../../../types/ipc'
+import { ALL_FOLDERS } from '../../../types/folder'
 
 interface DeletePagePostsModalProps {
   open: boolean
@@ -49,12 +50,45 @@ interface AccountPageRow {
 
 export function DeletePagePostsModal({ open, onClose }: DeletePagePostsModalProps): React.JSX.Element | null {
   const accounts = useAccountStore((s) => s.accounts)
+  const folders = useAccountStore((s) => s.folders)
   const rowSelection = useAccountStore((s) => s.rowSelection)
   const showToast = useAccountStore((s) => s.showToast)
   const refreshAccounts = useAccountStore((s) => s.refresh)
 
+  // Category Folder filter
+  const [selectedFolderId, setSelectedFolderId] = useState<number>(ALL_FOLDERS)
+
   // Automation Headless / Headed mode toggle
   const [headlessMode, setHeadlessMode] = useState<boolean>(true)
+
+  // Accounts directly fetched from SQLite for the selected folder
+  const [dbAccounts, setDbAccounts] = useState<Account[]>([])
+
+  const fetchAccountsForFolder = useCallback(
+    async (folderId: number) => {
+      try {
+        const res = await window.api.accounts.list({
+          folderId: folderId === ALL_FOLDERS ? undefined : folderId,
+          limit: 10000
+        })
+        setDbAccounts(res.rows)
+      } catch (err) {
+        console.error('Failed to fetch accounts for DeletePagePostsModal:', err)
+      }
+    },
+    []
+  )
+
+  // Fetch when modal opens or folder changes
+  useEffect(() => {
+    if (open) {
+      setSelectedLeftKeys(new Set())
+      setActiveRowKey('')
+      setPosts([])
+      setSelectedPostIds(new Set())
+      fetchAccountsForFolder(selectedFolderId)
+    }
+  }, [open, selectedFolderId, fetchAccountsForFolder])
 
   // Selected account IDs derived reactively from rowSelection
   const selectedAccountIds = useMemo(() => {
@@ -63,13 +97,12 @@ export function DeletePagePostsModal({ open, onClose }: DeletePagePostsModalProp
       .map(([id]) => Number(id))
   }, [rowSelection])
 
-  // Accounts to show on the left list (strictly the ticked accounts from main UI, or all if none ticked)
+  // Accounts to show on the left list (uses dbAccounts fetched for the chosen folder)
   const targetAccounts = useMemo(() => {
-    if (selectedAccountIds.length > 0) {
-      return accounts.filter((a) => selectedAccountIds.includes(a.id))
-    }
-    return accounts
-  }, [accounts, selectedAccountIds])
+    if (dbAccounts.length > 0) return dbAccounts
+    if (selectedFolderId === ALL_FOLDERS && accounts.length > 0) return accounts
+    return []
+  }, [dbAccounts, accounts, selectedFolderId])
 
   // Temporary UI-cleared row IDs (cleared from view only until modal reopens)
   const [clearedRowKeys, setClearedRowKeys] = useState<Set<string>>(new Set())
@@ -267,6 +300,9 @@ export function DeletePagePostsModal({ open, onClose }: DeletePagePostsModalProp
     const unsubFetch = window.api.pages.onFetchProgress((e) => {
       setProgressMsg(e.message)
     })
+    const unsubFetchV2 = window.api.pages.onFetchV2Progress?.((e) => {
+      setProgressMsg(e.message)
+    })
     const unsubDelete = window.api.pages.onDeleteProgress((e) => {
       setProgressMsg(e.message)
       if (typeof e.deletedCount === 'number') {
@@ -300,12 +336,26 @@ export function DeletePagePostsModal({ open, onClose }: DeletePagePostsModalProp
         })
       }
     })
+    const unsubDeleteV2 = window.api.pages.onDeleteV2Progress?.((e) => {
+      setProgressMsg(e.message)
+      if (typeof e.deletedCount === 'number') {
+        setDeleteDone(e.deletedCount)
+      }
+      if (Array.isArray(e.completedIds) && e.completedIds.length > 0) {
+        const doneSet = new Set(e.completedIds)
+        setPosts((prev) =>
+          prev.map((p) => (doneSet.has(p.id) ? { ...p, status: '✓ Completed' } : p))
+        )
+      }
+    })
     const unsubBatch = window.api.pages.onBatchScanProgress((event) => {
       setBatchProgress(event)
     })
     return () => {
       unsubFetch()
+      unsubFetchV2?.()
       unsubDelete()
+      unsubDeleteV2?.()
       unsubBatch()
     }
   }, [open])
@@ -587,6 +637,7 @@ export function DeletePagePostsModal({ open, onClose }: DeletePagePostsModalProp
       })
     )
 
+    // Bulk delete via Meta Business Suite
     try {
       const res = await window.api.pages.deletePosts(
         activeRow.account.id,
@@ -785,7 +836,7 @@ export function DeletePagePostsModal({ open, onClose }: DeletePagePostsModalProp
         {/* LEFT COLUMN: Accounts & Managed Pages (UID | ID Page | Name Page)         */}
         {/* ========================================================================= */}
         <div className="flex w-[450px] shrink-0 flex-col rounded border border-slate-300 bg-white shadow-sm overflow-hidden">
-          {/* Header (Clean, no extra buttons) */}
+          {/* Header */}
           <div className="flex items-center justify-between border-b border-slate-200 bg-slate-100 px-3 py-2">
             <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
               <User size={14} className="text-[#0067c0]" />
@@ -798,9 +849,27 @@ export function DeletePagePostsModal({ open, onClose }: DeletePagePostsModalProp
             )}
           </div>
 
-          {/* Search box */}
-          <div className="border-b border-slate-200 p-1.5 bg-slate-50 flex items-center gap-1.5">
-            <div className="flex flex-1 items-center gap-1 rounded border border-slate-300 bg-white px-2 py-1">
+          {/* Category Folder selector & Search box */}
+          <div className="border-b border-slate-200 p-1.5 bg-slate-50 flex flex-col gap-1.5">
+            <div className="flex items-center gap-1.5">
+              <label className="text-[11px] font-semibold text-slate-700 whitespace-nowrap">Folder:</label>
+              <select
+                value={selectedFolderId}
+                onChange={(e) => setSelectedFolderId(Number(e.target.value))}
+                className="w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 focus:outline-none focus:border-blue-500 shadow-2xs"
+              >
+                <option value={ALL_FOLDERS}>
+                  All Folders ({folders.reduce((acc, f) => acc + (f.account_count || 0), 0)})
+                </option>
+                {folders.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name} [{f.account_count ?? 0}]
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex items-center gap-1 rounded border border-slate-300 bg-white px-2 py-1">
               <Search size={12} className="text-slate-400" />
               <input
                 type="text"

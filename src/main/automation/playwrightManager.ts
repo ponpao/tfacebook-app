@@ -39,7 +39,9 @@ export type { AutoLoginResult }
 export async function openProfile(
   account: Account,
   slotIndex?: number,
-  rowNumber?: number
+  rowNumber?: number,
+  /** Overrides the default https://web.facebook.com landing URL — used by the row context menu's "🚀 Open Browser with URL" action, and by openProfile() itself falling back to account.target_url when the caller doesn't pass one explicitly. Session/cookie handling (launchContext, cookie sync below) is entirely unaffected — only the initial page.goto() destination changes. */
+  targetUrl?: string
 ): Promise<{ ok: boolean; detail: string }> {
   const key = `profile:${account.uid ?? account.id}`
   const context = await launchContext({ headless: false, account, slotIndex, rowNumber })
@@ -80,8 +82,12 @@ export async function openProfile(
   page.on('load', () => void syncCookiesIfLoggedIn())
   context.on('page', (p) => p.on('load', () => void syncCookiesIfLoggedIn()))
 
+  // Explicit targetUrl param wins; otherwise fall back to the account's own
+  // saved target_url (set via the row context menu's "Assign Target URL"),
+  // and only default to the plain Facebook feed if neither is set.
+  const destination = (targetUrl?.trim() || account.target_url?.trim() || 'https://web.facebook.com')
   await page
-    .goto('https://web.facebook.com', { timeout: 45000, waitUntil: 'domcontentloaded' })
+    .goto(destination, { timeout: 45000, waitUntil: 'domcontentloaded' })
     .catch(() => void 0)
 
   return { ok: true, detail: 'Browser Active' }

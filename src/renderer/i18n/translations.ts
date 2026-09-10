@@ -5,6 +5,7 @@ export const TRANSLATIONS = {
     // MenuBar
     generalSettings: 'General Settings',
     pages: 'Pages',
+    getPageInfo: 'Get Page Info',
     deletePostInPage: 'Delete Post in Page',
     scenarioBuilder: 'Scenario Builder',
     displayColumns: 'Display Columns',
@@ -190,7 +191,8 @@ export const TRANSLATIONS = {
   km: {
     // MenuBar
     generalSettings: 'ការកំណត់ទូទៅ',
-    pages: 'ទំព័រ (Pages)',
+    pages: 'គ្រប់គ្រង Pages',
+    getPageInfo: 'ទាញព័ត៌មាន Page (Get Page Info)',
     deletePostInPage: 'លុបការបង្ហោះក្នុង Page',
     scenarioBuilder: 'អ្នកបង្កើតសេណារីយ៉ូ',
     displayColumns: 'បង្ហាញជួរឈរ',

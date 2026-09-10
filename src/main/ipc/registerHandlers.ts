@@ -24,6 +24,7 @@ import {
   closeAllBrowsers,
   autoLogin
 } from '../automation/playwrightManager'
+import { arrangeBrowserWindows, type ArrangeLayout } from '../automation/windowArranger'
 import { checkAccountsLiveBatch, probeAccountLiveFast } from '../automation/fastChecker'
 import { fetchFacebookOtp } from '../automation/imapWorker'
 import { runQueue, stopQueue, isQueueRunning } from '../automation/queueRunner'
@@ -50,6 +51,8 @@ import {
   bulkDeletePagePosts,
   stopPageOperations
 } from '../automation/pagePostsManager'
+import { batchExtractPagesV2, stopV2Extraction } from '../automation/pageExtractorV2'
+import { fetchPagePostsV2, deletePagePostsV2, stopDeletePostsV2 } from '../automation/postDeleterV2'
 import { resolveProfileDir } from '../automation/browserContext'
 import { cleanProfiles } from '../automation/profileOptimizer'
 import { buildExportLines } from '../utils/exportAccounts'
@@ -116,12 +119,12 @@ export function registerIpcHandlers(): void {
   )
   ipcMain.handle(
     IPC.accounts.bulkAssign,
-    (_e, column: 'proxy' | 'user_agent', assignments: { id: number; value: string }[]) =>
+    (_e, column: 'proxy' | 'user_agent' | 'target_url', assignments: { id: number; value: string }[]) =>
       accounts.bulkAssignField(column, assignments)
   )
   ipcMain.handle(
     IPC.accounts.bulkSetField,
-    (_e, column: 'notes' | 'live_status' | 'proxy', ids: number[], value: string) =>
+    (_e, column: 'notes' | 'live_status' | 'proxy' | 'target_url', ids: number[], value: string) =>
       accounts.bulkSetField(column, ids, value)
   )
   ipcMain.handle(IPC.accounts.assignProxies, (_e, req: AssignProxyRequest) => {
@@ -220,11 +223,11 @@ export function registerIpcHandlers(): void {
   )
 
   // ---- automation (Playwright + IMAP) -------------------------------------
-  ipcMain.handle(IPC.automation.openProfile, async (_e, accountId: number, slotIndex?: number, rowNumber?: number) => {
+  ipcMain.handle(IPC.automation.openProfile, async (_e, accountId: number, slotIndex?: number, rowNumber?: number, targetUrl?: string) => {
     const acc = accounts.getAccount(accountId)
     if (!acc) return { ok: false, detail: 'Account not found' }
     try {
-      const res = await openProfile(acc, slotIndex, rowNumber)
+      const res = await openProfile(acc, slotIndex, rowNumber, targetUrl)
       accounts.updateAccount(accountId, { live_status: res.detail })
       return res
     } catch (err) {
@@ -326,6 +329,10 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC.automation.closeAllBrowsers, async () => {
     const closed = await closeAllBrowsers()
     return { closed }
+  })
+
+  ipcMain.handle(IPC.automation.arrangeWindows, async (_e, layout: ArrangeLayout) => {
+    return arrangeBrowserWindows(layout)
   })
 
   // ---- multi-thread queue runner -------------------------------------------
@@ -711,6 +718,70 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(IPC.pages.stopOperation, async () => {
     return await stopPageOperations()
+  })
+
+  ipcMain.handle(
+    IPC.pages.extractPagesV2,
+    async (e, accountIds: number[], headless?: boolean) => {
+      const win = BrowserWindow.fromWebContents(e.sender)
+      return await batchExtractPagesV2(accountIds, headless ?? true, (progress) => {
+        win?.webContents.send(IPC.pages.onExtractV2Progress, progress)
+      })
+    }
+  )
+
+  ipcMain.handle(IPC.pages.stopExtractV2, async () => {
+    stopV2Extraction()
+    return { ok: true }
+  })
+
+  ipcMain.handle(
+    IPC.pages.fetchPostsV2,
+    async (e, accountId: number, pageId: string, filter: any, headless?: boolean) => {
+      const acc = accounts.getAccount(accountId)
+      if (!acc) return { posts: [], totalScraped: 0 }
+      const win = BrowserWindow.fromWebContents(e.sender)
+      return await fetchPagePostsV2(acc, pageId, filter, headless ?? true, (msg) => {
+        win?.webContents.send(IPC.pages.onFetchV2Progress, { accountId, pageId, message: msg })
+      })
+    }
+  )
+
+  ipcMain.handle(
+    IPC.pages.deletePostsV2,
+    async (
+      e,
+      accountId: number,
+      pageId: string,
+      postItems: Array<{ id: string; type: string }>,
+      headless?: boolean,
+      threads?: number
+    ) => {
+      const acc = accounts.getAccount(accountId)
+      if (!acc) return { success: false, deletedCount: 0, detail: 'Account not found' }
+      const win = BrowserWindow.fromWebContents(e.sender)
+      return await deletePagePostsV2(
+        acc,
+        pageId,
+        postItems,
+        headless ?? true,
+        threads ?? 3,
+        (progress) => {
+          win?.webContents.send(IPC.pages.onDeleteV2Progress, {
+            accountId,
+            pageId,
+            message: progress.message,
+            deletedCount: progress.deletedCount,
+            completedIds: progress.completedIds,
+            currentBatchIds: progress.currentBatchIds
+          })
+        }
+      )
+    }
+  )
+
+  ipcMain.handle(IPC.pages.stopDeleteV2, async () => {
+    return stopDeletePostsV2()
   })
 
   // ---- window controls (frameless title bar) ------------------------------

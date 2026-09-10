@@ -107,6 +107,11 @@ interface AccountState {
   addFriendsTargetIds: number[] | null
   joinGroupsTargetIds: number[] | null
 
+  // Assign Target URL modal — opened from the row context menu's 🔗 ដាក់
+  // Link URL action; carries the full target Account records (not just ids)
+  // since the modal pre-fills the existing target_url per row.
+  assignUrlTargetAccounts: Account[] | null
+
   // actions
   showToast: (msg: string, ttlMs?: number) => void
   setThreadCount: (n: number) => void
@@ -120,6 +125,8 @@ interface AccountState {
   closeEditAccount: () => void
   openSetNotes: (ids: number[]) => void
   closeSetNotes: () => void
+  openAssignUrl: (accounts: Account[]) => void
+  closeAssignUrl: () => void
   openCleanProfile: (ids: number[]) => void
   closeCleanProfile: () => void
   openAddFriends: (ids: number[]) => void
@@ -193,6 +200,7 @@ export const useAccountStore = create<AccountState>((set, get) => ({
   cleanProfileTargetIds: null,
   addFriendsTargetIds: null,
   joinGroupsTargetIds: null,
+  assignUrlTargetAccounts: null,
 
   openExportModal: () => set({ exportModalOpen: true }),
   closeExportModal: () => set({ exportModalOpen: false }),
@@ -208,6 +216,8 @@ export const useAccountStore = create<AccountState>((set, get) => ({
   closeAddFriends: () => set({ addFriendsTargetIds: null }),
   openJoinGroups: (ids) => set({ joinGroupsTargetIds: ids }),
   closeJoinGroups: () => set({ joinGroupsTargetIds: null }),
+  openAssignUrl: (accounts) => set({ assignUrlTargetAccounts: accounts }),
+  closeAssignUrl: () => set({ assignUrlTargetAccounts: null }),
   applyAccountUpdate: (account) =>
     set((state) => ({
       accounts: state.accounts.map((a) => (a.id === account.id ? account : a))
@@ -399,12 +409,23 @@ export const useAccountStore = create<AccountState>((set, get) => ({
         }
       })
     })
+    // Full-row real-time update: fires per account as soon as its own login
+    // + extraction finishes (independent of the other worker slots still
+    // running), carrying the complete freshly-re-read row — patched in
+    // place via the same applyAccountUpdate() every other IPC-driven row
+    // update in this store already uses, so Friends/Groups/Followers/
+    // Pages/Cookie/Token/Avatar/locations/Created Date/Status all appear
+    // live without waiting for the whole batch or a manual refresh().
+    const offAccountUpdated = window.api.automation.onAccountUpdated((account) => {
+      get().applyAccountUpdate(account)
+    })
     const offDone = window.api.automation.onQueueDone((_summary: QueueSummary) => {
       set({ queueRunning: false })
     })
 
     const cleanup = (): void => {
       offProgress()
+      offAccountUpdated()
       offDone()
       if (queueListenersCleanup === cleanup) queueListenersCleanup = null
     }

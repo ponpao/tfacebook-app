@@ -40,6 +40,8 @@ export interface Account {
   cookie: string | null
   token: string | null
   proxy: string | null
+  /** Optional custom URL — when set, Open Profile / Run Queue navigate here after login instead of the default Facebook feed. See AccountContextMenu.tsx's "Assign Target URL" / "Open Browser with URL" actions. */
+  target_url: string | null
   avatar: string | null
   user_agent: string | null
   last_active: string | null
@@ -101,6 +103,16 @@ export interface ManagedPage {
   name: string
   assetId?: string
   url?: string
+  followers?: string
+  following?: string
+  category?: string
+  website?: string
+  status?: 'Active' | 'Deactivated / Deleted' | string
+  folderImage?: string
+  folderVideo?: string
+  folderReel?: string
+  note?: string
+  deactivatedCount?: number
 }
 
 export type PagePostType = 'ALL' | 'REEL' | 'PHOTO' | 'STATUS'

@@ -49,12 +49,28 @@ export interface QueueSummary {
 }
 
 const PROGRESS_CHANNEL = 'automation:onProgress'
+const ACCOUNT_UPDATED_CHANNEL = 'automation:onAccountUpdated'
 const DONE_CHANNEL = 'automation:onQueueDone'
 
 function broadcast(channel: string, payload: unknown): void {
   for (const win of BrowserWindow.getAllWindows()) {
     win.webContents.send(channel, payload)
   }
+}
+
+/**
+ * Re-reads the account row right after a DB write and broadcasts the full,
+ * current record — the renderer's store patches this straight into its
+ * in-memory row (applyAccountUpdate) so Friends/Groups/Followers/Pages/
+ * Cookie/Token/Avatar/locations/Created Date/Status all render live as each
+ * account finishes, instead of only becoming visible after a manual
+ * refresh(). Re-reading rather than broadcasting the write payload directly
+ * keeps this immune to whichever subset of fields a given call happened to
+ * patch — the row broadcast is always the complete, authoritative record.
+ */
+function broadcastAccountUpdate(accountId: number): void {
+  const fresh = accountsRepo.getAccount(accountId)
+  if (fresh) broadcast(ACCOUNT_UPDATED_CHANNEL, fresh)
 }
 
 /** Integer in [min, max], swapped if given out of order. */
@@ -206,12 +222,26 @@ export async function runQueue(
           slotIndex,
           signal: controller.signal,
           onProgress: emit,
-          onLoggedIn: scenario
+          // Runs after autoLogin.ts confirms a live session (warm-session
+          // check or a completed login) — navigates to this account's saved
+          // Target URL first (see AccountContextMenu.tsx's "Assign Target
+          // URL"), then the scenario warm-up if one is configured. Neither
+          // branch touches autoLogin.ts's own login/cookie/DB logic; this is
+          // purely what happens with the page once it's already logged in.
+          onLoggedIn: account.target_url?.trim() || scenario
             ? async (page) => {
-                scenarioRan = true
-                await runScenario(scenario, page, controller.signal, (label) =>
-                  emit('Warm-up', label)
-                )
+                if (account.target_url?.trim()) {
+                  emit('Warm-up', `Navigating to Target URL: ${account.target_url}`)
+                  await page
+                    .goto(account.target_url.trim(), { timeout: 45000, waitUntil: 'domcontentloaded' })
+                    .catch(() => void 0)
+                }
+                if (scenario) {
+                  scenarioRan = true
+                  await runScenario(scenario, page, controller.signal, (label) =>
+                    emit('Warm-up', label)
+                  )
+                }
               }
             : undefined
         })
@@ -253,6 +283,10 @@ export async function runQueue(
           ...(result.notes ? { notes: result.notes } : {}),
           last_active: new Date().toISOString().slice(0, 19).replace('T', ' ')
         })
+        // Real-time row update: the renderer patches this account's full
+        // row in place the instant this one account finishes, independent
+        // of whatever else is still running in the other worker slots.
+        broadcastAccountUpdate(account.id)
       } catch (err) {
         failed += 1
         const message = err instanceof Error ? err.message : String(err)
@@ -266,6 +300,7 @@ export async function runQueue(
           status_detail: `Error: ${message}`,
           last_active: new Date().toISOString().slice(0, 19).replace('T', ' ')
         })
+        broadcastAccountUpdate(account.id)
       }
     }
   }

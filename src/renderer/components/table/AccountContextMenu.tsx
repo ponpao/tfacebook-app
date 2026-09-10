@@ -32,7 +32,9 @@ import {
   UsersRound,
   DoorOpen,
   ListChecks,
-  WifiOff
+  WifiOff,
+  Link2,
+  Rocket
 } from 'lucide-react'
 import type { Account } from '../../../types/account'
 import { useAccountStore } from '../../store/useAccountStore'
@@ -45,7 +47,7 @@ interface Props {
   onClose: () => void
 }
 
-const MENU_W = 232
+const MENU_W = 260
 
 /**
  * Copy via the main process's Electron `clipboard` module (IPC) rather than
@@ -105,9 +107,9 @@ function Item({
       }
       onMouseEnter={onMouseEnter}
     >
-      <Icon size={14} className={danger ? 'text-[#c81e1e]' : 'text-[#4a6a8a]'} />
-      <span className="flex-1">{label}</span>
-      {hasSubmenu && <ChevronRight size={13} className="text-slate-400" />}
+      <Icon size={14} className={`shrink-0 ${danger ? 'text-[#c81e1e]' : 'text-[#4a6a8a]'}`} />
+      <span className="flex-1 truncate whitespace-nowrap">{label}</span>
+      {hasSubmenu && <ChevronRight size={13} className="shrink-0 text-slate-400" />}
     </button>
   )
 }
@@ -283,6 +285,7 @@ export function AccountContextMenu({ x, y, account, onClose }: Props): React.JSX
   const openCleanProfile = useAccountStore((s) => s.openCleanProfile)
   const openAddFriends = useAccountStore((s) => s.openAddFriends)
   const openJoinGroups = useAccountStore((s) => s.openJoinGroups)
+  const openAssignUrl = useAccountStore((s) => s.openAssignUrl)
   const rowSelection = useAccountStore((s) => s.rowSelection)
   const setRowSelection = useAccountStore((s) => s.setRowSelection)
 
@@ -409,32 +412,40 @@ export function AccountContextMenu({ x, y, account, onClose }: Props): React.JSX
     await refresh()
   }
 
-  const loginWithCookie = async (): Promise<void> => {
-    const targets = ids()
-    await withQueueRunning(async () => {
-      showToast(`Logging in with saved cookie for ${targets.length} account(s)…`)
-      const offProgress = window.api.automation.onCookieLoginProgress((event) => {
-        void window.api.accounts.get(event.accountId).then((acc) => {
-          if (acc) applyAccountUpdate(acc)
-        })
-      })
-      try {
-        // accountId -> 1-based grid row number as currently displayed, so
-        // each launched window's title matches the row the user sees.
-        const rowNumbers: Record<number, number> = {}
-        allAccounts.forEach((acc, i) => {
-          if (targets.includes(acc.id)) rowNumbers[acc.id] = i + 1
-        })
-        const summary = await window.api.automation.loginWithCookieBatch(targets, threadCount, rowNumbers)
-        showToast(
-          `Cookie Login: ${summary.succeeded}/${summary.total} succeeded${summary.failed ? `, ${summary.failed} failed` : ''}.`,
-          6000
-        )
-      } finally {
-        offProgress()
-        await refresh()
-      }
-    })
+  /**
+   * Opens one headed browser per target account, navigating each to its own
+   * saved target_url (falling back to the default Facebook feed for any
+   * account with none set) — same tiling/title behavior as
+   * openChromeProfile, just passing the extra targetUrl through.
+   */
+  const openBrowserWithUrl = async (): Promise<void> => {
+    const accountsToOpen = targetAccounts
+    showToast(
+      accountsToOpen.length > 1
+        ? `Opening ${accountsToOpen.length} browser(s) with Target URL…`
+        : `Launching browser for ${accountsToOpen[0]?.uid ?? accountsToOpen[0]?.email}…`
+    )
+    let succeeded = 0
+    let failed = 0
+    for (let i = 0; i < accountsToOpen.length; i++) {
+      const rowNumber = allAccounts.findIndex((acc) => acc.id === accountsToOpen[i].id) + 1
+      const res = await window.api.automation.openProfile(
+        accountsToOpen[i].id,
+        i,
+        rowNumber > 0 ? rowNumber : undefined,
+        accountsToOpen[i].target_url || undefined
+      )
+      if (res.ok) succeeded += 1
+      else failed += 1
+    }
+    showToast(
+      accountsToOpen.length > 1
+        ? `Opened ${succeeded}/${accountsToOpen.length} browser(s)${failed ? `, ${failed} failed` : ''}.`
+        : succeeded
+          ? 'Browser Active'
+          : 'Browser failed to open'
+    )
+    await refresh()
   }
 
   const addSuggestedFriends = async (): Promise<void> => {
@@ -642,16 +653,11 @@ export function AccountContextMenu({ x, y, account, onClose }: Props): React.JSX
       onContextMenu={(e) => e.preventDefault()}
     >
       {/* 1. Run & Browser Actions */}
-      <Submenu label="⚡ Run & Browser Actions" icon={Zap} width={230} registerPortalNode={registerPortalNode}>
+      <Submenu label="Run & Browser Actions" icon={Zap} width={280} registerPortalNode={registerPortalNode}>
         <Item
           icon={LogIn}
           label="Run Auto Login"
           onClick={run(() => runSingleLogin(account.id))}
-        />
-        <Item
-          icon={KeyRound}
-          label={`Login with Cookie (${targetCount > 1 ? `${targetCount} Selected` : 'Selected'}) 🔑`}
-          onClick={run(loginWithCookie)}
         />
         <Item
           icon={Globe}
@@ -660,8 +666,18 @@ export function AccountContextMenu({ x, y, account, onClose }: Props): React.JSX
         />
         <Item
           icon={Zap}
-          label={targetCount > 1 ? `Check Live / Die Status (${targetCount} Selected) ⚡` : 'Check Live / Die Status ⚡'}
+          label={targetCount > 1 ? `Check Live / Die (${targetCount} Selected)` : 'Check Live / Die Status'}
           onClick={run(checkLiveDie)}
+        />
+        <Item
+          icon={Link2}
+          label="ដាក់ Link URL (Assign Target URL)"
+          onClick={run(() => openAssignUrl(targetAccounts))}
+        />
+        <Item
+          icon={Rocket}
+          label={targetCount > 1 ? `បើក Browser ជាមួយ URL (${targetCount})` : 'បើក Browser ជាមួយ URL'}
+          onClick={run(openBrowserWithUrl)}
         />
       </Submenu>
 
@@ -670,7 +686,7 @@ export function AccountContextMenu({ x, y, account, onClose }: Props): React.JSX
           isn't always an accurate reflection of whether Facebook still has a
           checkpoint pending (stale/manual edits, or a check that hasn't run
           since it happened) — Facebook itself decides when the account opens. */}
-      <Submenu label="🖼️ Profile, Avatar & Checkpoint" icon={ImageDown} width={260} registerPortalNode={registerPortalNode}>
+      <Submenu label="Profile, Avatar & Checkpoint" icon={ImageDown} width={260} registerPortalNode={registerPortalNode}>
         <Item
           icon={ImageDown}
           label="Download Avatar (Fast / No Browser)"
@@ -694,7 +710,7 @@ export function AccountContextMenu({ x, y, account, onClose }: Props): React.JSX
       </Submenu>
 
       {/* 3. Friends & Interaction Tools */}
-      <Submenu label="👥 Friends & Interaction Tools" icon={Users} width={260} registerPortalNode={registerPortalNode}>
+      <Submenu label="Friends & Interaction Tools" icon={Users} width={260} registerPortalNode={registerPortalNode}>
         <Item
           icon={UserPlus}
           label="Add Friends (By UID List / Manual Input)"
@@ -713,7 +729,7 @@ export function AccountContextMenu({ x, y, account, onClose }: Props): React.JSX
       </Submenu>
 
       {/* 4. Group Interaction Tools */}
-      <Submenu label="🏢 Group Interaction Tools" icon={UsersRound} width={260} registerPortalNode={registerPortalNode}>
+      <Submenu label="Group Interaction Tools" icon={UsersRound} width={260} registerPortalNode={registerPortalNode}>
         <Item
           icon={UsersRound}
           label="Join Groups (By Group ID / URL List)"
@@ -728,7 +744,7 @@ export function AccountContextMenu({ x, y, account, onClose }: Props): React.JSX
       </Submenu>
 
       {/* 5. Security & 2FA / OTP */}
-      <Submenu label="🔐 Security & 2FA / OTP" icon={KeyRound} width={220} registerPortalNode={registerPortalNode}>
+      <Submenu label="Security & 2FA / OTP" icon={KeyRound} width={220} registerPortalNode={registerPortalNode}>
         <Item
           icon={KeyRound}
           label="Get 2FA Code (Copy)"
@@ -742,7 +758,7 @@ export function AccountContextMenu({ x, y, account, onClose }: Props): React.JSX
           fully self-contained (own portal, own position measurement against
           its own parent row) so nesting it inside another Submenu's children
           needs no changes to the component itself. */}
-      <Submenu label="📁 Data & Batch Management" icon={FolderInput} width={230} registerPortalNode={registerPortalNode}>
+      <Submenu label="Data & Batch Management" icon={FolderInput} width={230} registerPortalNode={registerPortalNode}>
         <Submenu label="Move to Folder..." icon={FolderInput} width={200} registerPortalNode={registerPortalNode}>
           {folders.length === 0 && (
             <div className="px-2.5 py-1.5 text-[12px] text-slate-400">No folders</div>
@@ -800,7 +816,7 @@ export function AccountContextMenu({ x, y, account, onClose }: Props): React.JSX
       {/* 7. Standalone danger action, kept flat at the root per spec. */}
       <Item
         icon={Trash2}
-        label={`🗑️ Move to Recycle Bin (${ids().length})`}
+        label={`Move to Recycle Bin (${ids().length})`}
         danger
         onClick={run(() => {
           const targets = ids()

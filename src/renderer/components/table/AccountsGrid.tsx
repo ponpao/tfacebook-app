@@ -82,6 +82,90 @@ function saveColumnWidths(widths: Record<string, number>): void {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Excel-like column auto-fit (double-click the resize divider) & header sort.
+// ---------------------------------------------------------------------------
+
+const AUTO_FIT_PADDING = 16
+const AUTO_FIT_CELL_FONT = '11px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+const AUTO_FIT_HEADER_FONT = '600 11px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+
+// A single shared offscreen canvas 2D context for measureText() — created
+// lazily once and reused for every measurement instead of allocating a new
+// canvas per call.
+let measureCtx: CanvasRenderingContext2D | null | undefined
+function getMeasureCtx(): CanvasRenderingContext2D | null {
+  if (measureCtx !== undefined) return measureCtx
+  try {
+    measureCtx = document.createElement('canvas').getContext('2d')
+  } catch {
+    measureCtx = null
+  }
+  return measureCtx
+}
+
+function textWidth(text: string, font: string): number {
+  const ctx = getMeasureCtx()
+  if (!ctx) return text.length * 7 // rough fallback if canvas is unavailable
+  ctx.font = font
+  return ctx.measureText(text).width
+}
+
+/** Plain-string value of a cell for both auto-fit measurement and sorting — prefers the column's own title() (already a flattened string even when render() returns JSX), falling back to String(render()). */
+function cellText(c: (typeof GRID_COLUMNS)[number], a: Account, index: number): string {
+  if (c.title) return c.title(a)
+  const v = c.render(a, index)
+  if (v == null) return ''
+  return typeof v === 'string' || typeof v === 'number' ? String(v) : ''
+}
+
+/**
+ * Auto-fit a column to its widest current cell (double-click the resize
+ * divider) — Excel's own behavior. Measures every currently-loaded row's
+ * text via canvas font metrics rather than each rendered cell's DOM
+ * scrollWidth: the grid is virtualized, so most rows have no DOM node to
+ * measure at all. RESIZE_MAX_WIDTH still caps the result so one extreme
+ * outlier value (a raw cookie string, say) can't blow the column out.
+ */
+function autoFitWidth(c: (typeof GRID_COLUMNS)[number], accounts: Account[]): number {
+  let max = textWidth(c.header, AUTO_FIT_HEADER_FONT)
+  for (let i = 0; i < accounts.length; i++) {
+    const w = textWidth(cellText(c, accounts[i], i), AUTO_FIT_CELL_FONT)
+    if (w > max) max = w
+  }
+  const fitted = Math.ceil(max) + AUTO_FIT_PADDING
+  return Math.max(RESIZE_MIN_WIDTH, Math.min(RESIZE_MAX_WIDTH, fitted))
+}
+
+type SortDir = 'asc' | 'desc'
+
+/** Numeric for count-like/ID columns, date for Created Date, case-insensitive string for everything else (Name, Status, UID, …) — matches the spec's three sort types. */
+function compareBySortKey(a: Account, b: Account, key: string, index_a: number, index_b: number, columns: typeof GRID_COLUMNS): number {
+  const col = columns.find((c) => c.key === key)
+  if (!col) return 0
+  const rawA = col.render(a, index_a)
+  const rawB = col.render(b, index_b)
+
+  if (key === 'created_date') {
+    const ta = a.created_date ? Date.parse(a.created_date) : NaN
+    const tb = b.created_date ? Date.parse(b.created_date) : NaN
+    if (Number.isNaN(ta) && Number.isNaN(tb)) return 0
+    if (Number.isNaN(ta)) return -1
+    if (Number.isNaN(tb)) return 1
+    return ta - tb
+  }
+
+  const numA = typeof rawA === 'number' ? rawA : Number(rawA)
+  const numB = typeof rawB === 'number' ? rawB : Number(rawB)
+  if (!Number.isNaN(numA) && !Number.isNaN(numB) && (typeof rawA === 'number' || typeof rawB === 'number')) {
+    return numA - numB
+  }
+
+  const strA = (col.title ? col.title(a) : String(rawA ?? '')).toLowerCase()
+  const strB = (col.title ? col.title(b) : String(rawB ?? '')).toLowerCase()
+  return strA.localeCompare(strB)
+}
+
 interface MenuState {
   x: number
   y: number
@@ -199,13 +283,40 @@ const GridRow = memo(function GridRow({
 })
 
 export function AccountsGrid(): React.JSX.Element {
-  const accounts = useAccountStore((s) => s.accounts)
+  const rawAccounts = useAccountStore((s) => s.accounts)
   const rowSelection = useAccountStore((s) => s.rowSelection)
   const toggleRow = useAccountStore((s) => s.toggleRow)
   const toggleAll = useAccountStore((s) => s.toggleAll)
   const setRowSelection = useAccountStore((s) => s.setRowSelection)
   const loading = useAccountStore((s) => s.loading)
   const columnVisibility = useAccountStore((s) => s.columnVisibility)
+
+  // Header click sort: Unsorted -> Ascending -> Descending -> Unsorted, one
+  // column at a time. Applied client-side over whatever rows are currently
+  // loaded — doesn't touch the store's own fetch/query. Declared here (ahead
+  // of selectRange/drag-selection below, both of which index into the
+  // user-visible `accounts` array) so sorted rows, not raw fetch order,
+  // drive selection-by-index everywhere else in this component.
+  const [sortState, setSortState] = useState<{ key: string; dir: SortDir } | null>(null)
+
+  const onHeaderClick = useCallback((key: string) => {
+    setSortState((prev) => {
+      if (!prev || prev.key !== key) return { key, dir: 'asc' }
+      if (prev.dir === 'asc') return { key, dir: 'desc' }
+      return null
+    })
+  }, [])
+
+  const accounts = useMemo(() => {
+    if (!sortState) return rawAccounts
+    const { key, dir } = sortState
+    const withIndex = rawAccounts.map((a, i) => ({ a, i }))
+    withIndex.sort((x, y) => {
+      const cmp = compareBySortKey(x.a, y.a, key, x.i, y.i, GRID_COLUMNS)
+      return dir === 'asc' ? cmp : -cmp
+    })
+    return withIndex.map((w) => w.a)
+  }, [rawAccounts, sortState])
 
   const [menu, setMenu] = useState<MenuState | null>(null)
 
@@ -248,6 +359,70 @@ export function AccountsGrid(): React.JSX.Element {
     return () => document.removeEventListener('mouseup', onMouseUp)
   }, [isDragging])
 
+  // Auto-scroll while drag-selecting past the visible top/bottom edge. The
+  // virtualizer only renders rows currently in the viewport, so a row that
+  // hasn't scrolled into view yet can never fire its own onMouseEnter — a
+  // cursor held still at the edge (the whole point of this feature) never
+  // reaches it through the per-row handlers alone. This effect instead
+  // drives BOTH the scroll and the range extension itself, keyed off the
+  // cursor's last known Y position, independent of row-level mouse events.
+  const dragPointerYRef = useRef<number | null>(null)
+  const dragCtrlHeldRef = useRef(false)
+  useEffect(() => {
+    if (!isDragging) return
+    const el = parentRef.current
+    if (!el) return
+
+    const EDGE_ZONE_PX = 36
+    const MAX_SCROLL_PX_PER_FRAME = 18
+
+    const onMove = (e: MouseEvent): void => {
+      dragPointerYRef.current = e.clientY
+      dragCtrlHeldRef.current = e.ctrlKey || e.metaKey
+    }
+    document.addEventListener('mousemove', onMove)
+
+    let raf = 0
+    const tick = (): void => {
+      raf = requestAnimationFrame(tick)
+      const y = dragPointerYRef.current
+      if (y == null) return
+      const rect = el.getBoundingClientRect()
+
+      const distFromTop = y - rect.top
+      const distFromBottom = rect.bottom - y
+      let delta = 0
+      if (distFromTop >= 0 && distFromTop < EDGE_ZONE_PX) {
+        // Closer to the edge -> faster scroll, capped at MAX_SCROLL_PX_PER_FRAME.
+        delta = -Math.ceil(MAX_SCROLL_PX_PER_FRAME * (1 - distFromTop / EDGE_ZONE_PX))
+      } else if (distFromBottom >= 0 && distFromBottom < EDGE_ZONE_PX) {
+        delta = Math.ceil(MAX_SCROLL_PX_PER_FRAME * (1 - distFromBottom / EDGE_ZONE_PX))
+      }
+      if (delta === 0) return
+
+      const before = el.scrollTop
+      el.scrollTop = before + delta
+      if (el.scrollTop === before) return // hit the top/bottom of the list
+
+      // Extend the selection to whatever row is now under the cursor —
+      // since that row may never have rendered/fired its own mouseenter
+      // (it just scrolled into view this frame), recompute directly from
+      // the new scroll offset instead of waiting for a DOM event.
+      if (dragAnchorIndex !== null) {
+        const rowsFromTop = Math.floor((el.scrollTop + (y - rect.top)) / ROW_HEIGHT)
+        const targetIndex = Math.max(0, Math.min(accounts.length - 1, rowsFromTop))
+        selectRange(dragAnchorIndex, targetIndex, dragCtrlHeldRef.current)
+      }
+    }
+    raf = requestAnimationFrame(tick)
+
+    return () => {
+      document.removeEventListener('mousemove', onMove)
+      cancelAnimationFrame(raf)
+      dragPointerYRef.current = null
+    }
+  }, [isDragging, dragAnchorIndex, accounts.length, selectRange])
+
   // Persisted custom widths for the resizable middle columns — merged over
   // each column's built-in default width from gridColumns.tsx.
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>(loadColumnWidths)
@@ -260,6 +435,24 @@ export function AccountsGrid(): React.JSX.Element {
         width: columnWidths[c.key] ?? c.width
       })),
     [columnVisibility, columnWidths]
+  )
+
+  // Double-click a column's resize divider to auto-fit it to its widest
+  // current cell (Excel's own behavior) — measures via canvas font metrics
+  // over `accounts` (see autoFitWidth) since the virtualized grid has no DOM
+  // node for most rows to read scrollWidth from.
+  const onAutoFitColumn = useCallback(
+    (key: string) => {
+      const col = GRID_COLUMNS.find((c) => c.key === key)
+      if (!col) return
+      const width = autoFitWidth(col, accounts)
+      setColumnWidths((prev) => {
+        const next = { ...prev, [key]: width }
+        saveColumnWidths(next)
+        return next
+      })
+    },
+    [accounts]
   )
 
   // Drag-to-resize: mousedown on a header's resize handle captures the
@@ -411,17 +604,50 @@ export function AccountsGrid(): React.JSX.Element {
               </div>
             </div>
 
-            {/* Resizable middle columns */}
+            {/* Resizable + sortable middle columns */}
             {columns.map((c) => (
               <div
                 key={c.key}
-                className={`group relative flex shrink-0 items-center justify-center bg-transparent px-1.5 text-center text-2xs font-semibold text-slate-800 ${headBorder}`}
+                className={`group relative flex shrink-0 cursor-pointer select-none items-center justify-center gap-0.5 bg-transparent px-1.5 text-center text-2xs font-semibold text-slate-800 hover:bg-slate-200/60 ${headBorder}`}
                 style={{ width: c.width, height: ROW_HEIGHT }}
+                onClick={(e) => {
+                  // Defense-in-depth alongside the resize handle's own
+                  // stopPropagation calls: never sort if the click actually
+                  // landed on the resizer (e.g. a future handle variant that
+                  // forgets to stop propagation shouldn't silently regress
+                  // into double-toggling sort on every column resize).
+                  if ((e.target as HTMLElement).closest('[data-col-resize-handle]')) return
+                  onHeaderClick(c.key)
+                }}
+                title="Click to sort"
               >
                 <span className="truncate">{c.header}</span>
+                {sortState?.key === c.key && (
+                  <span className="text-[#0078d4]">{sortState.dir === 'asc' ? '▲' : '▼'}</span>
+                )}
                 <div
+                  data-col-resize-handle="true"
                   className="absolute right-0 top-0 z-10 h-full w-1.5 -mr-0.5 cursor-col-resize hover:bg-[#0078d4]/40"
-                  onMouseDown={beginResize(c.key, c.width)}
+                  onClick={(e) => {
+                    // A double-click fires click -> click -> dblclick on this
+                    // element; each of those two intermediate `click`s bubbles
+                    // to the header div's onClick (sort toggle) unless stopped
+                    // here too — stopping only mousedown/dblclick isn't enough,
+                    // since it's the click events in between that were
+                    // actually reaching onHeaderClick and toggling sort twice
+                    // on every auto-fit double-click.
+                    e.stopPropagation()
+                  }}
+                  onMouseDown={(e) => {
+                    e.stopPropagation() // don't trigger the header's own sort-click
+                    beginResize(c.key, c.width)(e)
+                  }}
+                  onDoubleClick={(e) => {
+                    e.stopPropagation()
+                    e.preventDefault()
+                    onAutoFitColumn(c.key)
+                  }}
+                  title="Double-click to auto-fit"
                 />
               </div>
             ))}

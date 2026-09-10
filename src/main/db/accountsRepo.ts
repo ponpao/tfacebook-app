@@ -38,6 +38,7 @@ const WRITABLE_COLUMNS = [
   'cookie',
   'token',
   'proxy',
+  'target_url',
   'avatar',
   'user_agent',
   'last_active',
@@ -276,7 +277,7 @@ export function updateStatus(ids: number[], status: string, detail?: string): nu
  * shared-per-N assignment is computed by the caller; this just writes it).
  */
 export function bulkAssignField(
-  column: 'proxy' | 'user_agent',
+  column: 'proxy' | 'user_agent' | 'target_url',
   assignments: { id: number; value: string }[]
 ): number {
   if (assignments.length === 0) return 0
@@ -296,7 +297,7 @@ export function bulkAssignField(
  * Status). Deliberately narrow-typed to the specific columns those actions
  * touch, not a generic "any column" endpoint.
  */
-export function bulkSetField(column: 'notes' | 'live_status' | 'proxy', ids: number[], value: string): number {
+export function bulkSetField(column: 'notes' | 'live_status' | 'proxy' | 'target_url', ids: number[], value: string): number {
   if (ids.length === 0) return 0
   const db = getDb()
   const stmt = db.prepare(`UPDATE accounts SET ${column} = @value WHERE id = @id`)

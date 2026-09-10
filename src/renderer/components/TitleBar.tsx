@@ -7,7 +7,6 @@ import { useEffect, useRef, useState } from 'react'
 import { Minus, Square, X, Copy, Timer } from 'lucide-react'
 import { AppLogo } from './AppLogo'
 import { AmbientBuddies } from './AmbientBuddies'
-import { HEADER_HEX_PATTERN_URL } from '../assets/headerHexPattern'
 import { useAccountStore } from '../store/useAccountStore'
 
 function formatElapsed(totalSeconds: number): string {
@@ -69,14 +68,7 @@ export function TitleBar(): React.JSX.Element {
   const onClose = (): void => void window.api.window.close()
 
   return (
-    <div
-      className="drag relative flex h-[38px] items-center justify-between border-b border-[#e4d8bc] bg-[#fdf9f0] pl-2 pr-0"
-      style={{
-        backgroundImage: HEADER_HEX_PATTERN_URL,
-        backgroundSize: '56px 98px',
-        backgroundRepeat: 'repeat'
-      }}
-    >
+    <div className="drag relative flex h-[38px] items-center justify-between border-b border-[#e4d8bc] bg-[#fdf9f0] pl-2 pr-0">
       {/* Left: logo + app brand */}
       <div className="flex items-center gap-2 overflow-hidden">
         <div className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-[6px]">

@@ -26,6 +26,19 @@ export type HardwareMode = 'cpu' | 'gpu' | 'auto'
  */
 export type MetadataExtractionMode = 'full' | 'fast'
 
+/**
+ * Default login engine dispatch for Run Auto Login / the queue runner:
+ *   'standard_pipeline' — the full adaptive flow: warm-session check ->
+ *     saved cookie injection -> falls back to UID/Pass + 2FA if the cookie
+ *     is dead/expired -> refreshes the saved cookie on success. Self-heals
+ *     an expired cookie automatically.
+ *   'cookie_only' — injects the saved cookie and checks the session; if
+ *     it's invalid or expired, stops immediately WITHOUT ever typing UID/
+ *     Password/2FA, to avoid tripping a checkpoint on an account whose
+ *     credentials might themselves be stale/wrong.
+ */
+export type LoginMode = 'standard_pipeline' | 'cookie_only'
+
 export interface AppSettings {
   defaultConcurrency: number
   browserMode: BrowserMode
@@ -91,6 +104,8 @@ export interface AppSettings {
    * tied to anything. undefined = never generated yet.
    */
   machineId?: string
+  /** Default login engine dispatch — see LoginMode. */
+  loginMode: LoginMode
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -108,7 +123,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   blockMedia: false,
   directWarmup: true,
   hardwareMode: 'auto',
-  autoShutdownAfterQueue: false
+  autoShutdownAfterQueue: false,
+  loginMode: 'standard_pipeline'
 }
 
 export const SETTINGS_KEY = 'app.generalSettings'

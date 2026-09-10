@@ -340,6 +340,50 @@ export function GeneralSettingsModal({
             </div>
           </fieldset>
 
+          <fieldset className="win-fieldset">
+            <legend>វិធីសាស្ត្រ Login មេ (Default Login Mode)</legend>
+            <div className="flex flex-col gap-1.5 py-1">
+              <label className="flex items-start gap-1.5">
+                <input
+                  type="radio"
+                  name="login-mode"
+                  className="mt-0.5"
+                  checked={settings.loginMode === 'standard_pipeline'}
+                  onChange={() => patch({ loginMode: 'standard_pipeline' })}
+                />
+                <span>
+                  <span className="font-medium text-slate-700">
+                    🔘 UID | Pass | 2FA Pipeline (Standard MaxCare Flow)
+                  </span>
+                  <br />
+                  <span className="text-[11px] text-slate-500">
+                    ពិនិត្យ Session ស្រាប់ → ព្យាយាមបញ្ចូល Cookie → Fallback ទៅ UID/Pass + 2FA
+                    ប្រសិនបើ Cookie ផុតកំណត់ → Update Cookie ថ្មីត្រឡប់មកវិញ។
+                  </span>
+                </span>
+              </label>
+              <label className="flex items-start gap-1.5">
+                <input
+                  type="radio"
+                  name="login-mode"
+                  className="mt-0.5"
+                  checked={settings.loginMode === 'cookie_only'}
+                  onChange={() => patch({ loginMode: 'cookie_only' })}
+                />
+                <span>
+                  <span className="font-medium text-slate-700">
+                    🔘 Cookie Login Only (ចូលដោយ Cookie ផ្ទាល់)
+                  </span>
+                  <br />
+                  <span className="text-[11px] text-slate-500">
+                    ចាក់បញ្ចូល Cookie និងពិនិត្យ Session ផ្ទាល់។ ប្រសិនបើ Cookie ស្លាប់ ឬផុតកំណត់
+                    នឹងបញ្ឈប់ភ្លាមៗ (មិនវាយ UID/Pass/2FA ឡើយ ដើម្បីការពារ Checkpoint)។
+                  </span>
+                </span>
+              </label>
+            </div>
+          </fieldset>
+
           <label className="flex flex-col gap-1.5">
             <span className="font-medium text-slate-700">
               {t('twoCaptchaApiKey')} <span className="text-slate-400">(optional)</span>

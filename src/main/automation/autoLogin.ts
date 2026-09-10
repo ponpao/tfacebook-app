@@ -1145,7 +1145,16 @@ async function resolveTrustDeviceScreen(
   return null
 }
 
-/** State 4 action: choose Don't Save (preferred) / Save, then confirm. */
+/**
+ * State 4 action: choose Save Browser (preferred) / Don't Save, then confirm.
+ * Saving the browser is deliberate — this is the whole point of the
+ * cookie-first pipeline's Priority 3 step 3: it tells Facebook to remember
+ * this device so a later cookie-only login (Priority 0/2) doesn't get
+ * challenged for 2FA again. An earlier version of this preferred "Don't
+ * Save," which meant every fresh credential+2FA login stayed one-time-only
+ * and the account could keep landing back on a 2FA challenge even with a
+ * saved cookie on file.
+ */
 async function actSaveBrowser(
   page: Page,
   context: BrowserContext,
@@ -1158,8 +1167,8 @@ async function actSaveBrowser(
     return resolveTrustDeviceScreen(page, context, progress, signal)
   }
 
-  const dontSave = await findFirstVisibleBounded(page, DONT_SAVE_BROWSER_SELECTORS, 2500)
-  const chosen = dontSave ?? (await findFirstVisibleBounded(page, SAVE_BROWSER_SELECTORS, 1500))
+  const save = await findFirstVisibleBounded(page, SAVE_BROWSER_SELECTORS, 2500)
+  const chosen = save ?? (await findFirstVisibleBounded(page, DONT_SAVE_BROWSER_SELECTORS, 1500))
   if (chosen) {
     await raceAbort(chosen.click({ timeout: 5000 }).catch(() => void 0), signal)
     await raceAbort(page.waitForTimeout(600), signal)
@@ -2162,11 +2171,19 @@ export async function runAutoLogin(
   const { headless = true, slotIndex, signal, onProgress, useMbasic = false } = options
   const progress: ProgressFn = (stage, detail) => onProgress?.(stage, detail)
 
-  if (!account.uid && !account.email) {
-    return { success: false, status: 'Unknown', detail: 'No UID/email to log in with' }
-  }
-  if (!account.password) {
-    return { success: false, status: 'Unknown', detail: 'No password set' }
+  // General Settings -> Default Login Mode. 'cookie_only' skips the
+  // credential guard below entirely — an account meant to be driven purely
+  // by its saved cookie may have no password on file at all, and that's
+  // fine for this mode (it will simply stop at "Cookie Die" if the cookie
+  // doesn't work, never falling back to typing anything).
+  const loginMode = getAppSettings().loginMode
+  if (loginMode !== 'cookie_only') {
+    if (!account.uid && !account.email) {
+      return { success: false, status: 'Unknown', detail: 'No UID/email to log in with' }
+    }
+    if (!account.password) {
+      return { success: false, status: 'Unknown', detail: 'No password set' }
+    }
   }
 
   const trackKey = `login:${account.id}`
@@ -2206,12 +2223,31 @@ export async function runAutoLogin(
       checkAborted(signal)
     }
 
+    // ---- Priority 0: warm-session check — cookies + DOM signals together.
+    // launchContext() already injected the account's saved cookie (and any
+    // real session the profile dir already had) before this navigation ever
+    // started, so by this point the browser is either genuinely logged in
+    // or it isn't; this is the explicit go/no-go check rather than relying
+    // solely on the DOM-only isLoginPage() gate below. A c_user/xs pair
+    // present in the context's own cookie jar, PLUS the page not showing a
+    // login form, is the strongest signal available without a full
+    // classifyPage() pass (which still runs right after, to distinguish
+    // Live from Checkpoint/Die/wrong-password for a session that IS
+    // authenticated but not simply "the normal feed"). ----
+    checkAborted(signal)
+    const warmCookies = await context.cookies().catch(() => [])
+    const hasWarmCookieSession = hasRequiredSessionCookies(warmCookies)
+
     // Already logged in via a persisted session/cookie? Checked by DOM
     // presence of the login form (isLoginPage), not the URL — web.facebook.com
     // stays at the bare "/" path even while showing the login form for a
     // logged-out session, so a URL-only check would wrongly treat every
     // logged-out account as "already live" and skip credential entry.
-    if (!(await isLoginPage(page))) {
+    const onLoginPage = await isLoginPage(page)
+    if (hasWarmCookieSession && !onLoginPage) {
+      progress('Checking session...', 'Warm session detected — skipping login')
+    }
+    if (!onLoginPage) {
       if (await isTrustDeviceScreen(page)) {
         await resolveTrustDeviceScreen(page, context, progress, signal)
         checkAborted(signal)
@@ -2219,48 +2255,85 @@ export async function runAutoLogin(
       const res = await classifyPage(page)
       progress(res.status, res.detail)
 
-      let metadata: ScrapedProfileData = {}
-      if (res.status === 'Live') {
-        metadata = await extractAllMetadata(page, context, account.uid, signal)
-        checkAborted(signal)
-        // Direct Warm-up (General Settings, default on): this is the
-        // "session was already valid, no credentials were ever entered"
-        // fast path — run the queued warm-up scenario right away instead of
-        // treating this as just a liveness check. Off skips straight to
-        // returning the (still fully refreshed) result below, useful for a
-        // pure liveness-check batch that shouldn't also act on every
-        // account it finds already logged in.
-        if (options.onLoggedIn && getAppSettings().directWarmup) {
-          await options.onLoggedIn(page)
+      // ---- Priority 2 step 4 / Priority 3 fallback boundary: 'Session
+      // Expired' means the cookie that got us this far is dead (or there
+      // was none) — in 'standard_pipeline' mode that's exactly the "cookie
+      // failed" case which falls through to credential+2FA login below,
+      // NOT a final result to report and stop on. In 'cookie_only' mode,
+      // per the spec, this must stop immediately instead — no UID/Password/
+      // 2FA is ever attempted, specifically to avoid tripping a checkpoint
+      // on an account whose credentials might themselves be stale/wrong.
+      // Every other non-Live status here (Checkpoint, Die, Changed Pass) is
+      // a real account-state problem credentials can't fix either, so those
+      // still return immediately regardless of login mode. ----
+      if (res.status === 'Session Expired' && loginMode === 'cookie_only') {
+        progress('Session Expired', 'Cookie Die — stopping (Cookie Login Only mode)')
+        return {
+          success: false,
+          status: 'Session Expired',
+          detail: 'Cookie Die — stopping (Cookie Login Only mode)',
+          notes: 'Cookie Die'
+        }
+      }
+      if (res.status !== 'Session Expired') {
+        let metadata: ScrapedProfileData = {}
+        if (res.status === 'Live') {
+          metadata = await extractAllMetadata(page, context, account.uid, signal)
+          checkAborted(signal)
+          // Direct Warm-up (General Settings, default on): this is the
+          // "session was already valid, no credentials were ever entered"
+          // fast path — run the queued warm-up scenario right away instead of
+          // treating this as just a liveness check. Off skips straight to
+          // returning the (still fully refreshed) result below, useful for a
+          // pure liveness-check batch that shouldn't also act on every
+          // account it finds already logged in.
+          if (options.onLoggedIn && getAppSettings().directWarmup) {
+            await options.onLoggedIn(page)
+          }
+        }
+
+        // Cookies are only extracted/saved for a genuinely Live session — see
+        // the matching comment further down in the fresh-credential-login
+        // branch for why a Checkpoint/suspended/disabled account's cookie
+        // must never be persisted.
+        const { cookie, token } = res.status === 'Live' ? metadata : { cookie: undefined, token: undefined }
+        return {
+          success: res.status === 'Live',
+          status: res.status,
+          detail: res.status === 'Live' ? 'Login Success' : res.detail,
+          cookie,
+          token,
+          name: metadata.name,
+          friendsCount: metadata.friendsCount,
+          groupsCount: metadata.groupsCount,
+          uid: metadata.uid,
+          dtsgToken: metadata.dtsgToken,
+          followers: metadata.followers,
+          following: metadata.following,
+          currentLocation: metadata.currentLocation,
+          pagesCount: metadata.pagesCount,
+          friendsList: metadata.friendsList,
+          location: metadata.location,
+          createdDate: metadata.createdDate,
+          notes:
+            res.status === 'Changed Pass' ? 'Wrong Password' : res.status === 'Checkpoint' ? res.detail : undefined
         }
       }
 
-      // Cookies are only extracted/saved for a genuinely Live session — see
-      // the matching comment further down in the fresh-credential-login
-      // branch for why a Checkpoint/suspended/disabled account's cookie
-      // must never be persisted.
-      const { cookie, token } = res.status === 'Live' ? metadata : { cookie: undefined, token: undefined }
-      return {
-        success: res.status === 'Live',
-        status: res.status,
-        detail: res.status === 'Live' ? 'Login Success' : res.detail,
-        cookie,
-        token,
-        name: metadata.name,
-        friendsCount: metadata.friendsCount,
-        groupsCount: metadata.groupsCount,
-        uid: metadata.uid,
-        dtsgToken: metadata.dtsgToken,
-        followers: metadata.followers,
-        following: metadata.following,
-        currentLocation: metadata.currentLocation,
-        pagesCount: metadata.pagesCount,
-        friendsList: metadata.friendsList,
-        location: metadata.location,
-        createdDate: metadata.createdDate,
-        notes:
-          res.status === 'Changed Pass' ? 'Wrong Password' : res.status === 'Checkpoint' ? res.detail : undefined
-      }
+      // Cookie session is dead ('Session Expired') — fall through to
+      // Priority 3 below rather than returning failure here. Facebook's own
+      // login page must actually be loaded before the credential-entry code
+      // can find #email/#pass; a stale-cookie landing can leave the page on
+      // a "session expired, please re-enter your password" or similar
+      // interstitial rather than the plain login form, so re-navigate to
+      // the real login URL to guarantee the fields are there.
+      progress('Checking session...', 'Cookie expired — falling back to credential login')
+      await raceAbort(
+        page.goto(loginUrl, { timeout: 45000, waitUntil: 'domcontentloaded' }).catch(() => void 0),
+        signal
+      )
+      await dismissConsentOverlays(page, signal)
+      checkAborted(signal)
     }
 
     checkAborted(signal)
@@ -2286,6 +2359,15 @@ export async function runAutoLogin(
         status: 'Unknown',
         detail: 'Password field not found — Facebook may have changed its login page layout'
       }
+    }
+    // Reachable here only via 'standard_pipeline' mode (cookie_only stops at
+    // the 'Session Expired' branch above before ever reaching this code) —
+    // that mode's own guard at the top of this function already ensures
+    // account.password is set, but TS can't see across that conditional, so
+    // this is a defensive re-check rather than new behavior.
+    if (!account.password) {
+      progress('Error', 'No password set')
+      return { success: false, status: 'Unknown', detail: 'No password set' }
     }
     await typeHumanOn(page, passField, account.password, signal)
 

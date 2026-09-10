@@ -24,7 +24,10 @@ import { SetNotesModal } from './components/modals/SetNotesModal'
 import { CleanProfileModal } from './components/modals/CleanProfileModal'
 import { AddFriendsModal } from './components/modals/AddFriendsModal'
 import { JoinGroupsModal } from './components/modals/JoinGroupsModal'
+import { AssignUrlModal } from './components/modals/AssignUrlModal'
 import { DeletePagePostsModal } from './components/modals/DeletePagePostsModal'
+import { DeletePagePostsV2Modal } from './components/modals/DeletePagePostsV2Modal'
+import { GetPageInfoModal } from './components/modals/GetPageInfoModal'
 import { UpdateNotificationModal } from './components/modals/UpdateNotificationModal'
 import { AutoShutdownDialog } from './components/modals/AutoShutdownDialog'
 import { useAccountStore } from './store/useAccountStore'
@@ -70,6 +73,8 @@ function Dashboard({
   const [toolsUtilitiesOpen, setToolsUtilitiesOpen] = useState(false)
   const [helpAboutOpen, setHelpAboutOpen] = useState(false)
   const [pageManagerOpen, setPageManagerOpen] = useState(false)
+  const [pageManagerV2Open, setPageManagerV2Open] = useState(false)
+  const [getPageInfoOpen, setGetPageInfoOpen] = useState(false)
 
   const refresh = useAccountStore((s) => s.refresh)
   const refreshFolders = useAccountStore((s) => s.refreshFolders)
@@ -101,6 +106,8 @@ function Dashboard({
   const closeAddFriends = useAccountStore((s) => s.closeAddFriends)
   const joinGroupsTargetIds = useAccountStore((s) => s.joinGroupsTargetIds)
   const closeJoinGroups = useAccountStore((s) => s.closeJoinGroups)
+  const assignUrlTargetAccounts = useAccountStore((s) => s.assignUrlTargetAccounts)
+  const closeAssignUrl = useAccountStore((s) => s.closeAssignUrl)
 
   useEffect(() => {
     void refreshFolders()
@@ -161,6 +168,8 @@ function Dashboard({
         onToolsUtilities={() => setToolsUtilitiesOpen(true)}
         onHelpAbout={() => setHelpAboutOpen(true)}
         onOpenPageManager={() => setPageManagerOpen(true)}
+        onOpenPageManagerV2={() => setPageManagerV2Open(true)}
+        onOpenGetPageInfo={() => setGetPageInfoOpen(true)}
       />
       <RibbonToolbar
         onImport={() => setImportOpen(true)}
@@ -174,9 +183,17 @@ function Dashboard({
       <StatusBar />
 
       <ImportModal open={importOpen} onClose={() => setImportOpen(false)} />
+      <GetPageInfoModal
+        open={getPageInfoOpen}
+        onClose={() => setGetPageInfoOpen(false)}
+      />
       <DeletePagePostsModal
         open={pageManagerOpen}
         onClose={() => setPageManagerOpen(false)}
+      />
+      <DeletePagePostsV2Modal
+        open={pageManagerV2Open}
+        onClose={() => setPageManagerV2Open(false)}
       />
       <ColumnVisibilityModal
         open={columnsOpen}
@@ -206,6 +223,7 @@ function Dashboard({
       <CleanProfileModal accountIds={cleanProfileTargetIds} onClose={closeCleanProfile} />
       <AddFriendsModal accountIds={addFriendsTargetIds} onClose={closeAddFriends} />
       <JoinGroupsModal accountIds={joinGroupsTargetIds} onClose={closeJoinGroups} />
+      <AssignUrlModal accounts={assignUrlTargetAccounts} onClose={closeAssignUrl} />
       <UpdateNotificationModal />
       <AutoShutdownDialog open={shutdownPending} onCancelled={dismissShutdownPrompt} />
       <FolderDialogs

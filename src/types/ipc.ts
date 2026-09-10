@@ -47,10 +47,10 @@ export interface AccountsApi {
   remove(ids: number[]): Promise<number>
   moveToFolder(ids: number[], targetFolderId: number): Promise<number>
   bulkAssign(
-    column: 'proxy' | 'user_agent',
+    column: 'proxy' | 'user_agent' | 'target_url',
     assignments: { id: number; value: string }[]
   ): Promise<number>
-  bulkSetField(column: 'notes' | 'live_status' | 'proxy', ids: number[], value: string): Promise<number>
+  bulkSetField(column: 'notes' | 'live_status' | 'proxy' | 'target_url', ids: number[], value: string): Promise<number>
   assignProxies(req: AssignProxyRequest): Promise<AssignResult>
   assignUseragents(req: AssignUseragentRequest): Promise<AssignResult>
   softDelete(ids: number[]): Promise<number>
@@ -175,6 +175,19 @@ export interface QueueSummary {
   cancelled: boolean
 }
 
+/**
+ * Window arrangement layouts for the "Arrange Browsers" toolbar action —
+ * see windowArranger.ts (main process) for the actual bounds math.
+ *   grid5x2 / grid4x2 — tile every open headed window across the whole
+ *     screen in a 5x2 (10/screen) or 4x2 (8/screen) grid; windows beyond
+ *     capacity wrap back onto slot 0, 1, 2… with a small stacked offset.
+ *   leftHalf / rightHalf — same tiling, confined to one half of the screen
+ *     (split view), e.g. to leave the other half for another app.
+ *   maximized — every window fills the whole work area.
+ *   restore — back to each window's normal launch-time tile size/position.
+ */
+export type ArrangeLayout = 'grid5x2' | 'grid4x2' | 'leftHalf' | 'rightHalf' | 'maximized' | 'restore'
+
 export interface AutomationApi {
   /**
    * slotIndex positions this account's headed window in the MaxCare-style
@@ -183,16 +196,20 @@ export interface AutomationApi {
    * batch so their windows tile neatly instead of stacking on top of each
    * other at the same default position. Omit for a single ad-hoc open.
    */
-  /** `rowNumber` is the account's 1-based position in the grid as the user currently sees it (filtered/sorted view) — used only for the Chrome window title, distinct from `slotIndex`, which is the position within this launch batch and drives window tiling. */
-  openProfile(accountId: number, slotIndex?: number, rowNumber?: number): Promise<OpenProfileResult>
+  /** `rowNumber` is the account's 1-based position in the grid as the user currently sees it (filtered/sorted view) — used only for the Chrome window title, distinct from `slotIndex`, which is the position within this launch batch and drives window tiling. `targetUrl` overrides the default Facebook feed landing page (falls back to the account's own saved `target_url` when omitted) — see the row context menu's "🚀 Open Browser with URL" action. */
+  openProfile(accountId: number, slotIndex?: number, rowNumber?: number, targetUrl?: string): Promise<OpenProfileResult>
   checkLive(target: number | number[]): Promise<LiveDieResult | LiveDieResult[]>
   getMailOtp(accountId: number): Promise<MailOtpResult>
   autoLogin(accountId: number): Promise<AutoLoginResult>
   closeAllBrowsers(): Promise<{ closed: number }>
+  /** Tiles/splits every currently-open headed browser window into the given layout — see ArrangeLayout. */
+  arrangeWindows(layout: ArrangeLayout): Promise<{ arranged: number; total: number }>
   runQueue(accountIds: number[], concurrency: number, scenarioId?: number): Promise<QueueSummary>
   stopQueue(): Promise<boolean>
   isQueueRunning(): Promise<boolean>
   onProgress(cb: (event: QueueProgressEvent) => void): () => void
+  /** Fires with the full, freshly-re-read account row the instant one account's queue run finishes (success or failure) — lets the grid patch Friends/Groups/Followers/Pages/Cookie/Token/Avatar/locations/Created Date/Status in place per row, without waiting for the whole batch or a manual refresh. */
+  onAccountUpdated(cb: (account: Account) => void): () => void
   onQueueDone(cb: (summary: QueueSummary) => void): () => void
   runAutoPost(req: AutoPostRequest): Promise<MarketingBatchSummary>
   runAutoShare(req: AutoShareRequest): Promise<MarketingBatchSummary>
@@ -402,6 +419,47 @@ export interface PagesApi {
     }) => void
   ): () => void
   onBatchScanProgress(cb: (payload: BatchScanProgressEvent) => void): () => void
+  extractPagesV2(
+    accountIds: number[],
+    headless?: boolean
+  ): Promise<{ totalScanned: number; totalPagesFound: number; results: Record<number, import('./account').ManagedPage[]> }>
+  stopExtractV2(): Promise<{ ok: boolean }>
+  onExtractV2Progress(
+    cb: (payload: {
+      index: number
+      total: number
+      accountId: number
+      uid: string
+      name: string
+      message: string
+      pagesFound: number
+    }) => void
+  ): () => void
+  fetchPostsV2(
+    accountId: number,
+    pageId: string,
+    filter: import('./account').PagePostFilter,
+    headless?: boolean
+  ): Promise<{ posts: import('./account').PagePost[]; totalScraped: number }>
+  deletePostsV2(
+    accountId: number,
+    pageId: string,
+    postItems: Array<{ id: string; type: string }>,
+    headless?: boolean,
+    threads?: number
+  ): Promise<{ success: boolean; deletedCount: number; detail: string }>
+  stopDeleteV2(): Promise<{ ok: boolean }>
+  onFetchV2Progress(cb: (payload: { accountId: number; pageId: string; message: string }) => void): () => void
+  onDeleteV2Progress(
+    cb: (payload: {
+      accountId: number
+      pageId: string
+      message: string
+      deletedCount?: number
+      completedIds?: string[]
+      currentBatchIds?: string[]
+    }) => void
+  ): () => void
 }
 
 export interface AppApi {

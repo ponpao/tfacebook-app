@@ -5,8 +5,8 @@
 // ---------------------------------------------------------------------------
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '../main/ipc/channels'
-import type { AppApi, QueueProgressEvent, QueueSummary } from '../types/ipc'
-import type { AccountQuery, AccountUpdate } from '../types/account'
+import type { AppApi, QueueProgressEvent, QueueSummary, ArrangeLayout } from '../types/ipc'
+import type { Account, AccountQuery, AccountUpdate } from '../types/account'
 import type { ImportFormat } from '../types/parser'
 import type { NewProxy } from '../types/proxy'
 import type { NewScenario, ScenarioStep } from '../types/scenario'
@@ -110,12 +110,13 @@ const api: AppApi = {
     isMaximized: () => ipcRenderer.invoke(IPC.window.isMaximized)
   },
   automation: {
-    openProfile: (accountId, slotIndex, rowNumber) =>
-      ipcRenderer.invoke(IPC.automation.openProfile, accountId, slotIndex, rowNumber),
+    openProfile: (accountId, slotIndex, rowNumber, targetUrl) =>
+      ipcRenderer.invoke(IPC.automation.openProfile, accountId, slotIndex, rowNumber, targetUrl),
     checkLive: (target) => ipcRenderer.invoke(IPC.automation.checkLive, target),
     getMailOtp: (accountId) => ipcRenderer.invoke(IPC.automation.getMailOtp, accountId),
     autoLogin: (accountId) => ipcRenderer.invoke(IPC.automation.autoLogin, accountId),
     closeAllBrowsers: () => ipcRenderer.invoke(IPC.automation.closeAllBrowsers),
+    arrangeWindows: (layout: ArrangeLayout) => ipcRenderer.invoke(IPC.automation.arrangeWindows, layout),
     runQueue: (accountIds, concurrency, scenarioId) =>
       ipcRenderer.invoke(IPC.automation.runQueue, accountIds, concurrency, scenarioId),
     stopQueue: () => ipcRenderer.invoke(IPC.automation.stopQueue),
@@ -124,6 +125,11 @@ const api: AppApi = {
       const listener = (_e: unknown, payload: QueueProgressEvent): void => cb(payload)
       ipcRenderer.on(IPC.automation.onProgress, listener)
       return () => ipcRenderer.removeListener(IPC.automation.onProgress, listener)
+    },
+    onAccountUpdated: (cb: (account: Account) => void) => {
+      const listener = (_e: unknown, payload: Account): void => cb(payload)
+      ipcRenderer.on(IPC.automation.onAccountUpdated, listener)
+      return () => ipcRenderer.removeListener(IPC.automation.onAccountUpdated, listener)
     },
     onQueueDone: (cb: (summary: QueueSummary) => void) => {
       const listener = (_e: unknown, payload: QueueSummary): void => cb(payload)
@@ -292,6 +298,31 @@ const api: AppApi = {
       const listener = (_e: unknown, payload: unknown): void => cb(payload as Parameters<typeof cb>[0])
       ipcRenderer.on(IPC.pages.onBatchScanProgress, listener)
       return () => ipcRenderer.removeListener(IPC.pages.onBatchScanProgress, listener)
+    },
+    extractPagesV2: (accountIds: number[], headless?: boolean) =>
+      ipcRenderer.invoke(IPC.pages.extractPagesV2, accountIds, headless),
+    stopExtractV2: () =>
+      ipcRenderer.invoke(IPC.pages.stopExtractV2),
+    onExtractV2Progress: (cb: (payload: any) => void) => {
+      const listener = (_e: unknown, payload: unknown): void => cb(payload)
+      ipcRenderer.on(IPC.pages.onExtractV2Progress, listener)
+      return () => ipcRenderer.removeListener(IPC.pages.onExtractV2Progress, listener)
+    },
+    fetchPostsV2: (accountId: number, pageId: string, filter: any, headless?: boolean) =>
+      ipcRenderer.invoke(IPC.pages.fetchPostsV2, accountId, pageId, filter, headless),
+    deletePostsV2: (accountId: number, pageId: string, postItems: any[], headless?: boolean, threads?: number) =>
+      ipcRenderer.invoke(IPC.pages.deletePostsV2, accountId, pageId, postItems, headless, threads),
+    stopDeleteV2: () =>
+      ipcRenderer.invoke(IPC.pages.stopDeleteV2),
+    onFetchV2Progress: (cb: (payload: any) => void) => {
+      const listener = (_e: unknown, payload: unknown): void => cb(payload)
+      ipcRenderer.on(IPC.pages.onFetchV2Progress, listener)
+      return () => ipcRenderer.removeListener(IPC.pages.onFetchV2Progress, listener)
+    },
+    onDeleteV2Progress: (cb: (payload: any) => void) => {
+      const listener = (_e: unknown, payload: unknown): void => cb(payload)
+      ipcRenderer.on(IPC.pages.onDeleteV2Progress, listener)
+      return () => ipcRenderer.removeListener(IPC.pages.onDeleteV2Progress, listener)
     }
   }
 }

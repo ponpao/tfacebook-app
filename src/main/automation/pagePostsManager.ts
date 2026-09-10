@@ -270,6 +270,18 @@ export async function batchScanPages(
 }
 
 /**
+ * Build robust URL for Meta Business Suite published posts.
+ * When assetId is a Page ID (15-20 digits), Meta Business Suite requires
+ * page_id to resolve the internal Business Portfolio asset automatically.
+ */
+function getMetaSuitePostsUrl(assetId: string): string {
+  if (!assetId || assetId === '-') {
+    return 'https://business.facebook.com/latest/posts/published_posts'
+  }
+  return `https://business.facebook.com/latest/posts/published_posts?page_id=${assetId}&asset_id=${assetId}`
+}
+
+/**
  * Fetch published posts for a given page asset via Meta Business Suite table.
  */
 export async function fetchPagePosts(
@@ -289,9 +301,27 @@ export async function fetchPagePosts(
     await setupSpeedRoutes(page)
 
     onProgress?.('Opening Meta Business Suite...')
-    const bizUrl = `https://business.facebook.com/latest/posts/published_posts?asset_id=${assetId}`
+    const bizUrl = getMetaSuitePostsUrl(assetId)
     await page.goto(bizUrl, { waitUntil: 'domcontentloaded', timeout: 35000 })
     await page.waitForTimeout(4000)
+
+    // If redirected to "Sorry, this content isn't available", fallback to page_id only
+    const isUnavailable = await page.evaluate(() => {
+      const text = document.body.innerText || ''
+      return (
+        text.includes("Sorry, this content isn't available") ||
+        text.includes('The link you followed may have expired')
+      )
+    }).catch(() => false)
+
+    if (isUnavailable) {
+      onProgress?.('Resolving Page in Meta Business Suite...')
+      await page.goto(`https://business.facebook.com/latest/posts/published_posts?page_id=${assetId}`, {
+        waitUntil: 'domcontentloaded',
+        timeout: 35000
+      })
+      await page.waitForTimeout(4000)
+    }
 
     // Remove any tour overlay or modal
     await page.evaluate(() => {
@@ -463,9 +493,25 @@ export async function bulkDeletePagePosts(
     }
 
     onProgress?.('Opening Meta Business Suite...')
-    const bizUrl = `https://business.facebook.com/latest/posts/published_posts?asset_id=${assetId}`
+    const bizUrl = getMetaSuitePostsUrl(assetId)
     await page.goto(bizUrl, { waitUntil: 'domcontentloaded', timeout: 40000 })
     await page.waitForTimeout(3000)
+
+    const isUnavailable = await page.evaluate(() => {
+      const text = document.body.innerText || ''
+      return (
+        text.includes("Sorry, this content isn't available") ||
+        text.includes('The link you followed may have expired')
+      )
+    }).catch(() => false)
+
+    if (isUnavailable) {
+      await page.goto(`https://business.facebook.com/latest/posts/published_posts?page_id=${assetId}`, {
+        waitUntil: 'domcontentloaded',
+        timeout: 35000
+      })
+      await page.waitForTimeout(3000)
+    }
 
     // Remove any tour overlay or modal
     await page.evaluate(() => {

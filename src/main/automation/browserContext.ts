@@ -128,22 +128,32 @@ async function injectSavedCookies(context: BrowserContext, account: Account): Pr
   }
 }
 
-// MaxCare-style compact tiled window: small enough that many can be seen at
-// once in a grid across the screen, keyed by worker slot index (0, 1, 2...).
-const TILE_WIDTH = 420
-const TILE_HEIGHT = 620
-const TILE_GAP_X = 5 // 425px pitch leaves a 5px gutter between windows
-const TILE_GAP_Y = 5 // 625px pitch
+// Every newly-launched headed window starts life tiled into the same 5x2
+// grid the "Arrange Windows" toolbar dropdown offers (see windowArranger.ts's
+// gridBounds — same cols/rows/wrap math, kept in sync deliberately so a
+// freshly-opened batch of windows lands exactly where "Arrange > 5x2" would
+// put them, with no extra step needed). Strict modulo wrap: once all 10
+// slots (5 cols x 2 rows) are filled, slotIndex 10 (the 11th window) lands
+// back on slot 0's exact bounds, slotIndex 20 also lands on slot 0, etc.
+const TILE_GRID_COLS = 5
+const TILE_GRID_ROWS = 2
 
-/** Compute the (x, y) top-left position for a window at `slotIndex` in a grid that fits the primary display. */
-function tilePosition(slotIndex: number): { x: number; y: number } {
-  const workArea = screen.getPrimaryDisplay().workAreaSize
-  const cols = Math.max(1, Math.floor(workArea.width / (TILE_WIDTH + TILE_GAP_X)))
-  const col = slotIndex % cols
-  const row = Math.floor(slotIndex / cols)
+/** Compute the (x, y, width, height) for a window at `slotIndex` in the 5x2 grid that fits the primary display's work area (taskbar-safe). */
+function tilePosition(slotIndex: number): { x: number; y: number; width: number; height: number } {
+  const { x: areaX, y: areaY, width: screenW, height: screenH } = screen.getPrimaryDisplay().workArea
+  const totalSlots = TILE_GRID_COLS * TILE_GRID_ROWS
+  const slot = slotIndex % totalSlots
+  const col = slot % TILE_GRID_COLS
+  const row = Math.floor(slot / TILE_GRID_COLS)
+
+  const winW = Math.floor(screenW / TILE_GRID_COLS)
+  const winH = Math.floor(screenH / TILE_GRID_ROWS)
+
   return {
-    x: col * (TILE_WIDTH + TILE_GAP_X),
-    y: row * (TILE_HEIGHT + TILE_GAP_Y)
+    x: areaX + col * winW,
+    y: areaY + row * winH,
+    width: winW,
+    height: winH
   }
 }
 
@@ -702,8 +712,8 @@ export async function launchContext({
   // of, so a normal-looking 1280x800 is worth setting even with nothing
   // to visually show.
   if (!resolvedHeadless) {
-    const { x, y } = tilePosition(slotIndex ?? 0)
-    args.push(`--window-size=${TILE_WIDTH},${TILE_HEIGHT}`, `--window-position=${x},${y}`)
+    const { x, y, width, height } = tilePosition(slotIndex ?? 0)
+    args.push(`--window-size=${width},${height}`, `--window-position=${x},${y}`)
   } else {
     args.push('--window-size=1280,800')
   }
@@ -836,6 +846,16 @@ export function isTracked(key: string): boolean {
 
 export function getTrackedContext(key: string): BrowserContext | undefined {
   return trackedContexts.get(key)
+}
+
+/**
+ * Every currently-open browser context (headed profiles + in-flight queue
+ * runs), deduplicated — same union closeAllTrackedContexts() already builds
+ * to close everything, exposed read-only here for windowArranger.ts to
+ * iterate and reposition live windows without touching automation state.
+ */
+export function getAllTrackedContexts(): BrowserContext[] {
+  return Array.from(new Set([...allActiveContexts, ...trackedContexts.values()]))
 }
 
 /**

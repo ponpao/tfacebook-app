@@ -4,7 +4,7 @@
 // A small `schema_version` row in `settings` allows future migrations.
 // ---------------------------------------------------------------------------
 
-export const SCHEMA_VERSION = 7
+export const SCHEMA_VERSION = 8
 
 /** ID of the auto-seeded default folder. */
 export const DEFAULT_FOLDER_ID = 1
@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS accounts (
   cookie        TEXT,
   token         TEXT,
   proxy         TEXT,
+  target_url    TEXT,
   avatar        TEXT,
   user_agent    TEXT,
   last_active   TEXT,
@@ -163,5 +164,10 @@ export const MIGRATION_COLUMNS: { table: string; column: string; ddl: string }[]
   { table: 'accounts', column: 'followers', ddl: 'ALTER TABLE accounts ADD COLUMN followers TEXT' },
   { table: 'accounts', column: 'following', ddl: 'ALTER TABLE accounts ADD COLUMN following TEXT' },
   { table: 'accounts', column: 'current_location', ddl: 'ALTER TABLE accounts ADD COLUMN current_location TEXT' },
-  { table: 'accounts', column: 'dtsg_token', ddl: 'ALTER TABLE accounts ADD COLUMN dtsg_token TEXT' }
+  { table: 'accounts', column: 'dtsg_token', ddl: 'ALTER TABLE accounts ADD COLUMN dtsg_token TEXT' },
+  // Target URL column — see AccountsGrid.tsx's "URL គោលដៅ" column and
+  // AccountContextMenu.tsx's "Assign Target URL" / "Open Browser with URL"
+  // actions. When set, openProfile()/queueRunner.ts navigate here instead
+  // of the default Facebook feed after login.
+  { table: 'accounts', column: 'target_url', ddl: 'ALTER TABLE accounts ADD COLUMN target_url TEXT' }
 ]

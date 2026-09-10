@@ -8,11 +8,11 @@ import {
   Info,
   Layers,
   ChevronDown,
-  Globe
+  Globe,
+  Sparkles
 } from 'lucide-react'
 import { useAccountStore } from '../store/useAccountStore'
 import { useLanguageStore } from '../store/useLanguageStore'
-import { HEADER_HEX_PATTERN_URL } from '../assets/headerHexPattern'
 import { CambodiaFlag, UKFlag } from './icons/CountryFlags'
 
 interface MenuBarProps {
@@ -22,6 +22,8 @@ interface MenuBarProps {
   onToolsUtilities: () => void
   onHelpAbout: () => void
   onOpenPageManager: () => void
+  onOpenPageManagerV2: () => void
+  onOpenGetPageInfo: () => void
 }
 
 export function MenuBar({
@@ -30,7 +32,9 @@ export function MenuBar({
   onGeneralSettings,
   onToolsUtilities,
   onHelpAbout,
-  onOpenPageManager
+  onOpenPageManager,
+  onOpenPageManagerV2,
+  onOpenGetPageInfo
 }: MenuBarProps): React.JSX.Element {
   const openRecycleBin = useAccountStore((s) => s.openRecycleBin)
   const language = useLanguageStore((s) => s.language)
@@ -57,15 +61,7 @@ export function MenuBar({
   }, [])
 
   return (
-    <div
-      className="flex items-center justify-between border-b border-[#e4d8bc] bg-[#fdf9f0] px-1 py-0.5 relative select-none"
-      style={{
-        backgroundImage: HEADER_HEX_PATTERN_URL,
-        backgroundSize: '56px 98px',
-        backgroundRepeat: 'repeat',
-        backgroundPosition: '0 -38px'
-      }}
-    >
+    <div className="flex items-center justify-between border-b border-[#e4d8bc] bg-[#fdf9f0] px-1 py-0.5 relative select-none">
       {/* Left items */}
       <div className="flex items-center gap-0.5">
         {/* 1. General Settings */}
@@ -90,6 +86,16 @@ export function MenuBar({
           {pageMenuOpen && (
             <div className="absolute left-0 top-full mt-1 z-50 min-w-[200px] rounded-md border border-slate-300 bg-white py-1 shadow-lg animate-in fade-in-50 zoom-in-95">
               <button
+                className="flex w-full items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-blue-50 hover:text-blue-700 text-left transition-colors"
+                onClick={() => {
+                  setPageMenuOpen(false)
+                  onOpenGetPageInfo()
+                }}
+              >
+                <Layers size={14} className="text-blue-600" />
+                <span>{t('getPageInfo')}</span>
+              </button>
+              <button
                 className="flex w-full items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-rose-50 hover:text-rose-700 text-left transition-colors"
                 onClick={() => {
                   setPageMenuOpen(false)
@@ -97,7 +103,17 @@ export function MenuBar({
                 }}
               >
                 <Trash2 size={14} className="text-rose-600" />
-                <span>{t('deletePostInPage')}</span>
+                <span>លុប Post (Meta Suite V1)</span>
+              </button>
+              <button
+                className="flex w-full items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-purple-50 hover:text-purple-700 text-left transition-colors border-t border-slate-100"
+                onClick={() => {
+                  setPageMenuOpen(false)
+                  onOpenPageManagerV2()
+                }}
+              >
+                <Sparkles size={14} className="text-purple-600" />
+                <span className="font-semibold text-purple-900">លុប Post (GraphQL API V2)</span>
               </button>
             </div>
           )}

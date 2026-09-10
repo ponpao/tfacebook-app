@@ -227,6 +227,18 @@ export const GRID_COLUMNS: GridColumn[] = [
   },
   { key: 'proxy', header: 'Proxy', width: 150, render: (a) => a.proxy ?? '' },
   {
+    key: 'target_url',
+    header: 'URL គោលដៅ',
+    width: 160,
+    render: (a) =>
+      a.target_url ? (
+        <span className="truncate font-mono text-[#0067c0]">{a.target_url}</span>
+      ) : (
+        <span className="text-slate-400">-</span>
+      ),
+    title: (a) => a.target_url ?? ''
+  },
+  {
     key: 'location',
     header: 'Primary Location',
     width: 140,
