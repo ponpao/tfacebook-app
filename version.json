@@ -1,16 +1,24 @@
 {
-  "version": "1.1.8",
-  "releaseDate": "2026-08-31",
+  "version": "1.2.0",
+  "releaseDate": "2026-09-18",
   "changelog": {
     "en": [
-      "Direct Google Drive link converter: paste a shareable Google Drive URL and it's auto-converted to a direct download link",
-      "Multi-line UID inputs across the Friends/Groups dialogs for faster bulk paste",
-      "Various tool optimizations and UI refinements"
+      "New App Mode: browse headlessly with a spoofed Android device, viewed and controlled through live screencast tiles in a new standalone Browser Windows panel",
+      "Fixed a bug where the manual profile cleanup tool could corrupt a profile that was actively in use by any automation action",
+      "Profiles are now automatically cleaned before every browser launch to stay lean across repeated runs",
+      "Fixed mobile device signals and a headless graphics issue that could cause a blank App Mode screen",
+      "Re-themed the whole app with a new warm light/dark appearance, including a dark mode toggle",
+      "Renamed the app's on-screen branding to TKFACEBOOK",
+      "Updated Start/Stop toolbar icons"
     ],
     "km": [
-      "កម្មវិធីបំប្លែងតំណ Google Drive ដោយផ្ទាល់៖ បិទភ្ជាប់ URL Google Drive ដែលអាចចែករំលែក នោះវានឹងបំប្លែងទៅជាតំណទាញយកដោយផ្ទាល់ដោយស្វ័យប្រវត្តិ",
-      "ការបញ្ចូល UID ច្រើនជួរនៅក្នុងប្រអប់ Friends/Groups សម្រាប់ការបិទភ្ជាប់ជាបាច់លឿនជាងមុន",
-      "ការបង្កើនប្រសិទ្ធភាពឧបករណ៍ផ្សេងៗ និងការកែលម្អ UI"
+      "App Mode ថ្មី៖ រុករកបែប Headless ដោយក្លែងធ្វើជាឧបករណ៍ Android ដែលអាចមើល និងគ្រប់គ្រងតាមរយៈផ្ទាំង Screencast ផ្ទាល់នៅក្នុងផ្ទាំង Browser Windows ថ្មីដាច់ដោយឡែក",
+      "បានកែបញ្ហាដែលឧបករណ៍សម្អាត Profile ដោយដៃ អាចធ្វើឱ្យខូច Profile ដែលកំពុងប្រើប្រាស់ដោយសកម្មភាពស្វ័យប្រវត្តិផ្សេងទៀត",
+      "Profile ត្រូវបានសម្អាតដោយស្វ័យប្រវត្តិមុននៃការបើក Browser ជារៀងរាល់ដង ដើម្បីរក្សាទំហំតូច",
+      "បានកែសញ្ញាឧបករណ៍ចល័ត និងបញ្ហា Graphics លើ Headless ដែលអាចបណ្តាលឱ្យអេក្រង់ App Mode ទទេ",
+      "បានធ្វើឱ្យរូបរាងកម្មវិធីទាំងមូលថ្មី ជាមួយស្បែក Light/Dark កក់ក្តៅ រួមទាំងប៊ូតុងប្តូរ Dark Mode",
+      "បានប្តូរឈ្មោះ Brand លើអេក្រង់ទៅជា TKFACEBOOK",
+      "បានធ្វើបច្ចុប្បន្នភាពរូប Icon ប៊ូតុង Start/Stop"
     ]
   }
 }
