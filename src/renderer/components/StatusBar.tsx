@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// StatusBar.tsx  — fixed bottom footer (WinForms style).
+// StatusBar.tsx  — fixed bottom footer.
 //   Left:  ready status / app version / user
 //   Right: Live/Checkpoint/Die status breakdown + highlighted/selected/total
 // ---------------------------------------------------------------------------
@@ -54,21 +54,21 @@ export function StatusBar(): React.JSX.Element {
   }, [accounts])
 
   return (
-    <div className="flex items-center justify-between border-t border-[#c8c8c8] bg-[#f0f0f0] px-3 py-1 text-[11px] text-[#333]">
+    <div className="flex items-center justify-between border-t border-edge bg-surface px-3 py-1 text-[11px] text-ink-muted">
       {/* Left */}
       <div className="flex items-center gap-3">
         {toast ? (
-          <span className="font-semibold text-[#0067c0]">{toast}</span>
+          <span className="font-semibold text-accent">{toast}</span>
         ) : (
           <>
             <span>
               Status: <b className="text-[#1e9e4a]">Ready</b>
             </span>
-            <span className="text-[#c8c8c8]">|</span>
+            <span className="text-edge">|</span>
             <span>App Version: {appVersion ?? '…'}</span>
-            <span className="text-[#c8c8c8]">|</span>
+            <span className="text-edge">|</span>
             <span>User: Administrator</span>
-            <span className="text-[#c8c8c8]">|</span>
+            <span className="text-edge">|</span>
             {license?.isActivated ? (
               <span>
                 🟢 Licensed{license.expiresAt ? ` | Exp: ${license.expiresAt.slice(0, 10)}` : ''}
@@ -78,7 +78,7 @@ export function StatusBar(): React.JSX.Element {
             )}
             {machineId && (
               <>
-                <span className="text-[#c8c8c8]">|</span>
+                <span className="text-edge">|</span>
                 <span
                   className="cursor-pointer hover:underline"
                   onClick={() => void copyMachineId()}
@@ -88,7 +88,7 @@ export function StatusBar(): React.JSX.Element {
                   {copied ? (
                     <span className="font-semibold text-[#1e9e4a]">Copied!</span>
                   ) : (
-                    <span className="text-[#888]">📋</span>
+                    <span className="text-ink-muted">📋</span>
                   )}
                 </span>
               </>
@@ -102,27 +102,27 @@ export function StatusBar(): React.JSX.Element {
         <span>
           Live: <b className="text-[#1e9e4a]">{statusCounts.live}</b>
         </span>
-        <span className="text-[#c8c8c8]">|</span>
+        <span className="text-edge">|</span>
         <span>
           Checkpoint: <b className="text-[#c98a00]">{statusCounts.checkpoint}</b>
         </span>
-        <span className="text-[#c8c8c8]">|</span>
+        <span className="text-edge">|</span>
         <span>
           Die: <b className="text-[#c81e1e]">{statusCounts.die}</b>
         </span>
-        <span className="text-[#c8c8c8]">|</span>
+        <span className="text-edge">|</span>
         <span>
           Highlighted: <b>{selectedCount}</b>
         </span>
-        <span className="text-[#c8c8c8]">|</span>
+        <span className="text-edge">|</span>
         <span>
           Selected: <b>{selectedCount}</b>
         </span>
-        <span className="text-[#c8c8c8]">|</span>
+        <span className="text-edge">|</span>
         <span>
           Total: <b>{accounts.length.toLocaleString()}</b>
           {total !== accounts.length && (
-            <span className="text-[#888]"> / {total.toLocaleString()}</span>
+            <span className="text-ink-muted"> / {total.toLocaleString()}</span>
           )}
         </span>
       </div>

@@ -7,7 +7,7 @@ export function CambodiaFlag({ size = 16, className = '' }: { size?: number; cla
       width={size}
       height={Math.round((size * 2) / 3)}
       viewBox="0 0 640 480"
-      className={`shrink-0 rounded-xs shadow-2xs overflow-hidden ${className}`}
+      className={`shrink-0 rounded-xs overflow-hidden ${className}`}
       aria-label="Cambodia Flag"
     >
       <rect width="640" height="480" fill="#032ea1" />
@@ -39,7 +39,7 @@ export function UKFlag({ size = 16, className = '' }: { size?: number; className
       width={size}
       height={Math.round((size * 2) / 3)}
       viewBox="0 0 60 40"
-      className={`shrink-0 rounded-xs shadow-2xs overflow-hidden ${className}`}
+      className={`shrink-0 rounded-xs overflow-hidden ${className}`}
       aria-label="UK Flag"
     >
       <clipPath id="uk-flag-clip">

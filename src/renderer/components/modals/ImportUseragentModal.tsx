@@ -70,7 +70,7 @@ export function ImportUseragentModal({
       width="max-w-xl"
       footer={
         <>
-          <span className="mr-auto text-[11px] text-slate-500">
+          <span className="mr-auto text-[11px] text-ink-muted">
             {count} account(s) selected · {lines.length} User-Agent line(s)
           </span>
           <button className="win-btn" onClick={onClose} disabled={busy}>
@@ -92,9 +92,9 @@ export function ImportUseragentModal({
         </button>
 
         <label className="flex flex-col gap-1.5">
-          <span className="font-medium text-slate-700">User-Agent list (one per line)</span>
+          <span className="font-medium text-ink">User-Agent list (one per line)</span>
           <textarea
-            className="h-40 resize-none rounded border border-slate-300 bg-white p-2 font-mono text-[11px] text-slate-900 outline-none focus:border-[#0078d4]"
+            className="h-40 resize-none rounded-lg border border-edge bg-surface p-2 font-mono text-[11px] text-ink outline-none focus:border-[#0078d4]"
             placeholder={
               'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
             }

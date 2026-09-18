@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// ScenarioBuilderModal.tsx  — WinForms-style dialog for building account
+// ScenarioBuilderModal.tsx  — shared dialog chrome for building account
 // "warm-up" action pipelines: left panel lists saved scenarios, right panel
 // is the step editor (add/remove/reorder/enable + min-max parameters).
 // Scenarios persist to SQLite via window.api.scenarios.
@@ -23,7 +23,6 @@ import { useAccountStore } from '../../store/useAccountStore'
 import { useLanguageStore } from '../../store/useLanguageStore'
 import type { Scenario, ScenarioStep, ScenarioStepType } from '../../../types/scenario'
 import { STEP_LABELS, defaultStep } from '../../../types/scenario'
-import { HEADER_HEX_PATTERN_URL } from '../../assets/headerHexPattern'
 
 const STEP_TYPES: ScenarioStepType[] = [
   'scroll_newsfeed',
@@ -55,7 +54,7 @@ function NumberField({
   max?: number
 }): React.JSX.Element {
   return (
-    <label className="flex items-center gap-1.5 text-[11px] text-slate-600">
+    <label className="flex items-center gap-1.5 text-[11px] text-ink-muted">
       {/* Fixed label width so every NumberField's input starts at the same
           x-offset regardless of label text length ("Min (s)" vs "Min
           count" vs "Min dur (s)") — this is what actually keeps every step
@@ -322,29 +321,22 @@ export function ScenarioBuilderModal({
         if (e.target === e.currentTarget) onClose()
       }}
     >
-      <div className="flex h-full max-h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded border border-slate-400 border-t-4 border-t-indigo-600 bg-[#f0f2f5] shadow-2xl">
+      <div className="flex h-full max-h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-edge border-t-4 border-t-accent bg-surface">
         {/* Header */}
-        <div
-          className="flex items-center justify-between border-b border-[#e4d8bc] bg-[#fdf9f0] px-4 py-2"
-          style={{
-            backgroundImage: HEADER_HEX_PATTERN_URL,
-            backgroundSize: '56px 98px',
-            backgroundRepeat: 'repeat'
-          }}
-        >
+        <div className="flex items-center justify-between border-b border-edge bg-surface-sunken px-4 py-2">
           <div className="flex items-center gap-2">
-            <FileText size={16} className="text-[#0067c0]" />
-            <h2 className="text-[13px] font-semibold text-slate-900">Scenario Builder</h2>
+            <FileText size={16} className="text-accent" />
+            <h2 className="text-[13px] font-semibold text-ink">Scenario Builder</h2>
           </div>
-          <button onClick={onClose} className="text-slate-500 hover:text-[#e81123]">
+          <button onClick={onClose} className="text-ink-muted hover:text-accent">
             <X size={16} />
           </button>
         </div>
 
         <div className="grid flex-1 grid-cols-[200px_1fr] overflow-hidden">
           {/* Left panel: saved scenarios */}
-          <div className="flex flex-col border-r border-slate-300 bg-[#f6f6f6]">
-            <div className="flex items-center justify-between px-2 py-1.5 text-[11px] font-semibold text-slate-600">
+          <div className="flex flex-col border-r border-edge bg-surface">
+            <div className="flex items-center justify-between px-2 py-1.5 text-[11px] font-semibold text-ink-muted">
               Saved Scenarios
               <button
                 className="win-btn-sq h-6 w-6"
@@ -359,16 +351,16 @@ export function ScenarioBuilderModal({
                 <button
                   key={s.id}
                   onClick={() => selectScenario(s)}
-                  className={`flex w-full flex-col items-start rounded px-2 py-1.5 text-left text-[12px] ${
+                  className={`flex w-full flex-col items-start rounded-lg px-2 py-1.5 text-left text-[12px] ${
                     selectedId === s.id
                       ? 'bg-[#0078d4] text-white'
-                      : 'text-slate-800 hover:bg-[#e5f1fb]'
+                      : 'text-ink hover:bg-surface-sunken'
                   }`}
                 >
                   <span className="truncate font-medium">{s.name}</span>
                   <span
                     className={`text-[10px] ${
-                      selectedId === s.id ? 'text-white/80' : 'text-slate-500'
+                      selectedId === s.id ? 'text-white/80' : 'text-ink-muted'
                     }`}
                   >
                     {s.steps.length} step{s.steps.length === 1 ? '' : 's'}
@@ -382,7 +374,7 @@ export function ScenarioBuilderModal({
 
           {/* Right panel: step pipeline editor */}
           <div className="flex flex-col overflow-hidden">
-            <div className="flex items-center gap-2 border-b border-slate-300 px-3 py-2 bg-white">
+            <div className="flex items-center gap-2 border-b border-edge px-3 py-2 bg-surface">
               <input
                 className="win-input flex-1 font-semibold"
                 value={name}
@@ -410,8 +402,8 @@ export function ScenarioBuilderModal({
             </div>
 
             {/* Randomize Step Order Toolbar */}
-            <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50/90 px-3 py-1.5 shadow-2xs">
-              <label className="flex items-center gap-2 text-xs font-bold text-slate-800 cursor-pointer select-none">
+            <div className="flex items-center justify-between border-b border-edge bg-surface-sunken/90 px-3 py-1.5">
+              <label className="flex items-center gap-2 text-xs font-bold text-ink cursor-pointer select-none">
                 <input
                   type="checkbox"
                   checked={randomizeOrder}
@@ -419,18 +411,18 @@ export function ScenarioBuilderModal({
                     setRandomizeOrder(e.target.checked)
                     setDirty(true)
                   }}
-                  className="rounded border-slate-400 text-blue-600 focus:ring-0 cursor-pointer"
+                  className="rounded-lg border-edge text-blue-600 focus:ring-0 cursor-pointer"
                 />
                 <span>{t('randomizeStepOrder')}</span>
               </label>
-              <span className="text-[11px] text-slate-500 font-medium">
+              <span className="text-[11px] text-ink-muted font-medium">
                 {steps.length} {steps.length === 1 ? 'step' : 'steps'}
               </span>
             </div>
 
             <div className="flex-1 overflow-auto p-2">
               {steps.length === 0 && (
-                <div className="flex h-full items-center justify-center text-[12px] text-slate-400">
+                <div className="flex h-full items-center justify-center text-[12px] text-ink-muted">
                   No steps yet — add one above.
                 </div>
               )}
@@ -445,7 +437,7 @@ export function ScenarioBuilderModal({
                     // how many NumberFields a given step type has, instead of
                     // flex's content-driven sizing letting each row's layout
                     // drift independently.
-                    className={`mb-1.5 grid grid-cols-[20px_18px_190px_1fr_88px] items-center gap-2 rounded border border-slate-300 bg-white px-2 py-2 ${
+                    className={`mb-1.5 grid grid-cols-[20px_18px_190px_1fr_88px] items-center gap-2 rounded-lg border border-edge bg-surface px-2 py-2 ${
                       step.enabled ? '' : 'opacity-50'
                     }`}
                   >
@@ -457,7 +449,7 @@ export function ScenarioBuilderModal({
                       title="Enabled"
                     />
                     <Icon size={14} className="shrink-0 text-[#4a6a8a]" />
-                    <span className="truncate text-[12px] font-medium text-slate-800">
+                    <span className="truncate text-[12px] font-medium text-ink">
                       {STEP_LABELS[step.type]}
                     </span>
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -496,7 +488,7 @@ export function ScenarioBuilderModal({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between gap-2 border-t border-slate-300 bg-[#f6f6f6] px-4 py-2.5">
+        <div className="flex items-center justify-between gap-2 border-t border-edge bg-surface px-4 py-2.5">
           <div className="flex gap-2">
             <button
               className="win-btn"

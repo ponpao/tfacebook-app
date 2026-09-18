@@ -123,7 +123,7 @@ export function AssignUrlModal({
 
       {(accounts.length === 1 || mode === 'same') ? (
         <label className="flex flex-col gap-1.5 text-[12px]">
-          <span className="font-medium text-slate-700">
+          <span className="font-medium text-ink">
             Target URL — applied to {accounts.length} account(s)
           </span>
           <input
@@ -137,7 +137,7 @@ export function AssignUrlModal({
         </label>
       ) : (
         <label className="flex flex-col gap-1.5 text-[12px]">
-          <span className="font-medium text-slate-700">
+          <span className="font-medium text-ink">
             One URL per line, mapped in order to the {accounts.length} selected account(s)
           </span>
           <textarea
@@ -147,7 +147,7 @@ export function AssignUrlModal({
             value={listText}
             onChange={(e) => setListText(e.target.value)}
           />
-          <span className="text-[11px] text-slate-500">
+          <span className="text-[11px] text-ink-muted">
             Line {'{i}'} → row {'{i}'} of the current selection ({accounts.length} row(s), in selected order).
           </span>
         </label>

@@ -4,7 +4,7 @@
 // images, group count + delay settings.
 // ---------------------------------------------------------------------------
 import { useState } from 'react'
-import { BookOpen, Wand2, ImagePlus, X } from 'lucide-react'
+import { BookOpen, Wand2, ImagePlus, Film, X } from 'lucide-react'
 import { ModalShell } from './ModalShell'
 import { useAccountStore } from '../../store/useAccountStore'
 import type { PostDestination } from '../../../types/marketing'
@@ -29,8 +29,11 @@ export function AutoPostModal({
   const [spinPreview, setSpinPreview] = useState<string[]>([])
   const [imagePaths, setImagePaths] = useState<string[]>([])
   const [groupCount, setGroupCount] = useState(2)
+  const [pageCount, setPageCount] = useState(10)
   const [delayMin, setDelayMin] = useState(15)
   const [delayMax, setDelayMax] = useState(45)
+  const [commentOn, setCommentOn] = useState(true)
+  const [commentTemplate, setCommentTemplate] = useState('')
   const [running, setRunning] = useState(false)
 
   const count = selectedIds().length
@@ -45,8 +48,8 @@ export function AutoPostModal({
     setSpinPreview(results)
   }
 
-  const pickImages = async (): Promise<void> => {
-    const paths = await window.api.utils.selectImages()
+  const pickMedia = async (): Promise<void> => {
+    const paths = await window.api.utils.selectMedia()
     if (paths.length) setImagePaths(paths)
   }
 
@@ -56,8 +59,8 @@ export function AutoPostModal({
       showToast('Select at least one account first.')
       return
     }
-    if (!content.trim()) {
-      showToast('Enter post content (spin syntax supported).')
+    if (!content.trim() && imagePaths.length === 0) {
+      showToast('Enter post content or attach a photo/video.')
       return
     }
     onClose()
@@ -71,8 +74,10 @@ export function AutoPostModal({
           contentTemplate: content,
           imagePaths,
           groupCount,
+          pageCount,
           delayMinSeconds: delayMin,
-          delayMaxSeconds: delayMax
+          delayMaxSeconds: delayMax,
+          commentTemplate: commentOn && commentTemplate.trim() ? commentTemplate : undefined
         })
         showToast(
           `Auto Post done: ${summary.succeeded}/${summary.total} succeeded, ${summary.failed} failed.`,
@@ -97,7 +102,7 @@ export function AutoPostModal({
       icon={BookOpen}
       footer={
         <>
-          <span className="mr-auto text-[11px] text-slate-500">
+          <span className="mr-auto text-[11px] text-ink-muted">
             {count} account(s) selected · {threadCount} thread(s)
           </span>
           <button
@@ -140,16 +145,30 @@ export function AutoPostModal({
               />
               Post to Random Joined Groups
             </label>
+            <label className="flex items-center gap-1.5">
+              <input
+                type="radio"
+                name="post-dest"
+                checked={destination === 'pages'}
+                onChange={() => setDestination('pages')}
+              />
+              Post to Managed Pages
+            </label>
           </div>
+          {destination === 'pages' && (
+            <p className="mt-1 text-[11px] text-ink-muted">
+              Uses pages saved on the account (run Get Page Info first). Switches into each page, then posts photo/video + caption.
+            </p>
+          )}
         </fieldset>
 
         {/* Content */}
         <label className="flex flex-col gap-1.5">
-          <span className="font-medium text-slate-700">
+          <span className="font-medium text-ink">
             Post Content (supports Spin Syntax: {'{a|b|c}'})
           </span>
           <textarea
-            className="h-28 resize-none rounded border border-slate-300 bg-white p-2 font-mono text-[12px] text-slate-900 outline-none focus:border-[#0078d4]"
+            className="h-28 resize-none rounded-lg border border-edge bg-surface p-2 font-mono text-[12px] text-ink outline-none focus:border-[#0078d4]"
             placeholder={'{Hello|Hi} everyone! {Have a great day|Enjoy your day}!'}
             value={content}
             onChange={(e) => setContent(e.target.value)}
@@ -159,17 +178,18 @@ export function AutoPostModal({
               <Wand2 size={13} className="text-[#0067c0]" />
               Test Spin
             </button>
-            <button className="win-btn" onClick={() => void pickImages()}>
+            <button className="win-btn" onClick={() => void pickMedia()}>
               <ImagePlus size={13} className="text-[#1e9e4a]" />
-              Attach Images
+              <Film size={13} className="text-[#c45c26]" />
+              Attach Photo / Video
             </button>
             {imagePaths.length > 0 && (
-              <span className="text-[11px] text-slate-500">
-                {imagePaths.length} image(s) selected
+              <span className="text-[11px] text-ink-muted">
+                {imagePaths.length} file(s): {imagePaths.map((p) => p.split(/[/\\]/).pop()).join(', ')}
                 <button
                   className="ml-1 text-[#c81e1e]"
                   onClick={() => setImagePaths([])}
-                  title="Clear images"
+                  title="Clear media"
                 >
                   <X size={11} className="inline" />
                 </button>
@@ -177,10 +197,10 @@ export function AutoPostModal({
             )}
           </div>
           {spinPreview.length > 0 && (
-            <div className="rounded border border-slate-300 bg-white p-2 text-[11px] text-slate-700">
-              <div className="mb-1 font-semibold text-slate-500">Preview (3 samples):</div>
+            <div className="rounded-lg border border-edge bg-surface p-2 text-[11px] text-ink">
+              <div className="mb-1 font-semibold text-ink-muted">Preview (3 samples):</div>
               {spinPreview.map((p, i) => (
-                <div key={i} className="border-t border-slate-100 py-1 first:border-t-0">
+                <div key={i} className="border-t border-edge py-1 first:border-t-0">
                   {p}
                 </div>
               ))}
@@ -189,9 +209,30 @@ export function AutoPostModal({
         </label>
 
         {/* Settings */}
-        {destination === 'groups' && (
+        <label className="flex flex-col gap-1.5">
+          <label className="flex items-center gap-1.5 font-medium text-ink">
+            <input type="checkbox" checked={commentOn} onChange={(e) => setCommentOn(e.target.checked)} />
+            Comment a link after posting
+          </label>
+          {commentOn && (
+            <>
+              <textarea
+                className="h-16 resize-none rounded-lg border border-edge bg-surface p-2 font-mono text-[12px] text-ink outline-none focus:border-[#0078d4]"
+                placeholder={'https://yoursite.com/article\nor {https://site.com/a|https://site.com/b}'}
+                value={commentTemplate}
+                onChange={(e) => setCommentTemplate(e.target.value)}
+              />
+              <span className="text-[11px] text-ink-muted">
+                Posted as a comment on the new post (photo/video stays clean; the URL goes in the comment). Spin syntax supported.
+              </span>
+            </>
+          )}
+        </label>
+
+        {(destination === 'groups' || destination === 'pages') && (
           <fieldset className="win-fieldset flex items-center gap-4">
             <legend>Settings</legend>
+            {destination === 'groups' && (
             <label className="flex items-center gap-1.5">
               Group count limit
               <input
@@ -203,6 +244,20 @@ export function AutoPostModal({
                 onChange={(e) => setGroupCount(Number(e.target.value))}
               />
             </label>
+            )}
+            {destination === 'pages' && (
+            <label className="flex items-center gap-1.5">
+              Page count limit
+              <input
+                type="number"
+                min={1}
+                max={50}
+                className="win-input w-16 text-center"
+                value={pageCount}
+                onChange={(e) => setPageCount(Number(e.target.value))}
+              />
+            </label>
+            )}
             <label className="flex items-center gap-1.5">
               Delay min (s)
               <input

@@ -120,13 +120,13 @@ export function HelpAboutModal({
       }
     >
       <div className="flex flex-col gap-4 text-[12px]">
-        <div className="flex items-center gap-3 border-b border-slate-300 pb-3">
+        <div className="flex items-center gap-3 border-b border-edge pb-3">
           <AppLogo size={44} />
           <div className="flex-1">
-            <div className="text-[15px] font-bold text-slate-800">
-              TFACEBOOK Automation Studio
+            <div className="text-[15px] font-bold text-ink">
+              TKFACEBOOK Automation Studio
             </div>
-            <div className="text-slate-500">Version {appVersion ?? '…'}</div>
+            <div className="text-ink-muted">Version {appVersion ?? '…'}</div>
           </div>
           <button className="win-btn" onClick={() => void checkForUpdates()} disabled={checking}>
             <RefreshCw size={13} className={`text-[#4a6a8a] ${checking ? 'animate-spin' : ''}`} />
@@ -140,15 +140,15 @@ export function HelpAboutModal({
           <div className="flex flex-col gap-2 p-1">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="font-bold text-slate-800 text-xs">Kantumruy Pro</span>
+                <span className="font-bold text-ink text-xs">Kantumruy Pro</span>
                 {fontInstalled ? (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-800 border border-emerald-300">
-                    <CheckCircle2 size={12} className="text-emerald-700" />
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 dark:bg-emerald-500/15 px-2.5 py-0.5 text-xs font-semibold text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700/40">
+                    <CheckCircle2 size={12} className="text-emerald-700 dark:text-emerald-400" />
                     <span>{t('fontInstalled')}</span>
                   </span>
                 ) : (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-800 border border-amber-300">
-                    <AlertTriangle size={12} className="text-amber-700" />
+                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-500/15 px-2.5 py-0.5 text-xs font-semibold text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700/40">
+                    <AlertTriangle size={12} className="text-amber-700 dark:text-amber-400" />
                     <span>{t('fontMissing')}</span>
                   </span>
                 )}
@@ -167,7 +167,7 @@ export function HelpAboutModal({
               )}
             </div>
 
-            <p className="text-[11px] text-slate-600">
+            <p className="text-[11px] text-ink-muted">
               {fontInstalled ? t('fontInstalledDesc') : t('fontMissingDesc')}
             </p>
           </div>
@@ -178,18 +178,18 @@ export function HelpAboutModal({
           {license?.isActivated ? (
             <div className="flex flex-col gap-1.5">
               <div className="flex items-center justify-between">
-                <span className="text-slate-600">Key</span>
-                <code className="font-mono text-[11px] text-slate-800">
+                <span className="text-ink-muted">Key</span>
+                <code className="font-mono text-[11px] text-ink">
                   {license.licenseKey ? maskLicenseKey(license.licenseKey) : '—'}
                 </code>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-slate-600">Expires</span>
-                <span className="text-slate-800">{license.expiresAt ?? 'Never'}</span>
+                <span className="text-ink-muted">Expires</span>
+                <span className="text-ink">{license.expiresAt ?? 'Never'}</span>
               </div>
               <div className="flex items-center justify-between gap-2">
-                <span className="shrink-0 text-slate-600">Device Hash</span>
-                <code className="truncate font-mono text-[10px] text-slate-500">
+                <span className="shrink-0 text-ink-muted">Device Hash</span>
+                <code className="truncate font-mono text-[10px] text-ink-muted">
                   {license.deviceHash}
                 </code>
               </div>
@@ -204,7 +204,7 @@ export function HelpAboutModal({
               </button>
             </div>
           ) : (
-            <p className="text-slate-500">Loading license status…</p>
+            <p className="text-ink-muted">Loading license status…</p>
           )}
         </fieldset>
 
@@ -219,8 +219,8 @@ export function HelpAboutModal({
                 ['F5', 'Refresh the accounts grid']
               ].map(([key, desc]) => (
                 <tr key={key}>
-                  <td className="w-32 py-0.5 pr-2 font-mono text-[11px] text-slate-700">{key}</td>
-                  <td className="py-0.5 text-slate-600">{desc}</td>
+                  <td className="w-32 py-0.5 pr-2 font-mono text-[11px] text-ink">{key}</td>
+                  <td className="py-0.5 text-ink-muted">{desc}</td>
                 </tr>
               ))}
             </tbody>
@@ -229,7 +229,7 @@ export function HelpAboutModal({
 
         <fieldset className="win-fieldset">
           <legend>Thread Recommendations</legend>
-          <p className="text-slate-600">
+          <p className="text-ink-muted">
             Run <strong>5–10 concurrent threads</strong> depending on your CPU/RAM — each thread
             opens its own Chrome instance. Lower-end machines (4 cores / 8GB RAM) should stay
             closer to 2–4; a strong workstation (8+ cores / 16GB+ RAM) can comfortably handle
@@ -240,21 +240,21 @@ export function HelpAboutModal({
 
         <fieldset className="win-fieldset">
           <legend>Proxy Formatting</legend>
-          <p className="text-slate-600">
-            Accepted formats: <code className="rounded bg-slate-200 px-1">ip:port</code> or{' '}
-            <code className="rounded bg-slate-200 px-1">ip:port:user:pass</code> for authenticated
+          <p className="text-ink-muted">
+            Accepted formats: <code className="rounded-lg bg-surface-sunken px-1">ip:port</code> or{' '}
+            <code className="rounded-lg bg-surface-sunken px-1">ip:port:user:pass</code> for authenticated
             proxies. One proxy per line when importing in bulk.
           </p>
         </fieldset>
 
         <fieldset className="win-fieldset">
           <legend>Clear Cache / Factory Reset</legend>
-          <p className="text-slate-600">
+          <p className="text-ink-muted">
             Browser profiles live under the configured{' '}
             <strong>Chrome Profile Storage Path</strong> (General Settings → Custom Profile
             Directory) — deleting an account's profile folder there resets its browser fingerprint
             and cookies from scratch. To fully reset the app, close it and delete its userData
-            folder (<code className="rounded bg-slate-200 px-1">%APPDATA%\TFACEBOOK</code> on
+            folder (<code className="rounded-lg bg-surface-sunken px-1">%APPDATA%\TFACEBOOK</code> on
             Windows), which removes the SQLite database, settings, and all local profiles — this
             cannot be undone, so export any accounts you want to keep first.
           </p>

@@ -3,12 +3,12 @@
 // personal feed or a random selection of joined groups.
 // ---------------------------------------------------------------------------
 import type { Page } from 'playwright'
-import type { Account } from '../../types/account'
+import type { Account, ManagedPage } from '../../types/account'
 import { launchContext, trackContext, untrackContext } from './browserContext'
 import { parseSpinSyntax } from '../utils/spinSyntax'
 import { verifyActiveSession } from './sessionGuard'
 
-export type PostDestination = 'feed' | 'groups'
+export type PostDestination = 'feed' | 'groups' | 'pages'
 
 export interface AutoPostOptions {
   destination: PostDestination
@@ -18,9 +18,14 @@ export interface AutoPostOptions {
   imagePaths?: string[]
   /** When destination = 'groups', post to at most this many joined groups. */
   groupCount?: number
+  /** When destination = 'pages', post to at most this many managed pages. */
+  pageCount?: number
   /** Seconds to wait between consecutive group posts. */
   delayMinSeconds?: number
   delayMaxSeconds?: number
+  /** Optional comment (often a link) posted on the new post. Spin syntax supported. */
+  commentTemplate?: string
+  pageTargets?: { accountId: number; pageId: string; comment?: string }[]
   signal?: AbortSignal
   onProgress?: (label: string) => void
 }
@@ -68,6 +73,9 @@ const COMPOSER_TRIGGER_SELECTORS = [
   '[aria-label="What\'s on your mind?"]',
   '[aria-label*="What\'s on your mind" i]',
   '[aria-label*="Bạn đang nghĩ gì"]',
+  '[aria-label*="តើអ្នកកំពុងគិត"]',
+  'div[role="button"]:has-text("Create a post")',
+  'div[role="button"]:has-text("Create post")',
   'div[data-pagelet="ProfileComposer"] div[role="button"]',
   'div[data-pagelet="FeedUnit_0"] div[role="button"]',
   'div[role="region"] div[role="button"]',
@@ -81,7 +89,29 @@ const COMPOSER_TEXTBOX_SELECTORS = [
   'div[role="dialog"] [aria-label*="What\'s on your mind" i]',
   'div[aria-label*="What\'s on your mind" i][contenteditable="true"]',
   'div[aria-label*="Bạn đang nghĩ gì"][contenteditable="true"]',
+  '[aria-label*="តើអ្នកកំពុងគិត"][contenteditable="true"]',
+  '[aria-label*="Write something" i][contenteditable="true"]',
+  '[aria-placeholder*="What\'s on your mind" i]',
   'div[role="textbox"][contenteditable="true"]'
+]
+const COMMENT_BOX_SELECTORS = [
+  'div[role="article"] div[aria-label="Write a comment"][contenteditable="true"]',
+  'div[aria-label="Write a comment"][contenteditable="true"]',
+  'div[aria-label*="Write a comment" i][contenteditable="true"]',
+  'div[aria-label*="Write a comment" i][role="textbox"]',
+  'div[aria-label*="Viết bình luận" i][contenteditable="true"]',
+  'div[aria-label*="បញ្ចេញមតិ" i][contenteditable="true"]',
+  'form div[contenteditable="true"][role="textbox"]'
+]
+const SWITCH_PAGE_SELECTORS = [
+  'div[role="button"]:has-text("Switch Now")',
+  'div[aria-label="Switch Now"]',
+  'div[role="button"]:has-text("Switch into")',
+  'div[role="button"]:has-text("Switch to Page")',
+  '[aria-label="Switch"]',
+  'div[role="button"]:has-text("Switch")',
+  'div[role="button"]:has-text("ប្តូរឥឡូវ")',
+  'div[role="button"]:has-text("ប្តូរ")'
 ]
 const PHOTO_BUTTON_SELECTORS = [
   'div[role="dialog"] div[aria-label="Photo/video"]',
@@ -89,13 +119,21 @@ const PHOTO_BUTTON_SELECTORS = [
   'div[role="dialog"] [aria-label*="Photo" i]',
   '[aria-label="Photo/video"]',
   '[aria-label*="Ảnh/video"]',
-  'div[role="button"]:has-text("Photo/video")'
+  '[aria-label*="រូបថត"]',
+  'div[role="button"]:has-text("Photo/video")',
+  'div[role="button"]:has-text("Photo / video")'
 ]
 const FILE_INPUT_SELECTORS = [
   'input[type="file"][accept*="image"][accept*="video"]',
+  'input[type="file"][accept*="video"]',
   'input[type="file"][accept*="image"]',
   'input[type="file"]'
 ]
+const VIDEO_EXT = /\.(mp4|mov|webm|mkv|avi|m4v)$/i
+
+function isVideoPath(p: string): boolean {
+  return VIDEO_EXT.test(p)
+}
 const POST_SUBMIT_SELECTORS = [
   'div[role="dialog"] div[aria-label="Post"]',
   'div[role="dialog"] div[role="button"]:has-text("Post")',
@@ -158,7 +196,39 @@ async function openComposer(page: Page, signal?: AbortSignal): Promise<boolean> 
 
   await raceAbort(page.waitForTimeout(1500), signal)
   const dialog = page.locator('div[role="dialog"], div[aria-label="Create post"], div[aria-label="Create a post"]').first()
-  return await dialog.isVisible({ timeout: 5000 }).catch(() => false)
+  if (await dialog.isVisible({ timeout: 4000 }).catch(() => false)) return true
+  const box = await findFirstVisible(page, COMPOSER_TEXTBOX_SELECTORS, 2500)
+  return Boolean(box)
+}
+
+function parseManagedPages(account: Account): ManagedPage[] {
+  if (!account.pages_data?.trim()) return []
+  try {
+    const parsed = JSON.parse(account.pages_data) as ManagedPage[]
+    return Array.isArray(parsed)
+      ? parsed.filter((p) => p?.pageId && p.status !== 'Deactivated / Deleted')
+      : []
+  } catch {
+    return []
+  }
+}
+
+function pageProfileUrl(managed: ManagedPage): string {
+  const raw = (managed.url || '').trim()
+  if (/^https?:\/\/(www\.|web\.|m\.)?facebook\.com\//i.test(raw) && !/\/pages\/\?/.test(raw)) {
+    return raw.replace('://www.facebook.com', '://web.facebook.com').replace('://m.facebook.com', '://web.facebook.com')
+  }
+  const id = String(managed.pageId || '').replace(/^\/+/, '').split('?')[0]
+  if (/^\d{5,}$/.test(id)) return `https://web.facebook.com/profile.php?id=${id}`
+  if (id) return `https://web.facebook.com/${encodeURI(id)}`
+  return 'https://web.facebook.com/'
+}
+
+async function switchIntoPage(page: Page, signal?: AbortSignal): Promise<void> {
+  const btn = await findFirstVisible(page, SWITCH_PAGE_SELECTORS, 2500)
+  if (!btn) return
+  await raceAbort(btn.click({ timeout: 3000, force: true }).catch(() => void 0), signal)
+  await raceAbort(page.waitForTimeout(2500), signal)
 }
 
 /** Type the (already-spun) content into the open composer's textbox. */
@@ -184,11 +254,10 @@ async function typeComposerText(page: Page, text: string, signal?: AbortSignal):
   }, text).catch(() => false)
 }
 
-/** Attach local image files via the composer's file input, if any given. */
-async function attachImages(page: Page, imagePaths: string[], signal?: AbortSignal): Promise<void> {
-  if (imagePaths.length === 0) return
+/** Attach local photo/video files via the composer's file input. */
+async function attachMedia(page: Page, mediaPaths: string[], signal?: AbortSignal): Promise<void> {
+  if (mediaPaths.length === 0) return
 
-  // Check if file input already exists or if we need to click photo button
   let fileInput = page.locator(FILE_INPUT_SELECTORS.join(', ')).first()
   let exists = await fileInput.count().then((c) => c > 0).catch(() => false)
 
@@ -202,10 +271,28 @@ async function attachImages(page: Page, imagePaths: string[], signal?: AbortSign
 
   fileInput = page.locator(FILE_INPUT_SELECTORS.join(', ')).first()
   const present = await fileInput.count().then((c) => c > 0).catch(() => false)
-  if (present) {
-    await raceAbort(fileInput.setInputFiles(imagePaths).catch(() => void 0), signal)
-    await raceAbort(page.waitForTimeout(2500), signal)
+  try {
+    if (present) {
+      await raceAbort(fileInput.setInputFiles(mediaPaths), signal)
+    } else {
+      const anyInput = page.locator('input[type="file"]').first()
+      if ((await anyInput.count().catch(() => 0)) > 0) {
+        await raceAbort(anyInput.setInputFiles(mediaPaths), signal)
+      }
+    }
+  } catch {
+    /* composer file input can remount; retry below */
+    const retry = page.locator('input[type="file"]').first()
+    await raceAbort(retry.setInputFiles(mediaPaths).catch(() => void 0), signal)
   }
+
+  const hasVideo = mediaPaths.some(isVideoPath)
+  const dialog = page.locator('div[role="dialog"]').first()
+  const preview = hasVideo
+    ? dialog.locator('video').first()
+    : dialog.locator('img[src*="blob:"], img[src*="scontent"], img[src*="fbcdn"]').first()
+  await raceAbort(preview.waitFor({ state: 'attached', timeout: hasVideo ? 45000 : 20000 }).catch(() => void 0), signal)
+  await raceAbort(page.waitForTimeout(hasVideo ? 4000 : 1500), signal)
 }
 
 /**
@@ -213,8 +300,8 @@ async function attachImages(page: Page, imagePaths: string[], signal?: AbortSign
  * dialog to actually close before returning.
  */
 async function submitPost(page: Page, signal?: AbortSignal): Promise<boolean> {
-  // Step 1: Poll until Next / Post button is enabled (upload finished)
-  const maxWait = Date.now() + 25000
+  // Step 1: Poll until Next / Post button is enabled (upload finished; videos take longer)
+  const maxWait = Date.now() + 90000
   let isNextEnabled = false
 
   while (Date.now() < maxWait) {
@@ -225,7 +312,7 @@ async function submitPost(page: Page, signal?: AbortSignal): Promise<boolean> {
       const target = btns.find((b) => {
         const text = (b.textContent || '').trim()
         const aria = (b.getAttribute('aria-label') || '').trim()
-        return /^(Next|Post|Đăng|Tiếp)$/i.test(text) || /^(Next|Post|Đăng|Tiếp)$/i.test(aria)
+        return /^(Next|Post|Đăng|Tiếp|ផុស)$/i.test(text) || /^(Next|Post|Đăng|Tiếp|ផុស)$/i.test(aria)
       })
       if (!target) return { found: false, disabled: true }
       const disabled = target.getAttribute('aria-disabled') === 'true' || (target as HTMLButtonElement).disabled
@@ -248,7 +335,7 @@ async function submitPost(page: Page, signal?: AbortSignal): Promise<boolean> {
     const target = btns.find((b) => {
       const text = (b.textContent || '').trim()
       const aria = (b.getAttribute('aria-label') || '').trim()
-      return /^(Next|Post|Đăng|Tiếp)$/i.test(text) || /^(Next|Post|Đăng|Tiếp)$/i.test(aria)
+      return /^(Next|Post|Đăng|Tiếp|ផុស)$/i.test(text) || /^(Next|Post|Đăng|Tiếp|ផុស)$/i.test(aria)
     })
     if (target) {
       (target as HTMLElement).focus?.()
@@ -270,7 +357,7 @@ async function submitPost(page: Page, signal?: AbortSignal): Promise<boolean> {
         const text = (b.textContent || '').trim()
         const aria = (b.getAttribute('aria-label') || '').trim()
         const disabled = b.getAttribute('aria-disabled') === 'true' || (b as HTMLButtonElement).disabled
-        return (/^(Post|Đăng)$/i.test(text) || /^(Post|Đăng)$/i.test(aria)) && !disabled
+        return (/^(Post|Đăng|ផុស)$/i.test(text) || /^(Post|Đăng|ផុស)$/i.test(aria)) && !disabled
       })
       if (target) {
         (target as HTMLElement).focus?.()
@@ -309,13 +396,12 @@ async function checkPendingApproval(page: Page): Promise<boolean> {
 async function postOnce(
   page: Page,
   content: string,
-  imagePaths: string[],
+  mediaPaths: string[],
   signal?: AbortSignal
 ): Promise<{ ok: boolean; detail: string }> {
   const opened = await openComposer(page, signal)
   if (!opened) return { ok: false, detail: 'Composer not found (layout changed?)' }
 
-  // Step 1: Type text into composer
   if (content && content.trim()) {
     const typed = await typeComposerText(page, content, signal)
     if (!typed) {
@@ -331,10 +417,10 @@ async function postOnce(
     await raceAbort(page.waitForTimeout(1000), signal)
   }
 
-  // Step 2: Attach images if any
-  if (imagePaths && imagePaths.length > 0) {
-    await attachImages(page, imagePaths, signal)
-    await raceAbort(page.waitForTimeout(2000), signal)
+  if (mediaPaths && mediaPaths.length > 0) {
+    await attachMedia(page, mediaPaths, signal)
+    const hasVideo = mediaPaths.some(isVideoPath)
+    await raceAbort(page.waitForTimeout(hasVideo ? 3000 : 1500), signal)
   }
 
   // Step 3: Submit post
@@ -343,6 +429,72 @@ async function postOnce(
 
   const pending = await checkPendingApproval(page)
   return { ok: true, detail: pending ? 'Posted (pending group approval)' : 'Posted' }
+}
+
+/** Comment on the newest post currently visible (first Write a comment box). */
+async function commentOnLatestPost(
+  page: Page,
+  comment: string,
+  signal?: AbortSignal
+): Promise<boolean> {
+  if (!comment.trim()) return false
+  await raceAbort(page.waitForTimeout(2500), signal)
+
+  const article = page.locator('div[role="article"]').first()
+  const commentBtn = article.locator(
+    '[aria-label="Comment"], [aria-label*="Comment" i], div[role="button"]:has-text("Comment"), div[role="button"]:has-text("មតិ")'
+  ).first()
+  if (await commentBtn.isVisible().catch(() => false)) {
+    await raceAbort(commentBtn.click({ timeout: 3000, force: true }).catch(() => void 0), signal)
+    await raceAbort(page.waitForTimeout(700), signal)
+  }
+
+  let box = await findFirstVisible(page, COMMENT_BOX_SELECTORS, 8000)
+  if (!box) {
+    await page.evaluate(() => {
+      const labels = Array.from(document.querySelectorAll('[aria-label], div[role="textbox"], div[contenteditable="true"]'))
+      const el = labels.find((n) => /write a comment|viết bình luận|បញ្ចេញមតិ|comment/i.test(n.getAttribute('aria-label') || ''))
+      if (el) (el as HTMLElement).click()
+    }).catch(() => void 0)
+    await raceAbort(page.waitForTimeout(800), signal)
+    box = await findFirstVisible(page, COMMENT_BOX_SELECTORS, 4000)
+  }
+  if (!box) return false
+
+  await raceAbort(box.click({ timeout: 3000, force: true }).catch(() => void 0), signal)
+  await raceAbort(page.waitForTimeout(400), signal)
+  await raceAbort(page.keyboard.type(comment, { delay: 20 }), signal)
+  await raceAbort(page.waitForTimeout(500), signal)
+  await raceAbort(page.keyboard.press('Enter'), signal)
+  await raceAbort(page.waitForTimeout(1800), signal)
+  return true
+}
+
+async function postOnceWithComment(
+  page: Page,
+  content: string,
+  mediaPaths: string[],
+  commentTemplate: string | undefined,
+  signal?: AbortSignal,
+  returnToUrl?: string
+): Promise<{ ok: boolean; detail: string }> {
+  const res = await postOnce(page, content, mediaPaths, signal)
+  if (!res.ok) return res
+  const comment = commentTemplate?.trim() ? parseSpinSyntax(commentTemplate) : ''
+  if (!comment) return res
+  if (returnToUrl) {
+    await raceAbort(
+      page.goto(returnToUrl, { timeout: 45000, waitUntil: 'domcontentloaded' }),
+      signal
+    )
+    await raceAbort(page.waitForTimeout(2500), signal)
+    await switchIntoPage(page, signal)
+  }
+  const commented = await commentOnLatestPost(page, comment, signal)
+  return {
+    ok: true,
+    detail: commented ? `${res.detail} + comment` : `${res.detail} (comment box not found)`
+  }
 }
 
 /** Scrape a handful of joined-group URLs from the Groups > Joined page. */
@@ -389,8 +541,11 @@ export async function postToFeedOrGroups(
     contentTemplate,
     imagePaths = [],
     groupCount = 1,
+    pageCount = 10,
     delayMinSeconds = 15,
     delayMaxSeconds = 45,
+    commentTemplate,
+    pageTargets,
     signal,
     onProgress
   } = options
@@ -407,6 +562,90 @@ export async function postToFeedOrGroups(
 
   try {
     const page = context.pages()[0] ?? (await context.newPage())
+
+    if (destination === 'pages') {
+      progress('Opening Facebook...')
+      await raceAbort(
+        page.goto('https://web.facebook.com/', { timeout: 45000, waitUntil: 'domcontentloaded' }),
+        signal
+      )
+      await raceAbort(page.waitForTimeout(2000), signal)
+
+      const session = await verifyActiveSession(page, account, signal, progress)
+      if (!session.live) {
+        return { success: false, posted: 0, attempted: 0, detail: session.detail }
+      }
+
+      let pages = parseManagedPages(account)
+      if (pages.length === 0) {
+        progress('No saved pages — scanning Your Pages...')
+        try {
+          const { getOrExtractManagedPages } = await import('./pagePostsManager')
+          pages = await getOrExtractManagedPages(account, true, true)
+        } catch {
+          pages = []
+        }
+      }
+      const targetsForAccount = (pageTargets || []).filter((t) => t.accountId === account.id)
+      if (targetsForAccount.length > 0) {
+        const want = new Set(targetsForAccount.map((t) => String(t.pageId)))
+        pages = pages.filter((p) => want.has(String(p.pageId)))
+      } else {
+        pages = pages.slice(0, Math.max(1, pageCount))
+      }
+      if (pages.length === 0) {
+        return {
+          success: false,
+          posted: 0,
+          attempted: 0,
+          detail: 'No managed Pages found. Run Get Page Info first.'
+        }
+      }
+
+      for (const managed of pages) {
+        checkAborted(signal)
+        attempted += 1
+        progress(`Posting to page ${attempted}/${pages.length}: ${managed.name}...`)
+        await raceAbort(
+          page.goto(pageProfileUrl(managed), { timeout: 45000, waitUntil: 'domcontentloaded' }),
+          signal
+        )
+        await raceAbort(page.waitForTimeout(2000), signal)
+        await switchIntoPage(page, signal)
+
+        const content = parseSpinSyntax(contentTemplate)
+        const pageComment =
+          targetsForAccount.find((t) => String(t.pageId) === String(managed.pageId))?.comment ||
+          commentTemplate
+        const profileUrl = pageProfileUrl(managed)
+        let res = await postOnceWithComment(page, content, imagePaths, pageComment, signal, profileUrl)
+        if (!res.ok && managed.assetId) {
+          progress(`Retrying ${managed.name} via Business Suite composer...`)
+          await raceAbort(
+            page.goto(`https://business.facebook.com/latest/composer/?asset_id=${managed.assetId}`, {
+              timeout: 45000,
+              waitUntil: 'domcontentloaded'
+            }),
+            signal
+          )
+          await raceAbort(page.waitForTimeout(3000), signal)
+          res = await postOnceWithComment(page, content, imagePaths, pageComment, signal, profileUrl)
+        }
+        if (res.ok) posted += 1
+
+        if (attempted < pages.length) {
+          progress('Waiting before next page post...')
+          await delay(page, delayMinSeconds, delayMaxSeconds, signal)
+        }
+      }
+
+      return {
+        success: posted > 0,
+        posted,
+        attempted,
+        detail: `Posted to ${posted}/${attempted} page(s)`
+      }
+    }
 
     if (destination === 'feed') {
       progress('Opening feed...')
@@ -430,7 +669,7 @@ export async function postToFeedOrGroups(
       progress('Posting to feed...')
       checkAborted(signal)
       const content = parseSpinSyntax(contentTemplate)
-      const res = await postOnce(page, content, imagePaths, signal)
+      const res = await postOnceWithComment(page, content, imagePaths, commentTemplate, signal)
       if (res.ok) posted = 1
       progress(res.ok ? 'Warm-up Completed' : `Error: ${res.detail}`)
       return {
@@ -473,7 +712,7 @@ export async function postToFeedOrGroups(
       await raceAbort(page.waitForTimeout(2000), signal)
 
       const content = parseSpinSyntax(contentTemplate)
-      const res = await postOnce(page, content, imagePaths, signal)
+      const res = await postOnceWithComment(page, content, imagePaths, commentTemplate, signal)
       if (res.ok) posted += 1
 
       if (attempted < groups.length) {

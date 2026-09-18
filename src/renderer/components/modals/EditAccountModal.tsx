@@ -98,7 +98,7 @@ export function EditAccountModal(): React.JSX.Element | null {
     >
       <div className="grid grid-cols-2 gap-3 text-[12px]">
         <label className="flex flex-col gap-1">
-          <span className="font-medium text-slate-700">UID</span>
+          <span className="font-medium text-ink">UID</span>
           <input
             className="win-input"
             value={form.uid ?? ''}
@@ -107,7 +107,7 @@ export function EditAccountModal(): React.JSX.Element | null {
         </label>
 
         <label className="flex flex-col gap-1">
-          <span className="font-medium text-slate-700">Name</span>
+          <span className="font-medium text-ink">Name</span>
           <input
             className="win-input"
             value={form.name ?? ''}
@@ -116,7 +116,7 @@ export function EditAccountModal(): React.JSX.Element | null {
         </label>
 
         <label className="flex flex-col gap-1">
-          <span className="font-medium text-slate-700">Password</span>
+          <span className="font-medium text-ink">Password</span>
           <input
             className="win-input"
             value={form.password ?? ''}
@@ -125,7 +125,7 @@ export function EditAccountModal(): React.JSX.Element | null {
         </label>
 
         <label className="flex flex-col gap-1">
-          <span className="font-medium text-slate-700">2FA Secret</span>
+          <span className="font-medium text-ink">2FA Secret</span>
           <input
             className="win-input"
             value={form.two_fa ?? ''}
@@ -134,7 +134,7 @@ export function EditAccountModal(): React.JSX.Element | null {
         </label>
 
         <label className="flex flex-col gap-1">
-          <span className="font-medium text-slate-700">Email</span>
+          <span className="font-medium text-ink">Email</span>
           <input
             className="win-input"
             value={form.email ?? ''}
@@ -143,7 +143,7 @@ export function EditAccountModal(): React.JSX.Element | null {
         </label>
 
         <label className="flex flex-col gap-1">
-          <span className="font-medium text-slate-700">Mail Password</span>
+          <span className="font-medium text-ink">Mail Password</span>
           <input
             className="win-input"
             value={form.email_pass ?? ''}
@@ -152,8 +152,8 @@ export function EditAccountModal(): React.JSX.Element | null {
         </label>
 
         <label className="col-span-2 flex flex-col gap-1">
-          <span className="font-medium text-slate-700">
-            Proxy <span className="text-slate-400">(ip:port or ip:port:user:pass)</span>
+          <span className="font-medium text-ink">
+            Proxy <span className="text-ink-muted">(ip:port or ip:port:user:pass)</span>
           </span>
           <input
             className="win-input"
@@ -164,7 +164,7 @@ export function EditAccountModal(): React.JSX.Element | null {
         </label>
 
         <label className="flex flex-col gap-1">
-          <span className="font-medium text-slate-700">Folder</span>
+          <span className="font-medium text-ink">Folder</span>
           <select
             className="win-input"
             value={form.folder_id ?? ''}
@@ -180,7 +180,7 @@ export function EditAccountModal(): React.JSX.Element | null {
         </label>
 
         <label className="flex flex-col gap-1">
-          <span className="font-medium text-slate-700">Status</span>
+          <span className="font-medium text-ink">Status</span>
           <select
             className="win-input"
             value={form.status}
@@ -195,7 +195,7 @@ export function EditAccountModal(): React.JSX.Element | null {
         </label>
 
         <label className="col-span-2 flex flex-col gap-1">
-          <span className="font-medium text-slate-700">Notes</span>
+          <span className="font-medium text-ink">Notes</span>
           <textarea
             className="win-input min-h-[70px] resize-y"
             value={form.notes ?? ''}

@@ -1,11 +1,10 @@
 // ---------------------------------------------------------------------------
-// ModalShell.tsx  — shared WinForms-style dialog chrome (backdrop, header
-// with icon + title + close, and a footer slot) used by the Row 2 marketing
-// automation modals so each one only needs to write its body content.
+// ModalShell.tsx  — shared dialog chrome (backdrop, header with icon + title
+// + close, and a footer slot) used by the Row 2 marketing automation modals
+// so each one only needs to write its body content.
 // ---------------------------------------------------------------------------
 import { useEffect } from 'react'
 import { X } from 'lucide-react'
-import { HEADER_HEX_PATTERN_URL } from '../../assets/headerHexPattern'
 
 export function ModalShell({
   open,
@@ -47,21 +46,14 @@ export function ModalShell({
       }}
     >
       <div
-        className={`flex ${height || 'h-full max-h-[88vh]'} w-full ${width} flex-col overflow-hidden rounded border border-slate-400 border-t-4 border-t-indigo-600 bg-[#f0f2f5] shadow-2xl`}
+        className={`flex ${height || 'h-full max-h-[88vh]'} w-full ${width} flex-col overflow-hidden rounded-xl border border-edge border-t-4 border-t-accent bg-surface`}
       >
-        <div
-          className="flex items-center justify-between border-b border-[#e4d8bc] bg-[#fdf9f0] px-4 py-2"
-          style={{
-            backgroundImage: HEADER_HEX_PATTERN_URL,
-            backgroundSize: '56px 98px',
-            backgroundRepeat: 'repeat'
-          }}
-        >
+        <div className="flex items-center justify-between border-b border-edge bg-surface-sunken px-4 py-2">
           <div className="flex items-center gap-2">
-            <Icon size={16} className="text-[#0067c0]" />
-            <h2 className="text-[13px] font-semibold text-slate-900">{title}</h2>
+            <Icon size={16} className="text-accent" />
+            <h2 className="text-[13px] font-semibold text-ink">{title}</h2>
           </div>
-          <button onClick={onClose} className="text-slate-500 hover:text-[#e81123]">
+          <button onClick={onClose} className="text-ink-muted hover:text-accent">
             <X size={16} />
           </button>
         </div>
@@ -69,7 +61,7 @@ export function ModalShell({
         <div className={bodyClassName || 'flex-1 overflow-auto p-4'}>{children}</div>
 
         {footer && (
-          <div className="flex items-center justify-end gap-2 border-t border-slate-300 bg-[#f6f6f6] px-4 py-2.5">
+          <div className="flex items-center justify-end gap-2 border-t border-edge bg-surface-sunken px-4 py-2.5">
             {footer}
           </div>
         )}

@@ -107,7 +107,8 @@ const api: AppApi = {
     minimize: () => ipcRenderer.invoke(IPC.window.minimize),
     maximize: () => ipcRenderer.invoke(IPC.window.maximize),
     close: () => ipcRenderer.invoke(IPC.window.close),
-    isMaximized: () => ipcRenderer.invoke(IPC.window.isMaximized)
+    isMaximized: () => ipcRenderer.invoke(IPC.window.isMaximized),
+    openBrowserWindowsPanel: () => ipcRenderer.invoke(IPC.window.openBrowserWindowsPanel)
   },
   automation: {
     openProfile: (accountId, slotIndex, rowNumber, targetUrl) =>
@@ -117,6 +118,28 @@ const api: AppApi = {
     autoLogin: (accountId) => ipcRenderer.invoke(IPC.automation.autoLogin, accountId),
     closeAllBrowsers: () => ipcRenderer.invoke(IPC.automation.closeAllBrowsers),
     arrangeWindows: (layout: ArrangeLayout) => ipcRenderer.invoke(IPC.automation.arrangeWindows, layout),
+    listWindows: () => ipcRenderer.invoke(IPC.automation.listWindows),
+    focusWindow: (key: string) => ipcRenderer.invoke(IPC.automation.focusWindow, key),
+    closeWindow: (key: string) => ipcRenderer.invoke(IPC.automation.closeWindow, key),
+    reloadWindow: (key: string) => ipcRenderer.invoke(IPC.automation.reloadWindow, key),
+    goBackWindow: (key: string) => ipcRenderer.invoke(IPC.automation.goBackWindow, key),
+    goHomeWindow: (key: string) => ipcRenderer.invoke(IPC.automation.goHomeWindow, key),
+    screenshotWindows: () => ipcRenderer.invoke(IPC.automation.screenshotWindows),
+    startScreencast: (key: string) => ipcRenderer.invoke(IPC.automation.startScreencast, key),
+    stopScreencast: (key: string) => ipcRenderer.invoke(IPC.automation.stopScreencast, key),
+    dispatchTap: (key: string, x: number, y: number) =>
+      ipcRenderer.invoke(IPC.automation.dispatchTap, key, x, y),
+    dispatchScroll: (key: string, x: number, y: number, deltaX: number, deltaY: number) =>
+      ipcRenderer.invoke(IPC.automation.dispatchScroll, key, x, y, deltaX, deltaY),
+    dispatchKey: (
+      key: string,
+      event: { type: 'keyDown' | 'keyUp' | 'char'; key: string; code: string; text?: string }
+    ) => ipcRenderer.invoke(IPC.automation.dispatchKey, key, event),
+    onScreencastFrame: (cb: (payload: { key: string; dataUrl: string }) => void) => {
+      const listener = (_e: unknown, payload: { key: string; dataUrl: string }): void => cb(payload)
+      ipcRenderer.on(IPC.automation.onScreencastFrame, listener)
+      return () => ipcRenderer.removeListener(IPC.automation.onScreencastFrame, listener)
+    },
     runQueue: (accountIds, concurrency, scenarioId) =>
       ipcRenderer.invoke(IPC.automation.runQueue, accountIds, concurrency, scenarioId),
     stopQueue: () => ipcRenderer.invoke(IPC.automation.stopQueue),
@@ -170,6 +193,7 @@ const api: AppApi = {
   utils: {
     parseSpinSyntax: (text: string) => ipcRenderer.invoke(IPC.utils.parseSpinSyntax, text),
     selectImages: () => ipcRenderer.invoke(IPC.utils.selectImages),
+    selectMedia: () => ipcRenderer.invoke(IPC.utils.selectMedia),
     selectFolder: () => ipcRenderer.invoke(IPC.utils.selectFolder),
     saveTextFile: (content, defaultName, kind) =>
       ipcRenderer.invoke(IPC.utils.saveTextFile, content, defaultName, kind),

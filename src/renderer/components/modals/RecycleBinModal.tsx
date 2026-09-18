@@ -109,7 +109,7 @@ export function RecycleBinModal({
       width="max-w-4xl"
       footer={
         <>
-          <span className="mr-auto text-[11px] text-slate-500">
+          <span className="mr-auto text-[11px] text-ink-muted">
             {deleted.length} account(s) in bin · {selectedIds.length} selected
           </span>
           <button className="win-btn" onClick={onClose} disabled={busy}>
@@ -142,9 +142,9 @@ export function RecycleBinModal({
         </>
       }
     >
-      <div className="flex h-full flex-col overflow-hidden border border-[#a0a0a0] bg-white text-[12px]">
-        <div className="sticky top-0 z-10 flex border-b border-[#a0a0a0] bg-mc-headbg text-2xs font-semibold text-slate-900">
-          <div className="flex w-8 shrink-0 items-center justify-center border-r border-[#a0a0a0] py-1.5">
+      <div className="flex h-full flex-col overflow-hidden border border-edge bg-surface text-[12px]">
+        <div className="sticky top-0 z-10 flex border-b border-edge bg-surface-sunken text-2xs font-semibold text-ink">
+          <div className="flex w-8 shrink-0 items-center justify-center border-r border-edge py-1.5">
             <input
               type="checkbox"
               className="accent-[#0078d4]"
@@ -152,15 +152,15 @@ export function RecycleBinModal({
               onChange={(e) => toggleAll(e.target.checked)}
             />
           </div>
-          <div className="flex-1 border-r border-[#a0a0a0] px-2 py-1.5">UID</div>
-          <div className="flex-1 border-r border-[#a0a0a0] px-2 py-1.5">Email</div>
-          <div className="w-32 border-r border-[#a0a0a0] px-2 py-1.5">Status</div>
+          <div className="flex-1 border-r border-edge px-2 py-1.5">UID</div>
+          <div className="flex-1 border-r border-edge px-2 py-1.5">Email</div>
+          <div className="w-32 border-r border-edge px-2 py-1.5">Status</div>
           <div className="w-40 px-2 py-1.5">Deleted At</div>
         </div>
 
         <div className="flex-1 overflow-auto">
           {deleted.length === 0 ? (
-            <div className="flex h-24 items-center justify-center text-[12px] text-slate-400">
+            <div className="flex h-24 items-center justify-center text-[12px] text-ink-muted">
               Recycle Bin is empty.
             </div>
           ) : (
@@ -169,8 +169,8 @@ export function RecycleBinModal({
               return (
                 <div
                   key={a.id}
-                  className={`flex cursor-default border-b border-[#e0e0e0] ${
-                    isSel ? 'bg-[#0078d4] text-white' : i % 2 === 0 ? 'bg-white' : 'bg-[#f6f6f6]'
+                  className={`flex cursor-default border-b border-edge ${
+                    isSel ? 'bg-[#0078d4] text-white' : i % 2 === 0 ? 'bg-surface' : 'bg-surface-sunken'
                   }`}
                   onClick={() => toggle(a.id)}
                 >

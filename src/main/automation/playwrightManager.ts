@@ -8,6 +8,7 @@
 // ---------------------------------------------------------------------------
 import type { Account } from '../../types/account'
 import { launchContext, trackContext, closeAllTrackedContexts } from './browserContext'
+import { getAppSettings } from '../db/settingsRepo'
 import {
   runAutoLogin,
   classifyPage,
@@ -29,12 +30,15 @@ import * as accountsRepo from '../db/accountsRepo'
 export type { AutoLoginResult }
 
 /**
- * openProfile — launch a HEADED browser with the account's persistent profile,
- * navigate to Facebook, and leave it open. Tracked so closeAllBrowsers() can
- * shut it down. `slotIndex` positions the window in the tiling grid (see
- * browserContext.ts's tilePosition()) — pass an incrementing index when
- * opening several profiles in a batch so their windows don't stack on top of
- * each other at the same default position.
+ * openProfile — launch the account's persistent profile and leave it open.
+ * Headed (a real, visible window) unless General Settings' Browsing View is
+ * App Mode, in which case it launches headless and is only ever visible/
+ * interactive as a tile in the Browser Windows panel — see the isAppMode
+ * branch below. Tracked so closeAllBrowsers() can shut it down. `slotIndex`
+ * positions a HEADED window in the tiling grid (see browserContext.ts's
+ * tilePosition()) — pass an incrementing index when opening several profiles
+ * in a batch so their windows don't stack on top of each other at the same
+ * default position; meaningless for a headless/App Mode launch.
  */
 export async function openProfile(
   account: Account,
@@ -44,8 +48,19 @@ export async function openProfile(
   targetUrl?: string
 ): Promise<{ ok: boolean; detail: string }> {
   const key = `profile:${account.uid ?? account.id}`
-  const context = await launchContext({ headless: false, account, slotIndex, rowNumber })
-  trackContext(key, context)
+  // App Mode accounts launch headless — no OS window at all, so they only
+  // ever appear as an interactive tile in the Browser Windows panel (CDP
+  // screencast + input injection, see screencast.ts), never on the desktop
+  // or taskbar. Browser View keeps the real headed window this always was.
+  const settings = getAppSettings()
+  const isAppMode = settings.viewMode === 'app'
+  const context = await launchContext({ headless: isAppMode, account, slotIndex, rowNumber })
+  trackContext(key, context, {
+    accountName: account.name?.trim() || account.uid || 'Unknown',
+    rowNumber,
+    uid: account.uid ?? undefined,
+    viewMode: settings.viewMode
+  })
 
   // Auto-sync cookies: whenever the user logs in or browses, automatically
   // extract and save the fresh session cookie to the database so it never goes stale.
@@ -150,12 +165,19 @@ export async function checkLiveDie(account: Account): Promise<LiveDieResult> {
   }
 }
 
-/** Single-account auto-login, headed by default (kept open for the user to see). */
+/**
+ * Single-account auto-login (the row context menu's "Run Auto Login").
+ * Headed by default (kept open for the user to see) UNLESS App Mode is
+ * active, in which case it always launches headless regardless of the
+ * caller's default — same rule as every other launch site. An explicit
+ * `headless` argument from the caller still wins over both.
+ */
 export async function autoLogin(
   account: Account,
-  { headless = false }: { headless?: boolean } = {}
+  { headless }: { headless?: boolean } = {}
 ): Promise<AutoLoginResult> {
-  return runAutoLogin(account, { headless })
+  const resolvedHeadless = headless ?? getAppSettings().viewMode === 'app'
+  return runAutoLogin(account, { headless: resolvedHeadless })
 }
 
 /** Close every tracked browser context (headed profiles + in-flight runs). */

@@ -96,15 +96,15 @@ export function UpdateNotificationModal(): React.JSX.Element | null {
     >
       <div className="flex flex-col gap-3 text-[12px]">
         <div>
-          <span className="font-medium text-slate-700">New version:</span>{' '}
+          <span className="font-medium text-ink">New version:</span>{' '}
           <span className="font-mono">{info.version}</span>
         </div>
 
         {info.releaseNotes && (
           <div className="flex flex-col gap-1">
-            <span className="font-medium text-slate-700">Release notes</span>
+            <span className="font-medium text-ink">Release notes</span>
             <div
-              className="max-h-40 overflow-auto rounded border border-slate-300 bg-white p-2 text-[11px] text-slate-700"
+              className="max-h-40 overflow-auto rounded-lg border border-edge bg-surface p-2 text-[11px] text-ink"
               // Release notes come from the update feed's own metadata, not
               // user input — rendered as plain text (not HTML) to be safe
               // regardless of what a given publish provider puts there.
@@ -116,13 +116,13 @@ export function UpdateNotificationModal(): React.JSX.Element | null {
 
         {phase === 'downloading' && progress && (
           <div className="flex flex-col gap-1">
-            <div className="h-3 w-full overflow-hidden rounded border border-slate-300 bg-white">
+            <div className="h-3 w-full overflow-hidden rounded-lg border border-edge bg-surface">
               <div
                 className="h-full bg-[#0078d4] transition-[width]"
                 style={{ width: `${Math.round(progress.percent)}%` }}
               />
             </div>
-            <span className="text-[11px] text-slate-500">{Math.round(progress.percent)}%</span>
+            <span className="text-[11px] text-ink-muted">{Math.round(progress.percent)}%</span>
           </div>
         )}
 

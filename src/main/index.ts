@@ -11,6 +11,7 @@ import { registerIpcHandlers } from './ipc/registerHandlers'
 import { initAutoUpdater } from './updater'
 import { startNetworkWatchdog } from './services/networkWatchdog'
 import { registerAvatarProtocolScheme, registerAvatarProtocolHandler } from './services/avatarProtocol'
+import { appIconPath } from './appPaths'
 
 // Must run at module load, before app.whenReady() — Electron only accepts
 // privileged scheme registration (avatar://) at that point, not inside the
@@ -25,13 +26,6 @@ registerAvatarProtocolScheme()
 // (including its rotating self-promotional "tip" messages), since this is a
 // GUI app with no visible console in a packaged build.
 loadDotenv({ path: join(__dirname, '../../.env'), quiet: true })
-
-// Packaged builds pick up build/icon.ico via electron-builder's `win.icon`
-// automatically; this path only matters for `npm run dev`/unpackaged runs,
-// where BrowserWindow's own `icon` option is what sets the taskbar/title-bar
-// icon. Resolved relative to the compiled main bundle (out/main), so it
-// walks up to the project root the same way in both dev and a local preview.
-const appIconPath = join(__dirname, '../../build/icon.ico')
 
 // splash.html is a plain static file, not a bundled entry point, so
 // electron-vite's build never copies it into out/main/ on its own —
@@ -98,18 +92,16 @@ function createSplashWindow(): BrowserWindow {
 
 function createWindow(splash: BrowserWindow): void {
   const mainWindow = new BrowserWindow({
-    // Fixed, non-resizable window — the redesigned toolbar/table layout is
-    // tuned to this exact size, so locking it out avoids ever needing to
-    // reflow around an arbitrary window size again. resizable: false also
-    // implies non-maximizable on Windows.
     width: 1280,
     height: 780,
-    resizable: false,
+    resizable: true,
+    minWidth: 1024,
+    minHeight: 600,
     show: false,
-    frame: false, // custom WinForms-style title bar
+    frame: false, // custom title bar
     autoHideMenuBar: true,
-    backgroundColor: '#f0f0f0',
-    title: 'TFACEBOOK',
+    backgroundColor: '#FAF8F5',
+    title: 'TKFACEBOOK',
     icon: appIconPath,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),

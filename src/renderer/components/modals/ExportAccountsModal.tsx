@@ -168,7 +168,7 @@ export function ExportAccountsModal({
       width="max-w-3xl"
       footer={
         <>
-          <span className="mr-auto text-[11px] text-slate-500">
+          <span className="mr-auto text-[11px] text-ink-muted">
             {preview ? `${preview.total} account(s) will be exported` : ''}
           </span>
           <button className="win-btn" onClick={onClose} disabled={busy}>
@@ -231,7 +231,7 @@ export function ExportAccountsModal({
           <legend>Format Builder</legend>
           <div className="flex flex-col gap-2 py-1">
             <div className="flex flex-wrap items-center gap-3">
-              <span className="font-medium text-slate-600">Preset:</span>
+              <span className="font-medium text-ink-muted">Preset:</span>
               <select
                 className="win-select"
                 value={presetIdx}
@@ -244,7 +244,7 @@ export function ExportAccountsModal({
                 ))}
               </select>
 
-              <span className="ml-3 font-medium text-slate-600">Delimiter:</span>
+              <span className="ml-3 font-medium text-ink-muted">Delimiter:</span>
               <select
                 className="win-select"
                 value={delimiter}
@@ -259,17 +259,17 @@ export function ExportAccountsModal({
             </div>
 
             <div>
-              <div className="mb-1 text-[11px] font-medium text-slate-600">
+              <div className="mb-1 text-[11px] font-medium text-ink-muted">
                 Selected fields (click a pill below to add/remove):
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {tokens.length === 0 && (
-                  <span className="text-[11px] text-slate-400">No fields selected</span>
+                  <span className="text-[11px] text-ink-muted">No fields selected</span>
                 )}
                 {tokens.map((t, i) => (
                   <span
                     key={`${t}-${i}`}
-                    className="flex items-center gap-1 rounded border border-[#0078d4] bg-[#e5f1fb] px-2 py-0.5 text-[11px] text-[#0067c0]"
+                    className="flex items-center gap-1 rounded-lg border border-[#0078d4] bg-[#e5f1fb] px-2 py-0.5 text-[11px] text-[#0067c0]"
                   >
                     {t}
                     <button onClick={() => removeTokenAt(i)} title="Remove">
@@ -281,7 +281,7 @@ export function ExportAccountsModal({
             </div>
 
             <div>
-              <div className="mb-1 mt-1.5 text-[11px] font-medium text-slate-600">
+              <div className="mb-1 mt-1.5 text-[11px] font-medium text-ink-muted">
                 Available fields:
               </div>
               <div className="flex flex-wrap gap-1.5">
@@ -289,10 +289,10 @@ export function ExportAccountsModal({
                   <button
                     key={t}
                     onClick={() => toggleToken(t)}
-                    className={`rounded border px-2 py-0.5 text-[11px] ${
+                    className={`rounded-lg border px-2 py-0.5 text-[11px] ${
                       tokens.includes(t)
                         ? 'border-[#0078d4] bg-[#0078d4] text-white'
-                        : 'border-slate-300 bg-white text-slate-700 hover:bg-[#e5f1fb]'
+                        : 'border-edge bg-surface text-ink hover:bg-[#e5f1fb]'
                     }`}
                   >
                     {t}
@@ -305,17 +305,17 @@ export function ExportAccountsModal({
 
         {/* Preview */}
         <div className="flex flex-col gap-1.5">
-          <span className="font-medium text-slate-700">
+          <span className="font-medium text-ink">
             Preview (first {Math.min(5, fullLines.length)} line
             {fullLines.length === 1 ? '' : 's'}):
           </span>
-          <div className="h-28 overflow-auto rounded border border-slate-300 bg-white p-2 font-mono text-[11px] text-slate-800">
+          <div className="h-28 overflow-auto rounded-lg border border-edge bg-surface p-2 font-mono text-[11px] text-ink">
             {fullLines.length === 0 ? (
-              <span className="text-slate-400">No matching accounts / no fields selected</span>
+              <span className="text-ink-muted">No matching accounts / no fields selected</span>
             ) : (
               fullLines.slice(0, 5).map((line, i) => (
-                <div key={i} className="border-b border-slate-100 py-0.5 first:pt-0">
-                  {line || <span className="text-slate-400">(empty)</span>}
+                <div key={i} className="border-b border-edge py-0.5 first:pt-0">
+                  {line || <span className="text-ink-muted">(empty)</span>}
                 </div>
               ))
             )}

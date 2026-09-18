@@ -9,10 +9,11 @@
 import { app, screen } from 'electron'
 import { join, resolve } from 'path'
 import { mkdirSync, existsSync, writeFileSync, readFileSync, readdirSync } from 'fs'
-import { chromium, type BrowserContext, type Cookie } from 'playwright'
+import { chromium, devices, type BrowserContext, type Cookie } from 'playwright'
 import type { Account } from '../../types/account'
 import { getAppSettings } from '../db/settingsRepo'
 import { buildStealthScript } from './stealthEngine'
+import { autoCleanProfileBeforeLaunch } from './profileOptimizer'
 
 /**
  * Parses this app's saved cookie value into Playwright cookie objects
@@ -170,8 +171,63 @@ const USER_AGENTS = [
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
 ]
 
-function pick<T>(arr: T[]): T {
+// App View (settings.viewMode === 'app') picks a random entry from this list
+// and launches with Playwright's matching `devices[name]` preset (viewport,
+// user agent, touch, pixel ratio). Curated to two constraints:
+//   1. Chromium-compatible only — Playwright's full `devices` registry also
+//      has iPhone/iPad presets whose defaultBrowserType is 'webkit'; this
+//      app only ever launches `chromium`, so one of those would report a
+//      Safari user-agent through an actual Chromium engine, an immediate,
+//      trivially-detectable mismatch.
+//   2. Genuinely modern hardware only — Playwright's registry also includes
+//      long-discontinued devices (Nexus 4/5/6/7, Lumia phones, LG Optimus
+//      L70, Moto G4); those are excluded so "App View" always presents a
+//      current-generation phone/tablet, not a device nobody actually
+//      carries anymore.
+// Portrait presets only (landscape entries are the same device, excluded as
+// duplicates). Hardcoded rather than filtered from `devices` at runtime so
+// the set is stable/auditable and doesn't silently change if a future
+// Playwright upgrade adds a new WebKit-only device.
+const MOBILE_DEVICE_NAMES = [
+  'Galaxy S8',
+  'Galaxy S9+',
+  'Galaxy S24',
+  'Galaxy A55',
+  'Galaxy Tab S4',
+  'Galaxy Tab S9',
+  'Galaxy Z Fold 6',
+  'Galaxy Z Fold 6 Cover',
+  'Galaxy Z Fold 7',
+  'Galaxy Z Fold 7 Cover',
+  'Galaxy Z Flip 6',
+  'Galaxy Z Flip 6 Cover',
+  'Galaxy Z Flip 7',
+  'Galaxy Z Flip 7 Cover',
+  'Pixel 6',
+  'Pixel 6 Pro',
+  'Pixel 6a',
+  'Pixel 7',
+  'Pixel 7 Pro',
+  'Pixel 7a',
+  'Pixel 8',
+  'Pixel 8 Pro',
+  'Pixel 8a',
+  'Pixel 9',
+  'Pixel 9 Pro',
+  'Pixel 9 Pro XL',
+  'Pixel 10',
+  'Pixel 10 Pro',
+  'Pixel 10 Pro XL'
+] as const
+
+function pick<T>(arr: readonly T[]): T {
   return arr[Math.floor(Math.random() * arr.length)]
+}
+
+/** Randomly picks one of MOBILE_DEVICE_NAMES and resolves it to Playwright's device descriptor. */
+function pickMobileDevice(): { name: string; descriptor: (typeof devices)[string] } {
+  const name = pick(MOBILE_DEVICE_NAMES)
+  return { name, descriptor: devices[name] }
 }
 
 /**
@@ -650,10 +706,24 @@ export async function launchContext({
   rowNumber,
   resetProfileBeforeCookieInject
 }: LaunchOpts): Promise<BrowserContext> {
+  // Runs before every single launch (login, warmup, Open Chrome Profile,
+  // and every other automation action — this is the one central function
+  // all 16+ call sites across the codebase funnel through), so a profile
+  // never accumulates unbounded cache/log bloat across repeated runs.
+  // Synchronous, best-effort, and a no-op for a brand-new/never-launched
+  // profile — never blocks or fails the launch itself.
+  autoCleanProfileBeforeLaunch(account.id, account.uid ?? null)
+
   const settings = getAppSettings()
-  const viewport = pick(VIEWPORTS)
-  // A user-assigned UA (via Import Useragent) wins; otherwise pick a random one.
-  const userAgent = account.user_agent?.trim() || pick(USER_AGENTS)
+  const isAppView = settings.viewMode === 'app'
+  // App View: a random real Android device preset drives viewport/UA/touch/
+  // pixel-ratio together as one consistent set — Browser View keeps today's
+  // independent desktop viewport + UA pool. A user-assigned UA (via Import
+  // Useragent) always wins over either pool, since that's an explicit
+  // per-account override.
+  const mobileDevice = isAppView ? pickMobileDevice() : null
+  const viewport = mobileDevice ? mobileDevice.descriptor.viewport : pick(VIEWPORTS)
+  const userAgent = account.user_agent?.trim() || mobileDevice?.descriptor.userAgent || pick(USER_AGENTS)
   const proxy = parseProxy(account.proxy)
   const resolvedHeadless = headless ?? settings.browserMode === 'headless'
 
@@ -698,10 +768,19 @@ export async function launchContext({
   ]
 
   // Hardware Running Mode (General Settings) — 'auto' adds nothing, letting
-  // Chromium's own default hybrid GPU/software behavior apply.
+  // Chromium's own default hybrid GPU/software behavior apply. Forcing GPU
+  // rasterization on a HEADLESS launch is skipped even when the setting is
+  // 'gpu': headless Chromium has no real display surface to composite onto,
+  // and forcing hardware GPU rasterization in that situation is a known
+  // cause of the CDP screencast (Page.startScreencast — see screencast.ts)
+  // capturing nothing but solid black frames from the compositor. App Mode
+  // tiles depend entirely on that screencast actually showing content, so
+  // this silently downgrades to software rendering for any headless launch
+  // regardless of the GPU setting, rather than let the user's own GPU
+  // preference (meant for the headed case) break the panel for App Mode.
   if (settings.hardwareMode === 'cpu') {
     args.push('--disable-gpu', '--disable-software-rasterizer')
-  } else if (settings.hardwareMode === 'gpu') {
+  } else if (settings.hardwareMode === 'gpu' && !resolvedHeadless) {
     args.push('--ignore-gpu-blocklist', '--enable-gpu-rasterization', '--enable-webgl')
   }
 
@@ -711,23 +790,43 @@ export async function launchContext({
   // is a smaller, distinctive size some bot-detection heuristics key off
   // of, so a normal-looking 1280x800 is worth setting even with nothing
   // to visually show.
+  //
+  // App View headed windows still get tiled via tilePosition() for their
+  // on-screen (x, y) — same grid slot layout as desktop — but sized to the
+  // picked device's own viewport instead of the fixed grid slot size, so
+  // the window genuinely looks like that phone/tablet rather than a normal
+  // desktop-sized Chrome window with a mobile UA inside it.
   if (!resolvedHeadless) {
     const { x, y, width, height } = tilePosition(slotIndex ?? 0)
-    args.push(`--window-size=${width},${height}`, `--window-position=${x},${y}`)
+    if (mobileDevice) {
+      args.push(`--window-size=${viewport.width},${viewport.height}`, `--window-position=${x},${y}`)
+    } else {
+      args.push(`--window-size=${width},${height}`, `--window-position=${x},${y}`)
+    }
   } else {
-    args.push('--window-size=1280,800')
+    args.push(mobileDevice ? `--window-size=${viewport.width},${viewport.height}` : '--window-size=1280,800')
   }
 
   const context = await chromium.launchPersistentContext(dir, {
     headless: resolvedHeadless,
     // Playwright derives the initial window size from viewport when headed;
     // null lets --window-size (above) take effect without Playwright forcing
-    // its own dimensions.
-    viewport: resolvedHeadless ? viewport : null,
+    // its own dimensions. App View is the exception: its viewport must drive
+    // the actual page layout (a phone-sized CSS viewport, not a desktop one
+    // merely displayed in a small window), so it's passed through even when
+    // headed.
+    viewport: resolvedHeadless || mobileDevice ? viewport : null,
     userAgent,
     proxy,
     executablePath,
     args,
+    ...(mobileDevice
+      ? {
+          deviceScaleFactor: mobileDevice.descriptor.deviceScaleFactor,
+          isMobile: mobileDevice.descriptor.isMobile,
+          hasTouch: mobileDevice.descriptor.hasTouch
+        }
+      : {}),
     // Playwright appends --enable-automation to Chromium's launch args by
     // default, which shows the "Chrome is being controlled by automated
     // test software" infobar and sets navigator.webdriver at the CDP level
@@ -771,10 +870,15 @@ export async function launchContext({
   // window.chrome, plugin/language fingerprint, WebGL vendor, permissions
   // API, canvas/audio fingerprint noise, WebRTC IP leak). A macOS UA never
   // pairs with a Direct3D/ANGLE renderer string (that API doesn't exist on
-  // macOS Chrome), so the GPU pool is chosen to match. profileSeed is the
-  // account's UID so its canvas/audio noise is stable across sessions
-  // (looks like one consistent device) but differs from every other account.
-  const isMac = userAgent.includes('Macintosh')
+  // macOS Chrome), so the GPU pool is chosen to match — same reasoning for
+  // App View's Android UAs, which get a mobile (Adreno/Mali) GPU pool and an
+  // empty plugin list instead (see stealthEngine.ts's isMobile option). The
+  // mac and mobile branches are mutually exclusive: a launch is either
+  // Browser View (desktop, mac-or-not) or App View (mobile), never both.
+  // profileSeed is the account's UID so its canvas/audio noise is stable
+  // across sessions (looks like one consistent device) but differs from
+  // every other account.
+  const isMac = !mobileDevice && userAgent.includes('Macintosh')
   await context.addInitScript(
     buildStealthScript({
       // Matches the context's own `locale` option above — a browser whose
@@ -783,6 +887,7 @@ export async function launchContext({
       // fingerprinting script can flag just as easily as a wrong timezone.
       languages: [locale, locale.split('-')[0]],
       profileSeed: account.uid ?? undefined,
+      isMobile: Boolean(mobileDevice),
       ...(isMac
         ? { gpuVendor: 'Google Inc. (Apple)', gpuRenderer: 'ANGLE (Apple, Apple M1, OpenGL 4.1)' }
         : {})
@@ -826,22 +931,70 @@ export async function launchContext({
 const allActiveContexts = new Set<BrowserContext>()
 const trackedContexts = new Map<string, BrowserContext>()
 
-/** Register a context under a key (usually the account UID). */
-export function trackContext(key: string, context: BrowserContext): void {
+export interface TrackedMeta {
+  accountName: string
+  rowNumber?: number
+  uid?: string
+  /**
+   * The General Settings viewMode active at launch time — recorded once and
+   * never re-derived, since a window's mode doesn't change mid-session.
+   * Drives which tile UI the Browser Windows panel renders: 'app' gets the
+   * live interactive CDP-screencast tile (no OS window exists to Focus),
+   * 'browser' keeps the screenshot-preview tile with working Focus/Close
+   * against its real headed window.
+   */
+  viewMode?: 'browser' | 'app'
+}
+const trackedMeta = new Map<string, TrackedMeta>()
+
+/**
+ * Register a context under a key (usually the account UID). `meta` is
+ * optional display info (account name / row number / uid) surfaced by the
+ * Browser Windows panel — omitted by call sites that launch a context for a
+ * background action rather than "the user opened this to look at it"
+ * (most trackContext() callers), so it's fine for a window to have no entry
+ * in trackedMeta; listTrackedWindows() below falls back to a generic label.
+ */
+export function trackContext(key: string, context: BrowserContext, meta?: TrackedMeta): void {
   trackedContexts.set(key, context)
   allActiveContexts.add(context)
+  if (meta) trackedMeta.set(key, meta)
   context.on('close', () => {
     if (trackedContexts.get(key) === context) trackedContexts.delete(key)
     allActiveContexts.delete(context)
+    trackedMeta.delete(key)
   })
 }
 
 export function untrackContext(key: string): void {
   trackedContexts.delete(key)
+  trackedMeta.delete(key)
 }
 
 export function isTracked(key: string): boolean {
   return trackedContexts.has(key)
+}
+
+/**
+ * True if ANY currently-tracked context belongs to this account, regardless
+ * of which feature opened it (login, warmup, friends/groups automation,
+ * avatar download, post actions, etc.). Every trackContext() key across the
+ * codebase is built as `{feature}:${account.id}` or
+ * `{feature}:${account.uid ?? account.id}` — matching on that id/uid suffix
+ * (rather than one specific key prefix, e.g. just `profile:`) is what
+ * actually answers "is this account's profile directory in use by a live
+ * browser right now," which is what callers that need to avoid touching a
+ * locked profile directory (profileOptimizer.ts's cleanup) actually care
+ * about. isTracked(exactKey) above only matches one specific feature's key
+ * shape and was never enough for that on its own.
+ */
+export function isAccountProfileOpen(accountId: number, uid: string | null): boolean {
+  const idSuffix = `:${accountId}`
+  const uidSuffix = uid ? `:${uid}` : null
+  for (const key of trackedContexts.keys()) {
+    if (key.endsWith(idSuffix) || (uidSuffix && key.endsWith(uidSuffix))) return true
+  }
+  return false
 }
 
 export function getTrackedContext(key: string): BrowserContext | undefined {
@@ -856,6 +1009,26 @@ export function getTrackedContext(key: string): BrowserContext | undefined {
  */
 export function getAllTrackedContexts(): BrowserContext[] {
   return Array.from(new Set([...allActiveContexts, ...trackedContexts.values()]))
+}
+
+export interface TrackedWindowInfo {
+  key: string
+  accountName: string
+  rowNumber?: number
+  uid?: string
+  viewMode?: 'browser' | 'app'
+}
+
+/**
+ * Every currently-open, KEYED browser context (not the plain allActiveContexts
+ * set — a window needs its trackContext() key to be focusable/closable by
+ * the Browser Windows panel) with its display metadata, if any was recorded.
+ */
+export function listTrackedWindows(): TrackedWindowInfo[] {
+  return Array.from(trackedContexts.keys()).map((key) => ({
+    key,
+    ...(trackedMeta.get(key) ?? { accountName: 'Unknown' })
+  }))
 }
 
 /**

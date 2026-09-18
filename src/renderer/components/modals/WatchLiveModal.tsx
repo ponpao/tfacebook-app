@@ -85,7 +85,7 @@ export function WatchLiveModal({
       icon={Video}
       footer={
         <>
-          <span className="mr-auto text-[11px] text-slate-500">
+          <span className="mr-auto text-[11px] text-ink-muted">
             {count} account(s) selected · {threadCount} thread(s)
           </span>
           <button
@@ -107,7 +107,7 @@ export function WatchLiveModal({
     >
       <div className="flex flex-col gap-4 text-[12px]">
         <label className="flex flex-col gap-1.5">
-          <span className="font-medium text-slate-700">Livestream URL</span>
+          <span className="font-medium text-ink">Livestream URL</span>
           <input
             className="win-input"
             placeholder="https://www.facebook.com/.../videos/..."
@@ -136,20 +136,20 @@ export function WatchLiveModal({
               </option>
             ))}
           </select>
-          <span className="text-[11px] text-slate-500">= {watchSeconds}s per account</span>
+          <span className="text-[11px] text-ink-muted">= {watchSeconds}s per account</span>
         </fieldset>
 
         <label className="flex flex-col gap-1.5">
-          <span className="font-medium text-slate-700">
-            Optional Random Comment List <span className="text-slate-400">(one per line)</span>
+          <span className="font-medium text-ink">
+            Optional Random Comment List <span className="text-ink-muted">(one per line)</span>
           </span>
           <textarea
-            className="h-24 resize-none rounded border border-slate-300 bg-white p-2 font-mono text-[12px] text-slate-900 outline-none focus:border-[#0078d4]"
+            className="h-24 resize-none rounded-lg border border-edge bg-surface p-2 font-mono text-[12px] text-ink outline-none focus:border-[#0078d4]"
             placeholder={'Great stream!\nLove this!\n🔥🔥🔥'}
             value={commentsText}
             onChange={(e) => setCommentsText(e.target.value)}
           />
-          <span className="text-[11px] text-slate-500">
+          <span className="text-[11px] text-ink-muted">
             {comments.length > 0
               ? `${comments.length} comment(s) — one random line is posted per account, ~halfway through the watch window.`
               : 'Leave empty to just watch without commenting.'}

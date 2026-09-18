@@ -31,7 +31,7 @@
 import { statSync, rmSync, readdirSync, existsSync } from 'fs'
 import { join } from 'path'
 import Database from 'better-sqlite3'
-import { resolveProfileDir, isTracked } from './browserContext'
+import { resolveProfileDir, isAccountProfileOpen } from './browserContext'
 import type { CleanMode, CleanResult, CleanSummary } from '../../types/profileOptimizer'
 
 export type { CleanMode, CleanResult, CleanSummary }
@@ -246,18 +246,22 @@ function deleteBloatPaths(profileDir: string): void {
 }
 
 /**
- * Cleans one account's persistent profile folder. `uid` identifies both the
- * profile directory (see resolveProfileDir()) and the tracked-context key
- * used to refuse cleaning a profile that's currently open in a live browser.
+ * Cleans one account's persistent profile folder. `uid` identifies the
+ * profile directory (see resolveProfileDir()); `accountId` + `uid` together
+ * identify whether it's currently open in ANY live browser context —
+ * login, warmup, friends/groups automation, avatar download, etc., not just
+ * the row-level "Open Chrome Profile" action — see isAccountProfileOpen()'s
+ * doc comment for why checking one specific tracked-context key format
+ * isn't enough.
  */
-export function cleanProfile(uid: string | null, mode: CleanMode): CleanResult {
+export function cleanProfile(uid: string | null, accountId: number, mode: CleanMode): CleanResult {
   const profileDir = resolveProfileDir(uid)
 
   if (!existsSync(profileDir)) {
     return { success: true, freedSpaceMB: 0, mode, detail: 'No profile folder on disk — nothing to clean.' }
   }
 
-  if (isTracked(`profile:${uid ?? 'unknown'}`)) {
+  if (isAccountProfileOpen(accountId, uid)) {
     return {
       success: false,
       freedSpaceMB: 0,
@@ -298,9 +302,37 @@ export function cleanProfile(uid: string | null, mode: CleanMode): CleanResult {
   }
 }
 
-/** Cleans profiles for a batch of accounts (by uid), one at a time. */
-export function cleanProfiles(uids: (string | null)[], mode: CleanMode): CleanSummary {
-  const results = uids.map((uid) => ({ uid, result: cleanProfile(uid, mode) }))
+/**
+ * Best-effort pre-launch cleanup — called from launchContext() before every
+ * single browser launch (login, warmup, Open Chrome Profile, and every
+ * other automation action that opens a profile) so a profile never
+ * accumulates unbounded cache/log bloat across repeated runs, without the
+ * user ever needing to trigger Clean Profile Storage manually. Always
+ * `safe_fb_only` — never full_wipe, which logs the account out; doing that
+ * silently on every launch would defeat the entire point of a persistent
+ * profile. Silently no-ops (never throws, never blocks the launch) if
+ * there's no uid yet, no profile directory yet (first-ever launch), or the
+ * profile somehow reads as already open — a launch must never fail or stall
+ * because this pre-flight cleanup step had a problem.
+ */
+export function autoCleanProfileBeforeLaunch(accountId: number, uid: string | null): void {
+  if (!uid) return
+  const dir = resolveProfileDir(uid)
+  if (!existsSync(dir)) return
+  if (isAccountProfileOpen(accountId, uid)) return // shouldn't happen pre-launch, but never risk it
+  try {
+    cleanProfile(uid, accountId, 'safe_fb_only')
+  } catch {
+    /* best-effort — a launch must never fail because cleanup did */
+  }
+}
+
+/** Cleans profiles for a batch of accounts, one at a time. */
+export function cleanProfiles(
+  accounts: { id: number; uid: string | null }[],
+  mode: CleanMode
+): CleanSummary {
+  const results = accounts.map(({ id, uid }) => ({ uid, result: cleanProfile(uid, id, mode) }))
   const succeeded = results.filter((r) => r.result.success).length
   const freedSpaceMB = bytesToMB(
     results.reduce((sum, r) => sum + r.result.freedSpaceMB * 1024 * 1024, 0)

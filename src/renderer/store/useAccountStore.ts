@@ -119,6 +119,8 @@ interface AccountState {
   refreshScenarios: () => Promise<void>
   openExportModal: () => void
   closeExportModal: () => void
+  /** Opens the Browser Windows panel — a separate OS window, not in-app state (see windows/browserWindowsPanel.ts). */
+  openBrowserWindows: () => void
   openRecycleBin: () => void
   closeRecycleBin: () => void
   openEditAccount: (account: Account) => void
@@ -203,6 +205,7 @@ export const useAccountStore = create<AccountState>((set, get) => ({
   assignUrlTargetAccounts: null,
 
   openExportModal: () => set({ exportModalOpen: true }),
+  openBrowserWindows: () => void window.api.window.openBrowserWindowsPanel(),
   closeExportModal: () => set({ exportModalOpen: false }),
   openRecycleBin: () => set({ recycleBinOpen: true }),
   closeRecycleBin: () => set({ recycleBinOpen: false }),

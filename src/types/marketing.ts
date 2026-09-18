@@ -3,7 +3,15 @@
 // Auto Share, Change Info) and bulk proxy/useragent assignment.
 // ---------------------------------------------------------------------------
 
-export type PostDestination = 'feed' | 'groups'
+export type PostDestination = 'feed' | 'groups' | 'pages'
+
+export type LinkPostMode = 'single' | 'sequential' | 'random'
+
+export interface PagePostTarget {
+  accountId: number
+  pageId: string
+  comment?: string
+}
 
 export interface AutoPostRequest {
   accountIds: number[]
@@ -12,8 +20,15 @@ export interface AutoPostRequest {
   contentTemplate: string
   imagePaths?: string[]
   groupCount?: number
+  pageCount?: number
   delayMinSeconds?: number
   delayMaxSeconds?: number
+  /** Optional comment posted on the new post (often a tracking URL). Spin syntax supported. */
+  commentTemplate?: string
+  /** When set, only these pages are posted (Post To Page table). */
+  pageTargets?: PagePostTarget[]
+  links?: string[]
+  linkMode?: LinkPostMode
 }
 
 export type ShareDestination = 'wall' | 'groups'

@@ -44,10 +44,10 @@ function ExecutionTimer(): React.JSX.Element {
 
   return (
     <span
-      className="no-drag inline-flex items-center gap-1 rounded border border-slate-300 bg-slate-800/10 px-2.5 py-1 font-mono text-xs font-semibold text-slate-700"
+      className="no-drag inline-flex items-center gap-1 rounded-lg border border-edge bg-surface-sunken px-2.5 py-1 font-mono text-xs font-semibold text-ink-muted"
       title={queueRunning ? 'Run in progress' : 'Elapsed time of the last run'}
     >
-      <Timer size={12} className={queueRunning ? 'text-[#1e9e4a]' : 'text-slate-500'} />
+      <Timer size={12} className={queueRunning ? 'text-[#1e9e4a]' : 'text-ink-muted'} />
       {formatElapsed(elapsed)}
     </span>
   )
@@ -68,7 +68,7 @@ export function TitleBar(): React.JSX.Element {
   const onClose = (): void => void window.api.window.close()
 
   return (
-    <div className="drag relative flex h-[38px] items-center justify-between border-b border-[#e4d8bc] bg-[#fdf9f0] pl-2 pr-0">
+    <div className="drag relative flex h-[38px] items-center justify-between border-b border-edge bg-surface pl-2 pr-0">
       {/* Left: logo + app brand */}
       <div className="flex items-center gap-2 overflow-hidden">
         <div className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-[6px]">
@@ -90,7 +90,7 @@ export function TitleBar(): React.JSX.Element {
             color: 'transparent'
           }}
         >
-          TFACEBOOK
+          TKFACEBOOK
         </span>
         <ExecutionTimer />
       </div>
@@ -103,21 +103,21 @@ export function TitleBar(): React.JSX.Element {
         <button
           onClick={onMinimize}
           title="Minimize"
-          className="flex w-[46px] items-center justify-center text-[#333] hover:bg-[#e5e5e5]"
+          className="flex w-[46px] items-center justify-center text-ink-muted hover:bg-surface-sunken"
         >
           <Minus size={16} />
         </button>
         <button
           onClick={onMaximize}
           title={maximized ? 'Restore' : 'Maximize'}
-          className="flex w-[46px] items-center justify-center text-[#333] hover:bg-[#e5e5e5]"
+          className="flex w-[46px] items-center justify-center text-ink-muted hover:bg-surface-sunken"
         >
           {maximized ? <Copy size={13} /> : <Square size={13} />}
         </button>
         <button
           onClick={onClose}
           title="Close"
-          className="flex w-[46px] items-center justify-center text-[#333] hover:bg-[#e81123] hover:text-white"
+          className="flex w-[46px] items-center justify-center text-ink-muted hover:bg-[#e81123] hover:text-white"
         >
           <X size={16} />
         </button>

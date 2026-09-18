@@ -63,17 +63,17 @@ export function LicenseGateModal({
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-[#0a0e1a]/95 p-6">
-      <div className="flex w-full max-w-md flex-col overflow-hidden rounded border border-slate-600 bg-[#f0f2f5] shadow-2xl">
+      <div className="flex w-full max-w-md flex-col overflow-hidden rounded-xl border border-edge bg-surface-sunken">
         {/* Header */}
-        <div className="flex flex-col items-center gap-2 border-b border-slate-300 bg-white px-6 py-6">
+        <div className="flex flex-col items-center gap-2 border-b border-edge bg-surface px-6 py-6">
           <AppLogo size={48} />
-          <div className="text-[15px] font-bold text-slate-800">TFACEBOOK</div>
-          <div className="text-[12px] font-medium text-slate-500">Product Activation Required</div>
+          <div className="text-[15px] font-bold text-ink">TKFACEBOOK</div>
+          <div className="text-[12px] font-medium text-ink-muted">Product Activation Required</div>
         </div>
 
         <div className="flex flex-col gap-4 px-6 py-5 text-[12px]">
-          <p className="text-slate-600">
-            This copy of TFACEBOOK is not activated on this PC. Enter a valid license key below to
+          <p className="text-ink-muted">
+            This copy of TKFACEBOOK is not activated on this PC. Enter a valid license key below to
             unlock the dashboard.
           </p>
 
@@ -81,7 +81,7 @@ export function LicenseGateModal({
           <fieldset className="win-fieldset">
             <legend>Device ID</legend>
             <div className="flex items-center gap-2">
-              <code className="flex-1 truncate rounded border border-slate-300 bg-white px-2 py-1.5 font-mono text-[11px] text-slate-700">
+              <code className="flex-1 truncate rounded-lg border border-edge bg-surface px-2 py-1.5 font-mono text-[11px] text-ink-muted">
                 {deviceHash}
               </code>
               <button
@@ -94,7 +94,7 @@ export function LicenseGateModal({
                 {copied ? 'Copied' : 'Copy'}
               </button>
             </div>
-            <p className="mt-1.5 text-[11px] text-slate-500">
+            <p className="mt-1.5 text-[11px] text-ink-muted">
               Send this Device ID to your admin if you need a license issued for this PC.
             </p>
           </fieldset>
@@ -143,7 +143,7 @@ export function LicenseGateModal({
           </button>
         </div>
 
-        <div className="border-t border-slate-300 bg-[#f6f6f6] px-6 py-3 text-center text-[11px] text-slate-500">
+        <div className="border-t border-edge bg-surface px-6 py-3 text-center text-[11px] text-ink-muted">
           Need a license?{' '}
           <a
             href="#"

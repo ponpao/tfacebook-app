@@ -1,12 +1,11 @@
 // ---------------------------------------------------------------------------
-// ColumnVisibilityModal.tsx  — WinForms-style dialog to show/hide grid columns.
+// ColumnVisibilityModal.tsx  — shared dialog chrome to show/hide grid columns.
 // Toggling a checkbox updates the store immediately (persisted in localStorage).
 // ---------------------------------------------------------------------------
 import { useEffect } from 'react'
 import { X, Eye, Check } from 'lucide-react'
 import { useAccountStore } from '../../store/useAccountStore'
 import { GRID_COLUMNS, DEFAULT_COLUMN_VISIBILITY } from '../table/gridColumns'
-import { HEADER_HEX_PATTERN_URL } from '../../assets/headerHexPattern'
 
 export function ColumnVisibilityModal({
   open,
@@ -44,21 +43,14 @@ export function ColumnVisibilityModal({
         if (e.target === e.currentTarget) onClose()
       }}
     >
-      <div className="flex max-h-[80vh] w-[360px] flex-col overflow-hidden rounded border border-slate-400 border-t-4 border-t-indigo-600 bg-[#f0f2f5] shadow-2xl">
+      <div className="flex max-h-[80vh] w-[360px] flex-col overflow-hidden rounded-xl border border-edge border-t-4 border-t-accent bg-surface">
         {/* Header */}
-        <div
-          className="flex items-center justify-between border-b border-[#e4d8bc] bg-[#fdf9f0] px-4 py-2"
-          style={{
-            backgroundImage: HEADER_HEX_PATTERN_URL,
-            backgroundSize: '56px 98px',
-            backgroundRepeat: 'repeat'
-          }}
-        >
+        <div className="flex items-center justify-between border-b border-edge bg-surface-sunken px-4 py-2">
           <div className="flex items-center gap-2">
-            <Eye size={16} className="text-[#0067c0]" />
-            <h2 className="text-[13px] font-semibold text-slate-900">Display Columns</h2>
+            <Eye size={16} className="text-accent" />
+            <h2 className="text-[13px] font-semibold text-ink">Display Columns</h2>
           </div>
-          <button onClick={onClose} className="text-slate-500 hover:text-[#e81123]">
+          <button onClick={onClose} className="text-ink-muted hover:text-accent">
             <X size={16} />
           </button>
         </div>
@@ -71,13 +63,13 @@ export function ColumnVisibilityModal({
               <button
                 key={c.key}
                 onClick={() => toggleColumn(c.key)}
-                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[12px] text-slate-800 hover:bg-[#e5f1fb]"
+                className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[12px] text-ink hover:bg-surface-sunken"
               >
                 <span
-                  className={`flex h-4 w-4 items-center justify-center rounded-[2px] border ${
+                  className={`flex h-4 w-4 items-center justify-center rounded-lg border ${
                     visible
                       ? 'border-[#0078d4] bg-[#0078d4] text-white'
-                      : 'border-slate-400 bg-white'
+                      : 'border-edge bg-surface'
                   }`}
                 >
                   {visible && <Check size={12} />}
@@ -89,7 +81,7 @@ export function ColumnVisibilityModal({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between gap-2 border-t border-slate-300 bg-[#f6f6f6] px-4 py-2.5">
+        <div className="flex items-center justify-between gap-2 border-t border-edge bg-surface px-4 py-2.5">
           <div className="flex gap-2">
             <button className="win-btn" onClick={selectAll}>
               Select All

@@ -86,10 +86,10 @@ function Item({
     <button
       className={`flex w-full items-center gap-2 px-2.5 py-[5px] text-left text-[12px] ${
         disabled
-          ? 'cursor-default text-slate-400'
+          ? 'cursor-default text-ink-muted'
           : danger
-            ? 'text-[#c81e1e] hover:bg-[#fde8e8]'
-            : 'text-slate-800 hover:bg-[#e5f1fb]'
+            ? 'text-[#c81e1e] hover:bg-[#c81e1e]/10'
+            : 'text-ink hover:bg-accent/10'
       }`}
       onClick={
         disabled
@@ -107,14 +107,14 @@ function Item({
       }
       onMouseEnter={onMouseEnter}
     >
-      <Icon size={14} className={`shrink-0 ${danger ? 'text-[#c81e1e]' : 'text-[#4a6a8a]'}`} />
+      <Icon size={14} className={`shrink-0 ${danger ? 'text-[#c81e1e]' : 'text-ink-muted'}`} />
       <span className="flex-1 truncate whitespace-nowrap">{label}</span>
-      {hasSubmenu && <ChevronRight size={13} className="shrink-0 text-slate-400" />}
+      {hasSubmenu && <ChevronRight size={13} className="shrink-0 text-ink-muted" />}
     </button>
   )
 }
 
-const Sep = (): React.JSX.Element => <div className="my-1 h-px bg-slate-200" />
+const Sep = (): React.JSX.Element => <div className="my-1 h-px bg-edge" />
 
 const SUBMENU_CLOSE_DELAY_MS = 150
 
@@ -231,7 +231,7 @@ function Submenu({
               panelRef.current = el
               registerPortalNode(el)
             }}
-            className="fixed z-[999999] max-h-[80vh] overflow-auto rounded border border-slate-400 bg-white py-1 shadow-2xl"
+            className="fixed z-[999999] max-h-[80vh] overflow-auto rounded-lg border border-edge bg-surface py-1"
             style={{ left: panelPos.left, top: panelPos.top, width }}
             onMouseEnter={cancelClose}
             onMouseLeave={scheduleClose}
@@ -648,7 +648,7 @@ export function AccountContextMenu({ x, y, account, onClose }: Props): React.JSX
   return (
     <div
       ref={ref}
-      className="fixed z-50 select-none rounded border border-slate-400 bg-white py-1 shadow-2xl"
+      className="fixed z-50 select-none rounded-lg border border-edge bg-surface py-1"
       style={{ left: pos.x, top: pos.y, width: MENU_W }}
       onContextMenu={(e) => e.preventDefault()}
     >
@@ -761,7 +761,7 @@ export function AccountContextMenu({ x, y, account, onClose }: Props): React.JSX
       <Submenu label="Data & Batch Management" icon={FolderInput} width={230} registerPortalNode={registerPortalNode}>
         <Submenu label="Move to Folder..." icon={FolderInput} width={200} registerPortalNode={registerPortalNode}>
           {folders.length === 0 && (
-            <div className="px-2.5 py-1.5 text-[12px] text-slate-400">No folders</div>
+            <div className="px-2.5 py-1.5 text-[12px] text-ink-muted">No folders</div>
           )}
           {folders.map((f) => (
             <Item

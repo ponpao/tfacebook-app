@@ -9,7 +9,6 @@
 import { useEffect, useState } from 'react'
 import { X, FolderPlus, FolderPen, FolderMinus, FolderInput } from 'lucide-react'
 import type { Folder } from '../../../types/folder'
-import { HEADER_HEX_PATTERN_URL } from '../../assets/headerHexPattern'
 
 export type FolderDialogMode = 'add' | 'rename' | 'delete' | 'move' | null
 
@@ -86,22 +85,15 @@ export function FolderDialogs({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/25">
-      <div className="w-[420px] rounded-[4px] border border-[#999] border-t-4 border-t-indigo-600 bg-mc-bg shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div className="w-[420px] rounded-xl border border-edge border-t-4 border-t-accent bg-surface">
         {/* Title bar */}
-        <div
-          className="flex items-center justify-between border-b border-[#e4d8bc] bg-[#fdf9f0] px-3 py-1.5"
-          style={{
-            backgroundImage: HEADER_HEX_PATTERN_URL,
-            backgroundSize: '56px 98px',
-            backgroundRepeat: 'repeat'
-          }}
-        >
+        <div className="flex items-center justify-between border-b border-edge bg-surface-sunken px-3 py-1.5">
           <div className="flex items-center gap-1.5">
-            <Icon size={15} className="text-[#4a6a8a]" />
-            <span className="text-[12px] font-semibold">{title}</span>
+            <Icon size={15} className="text-accent" />
+            <span className="text-[12px] font-semibold text-ink">{title}</span>
           </div>
-          <button onClick={onClose} className="text-[#666] hover:text-[#e81123]">
+          <button onClick={onClose} className="text-ink-muted hover:text-accent">
             <X size={15} />
           </button>
         </div>
@@ -110,7 +102,7 @@ export function FolderDialogs({
         <div className="px-4 py-4 text-[12px]">
           {(mode === 'add' || mode === 'rename') && (
             <label className="flex flex-col gap-1.5">
-              <span className="text-[#444]">Folder name</span>
+              <span className="text-ink-muted">Folder name</span>
               <input
                 autoFocus
                 className="win-input"
@@ -123,11 +115,11 @@ export function FolderDialogs({
           )}
 
           {mode === 'delete' && activeFolder && (
-            <p className="leading-relaxed text-[#333]">
+            <p className="leading-relaxed text-ink">
               Are you sure you want to delete the folder{' '}
               <b>&ldquo;{activeFolder.name}&rdquo;</b>?
               <br />
-              <span className="text-[#666]">
+              <span className="text-ink-muted">
                 Its {activeFolder.account_count} account(s) will be moved to the{' '}
                 <b>Default Folder</b>.
               </span>
@@ -136,7 +128,7 @@ export function FolderDialogs({
 
           {mode === 'move' && (
             <div className="flex flex-col gap-1.5">
-              <span className="text-[#444]">
+              <span className="text-ink-muted">
                 Move <b>{selectedCount}</b> selected account(s) to:
               </span>
               <select
@@ -155,7 +147,7 @@ export function FolderDialogs({
         </div>
 
         {/* Footer */}
-        <div className="flex justify-end gap-2 border-t border-[#d0d0d0] bg-[#f6f6f6] px-4 py-2.5">
+        <div className="flex justify-end gap-2 border-t border-edge bg-surface-sunken px-4 py-2.5">
           <button className="win-btn" onClick={onClose} disabled={busy}>
             Cancel
           </button>

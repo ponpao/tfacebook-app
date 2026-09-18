@@ -26,7 +26,7 @@ function AboutFieldRow({
 }): React.JSX.Element {
   return (
     <div>
-      <label className="flex items-center gap-2 font-medium text-slate-800">
+      <label className="flex items-center gap-2 font-medium text-ink">
         <input
           type="checkbox"
           className="accent-[#0078d4]"
@@ -193,7 +193,7 @@ export function ChangeInfoModal({
       width="max-w-2xl"
       footer={
         <>
-          <span className="mr-auto text-[11px] text-slate-500">
+          <span className="mr-auto text-[11px] text-ink-muted">
             {count} account(s) selected · {threadCount} thread(s)
           </span>
           <button
@@ -257,7 +257,7 @@ export function ChangeInfoModal({
             value={highSchoolTemplate}
             setValue={setHighSchoolTemplate}
           />
-          <label className="flex items-center gap-2 border-t border-slate-200 pt-2 text-slate-700">
+          <label className="flex items-center gap-2 border-t border-edge pt-2 text-ink">
             <input
               type="checkbox"
               className="accent-[#0078d4]"
@@ -271,7 +271,7 @@ export function ChangeInfoModal({
         {/* Section 2: Profile Picture */}
         <fieldset className="win-fieldset flex flex-col gap-2 p-3">
           <legend>Profile Picture</legend>
-          <label className="flex items-center gap-2 font-medium text-slate-800">
+          <label className="flex items-center gap-2 font-medium text-ink">
             <input
               type="checkbox"
               className="accent-[#0078d4]"
@@ -287,11 +287,11 @@ export function ChangeInfoModal({
                   <FolderOpen size={13} className="text-[#c98a00]" />
                   Path Folder
                 </button>
-                <span className="truncate text-[11px] text-slate-500">
+                <span className="truncate text-[11px] text-ink-muted">
                   {avatarFolder ?? 'No folder selected — a random unused image is picked per account'}
                 </span>
               </div>
-              <label className="flex items-center gap-2 text-slate-700">
+              <label className="flex items-center gap-2 text-ink">
                 <input
                   type="checkbox"
                   className="accent-[#0078d4]"
@@ -300,7 +300,7 @@ export function ChangeInfoModal({
                 />
                 Skip profile already exists
               </label>
-              <label className="flex items-center gap-2 text-slate-700">
+              <label className="flex items-center gap-2 text-ink">
                 <input
                   type="checkbox"
                   className="accent-[#0078d4]"
@@ -316,7 +316,7 @@ export function ChangeInfoModal({
         {/* Section 3: Cover Photo */}
         <fieldset className="win-fieldset flex flex-col gap-2 p-3">
           <legend>Cover Photo</legend>
-          <label className="flex items-center gap-2 font-medium text-slate-800">
+          <label className="flex items-center gap-2 font-medium text-ink">
             <input
               type="checkbox"
               className="accent-[#0078d4]"
@@ -332,11 +332,11 @@ export function ChangeInfoModal({
                   <FolderOpen size={13} className="text-[#c98a00]" />
                   Path Folder
                 </button>
-                <span className="truncate text-[11px] text-slate-500">
+                <span className="truncate text-[11px] text-ink-muted">
                   {coverFolder ?? 'No folder selected — a random unused image is picked per account'}
                 </span>
               </div>
-              <label className="flex items-center gap-2 text-slate-700">
+              <label className="flex items-center gap-2 text-ink">
                 <input
                   type="checkbox"
                   className="accent-[#0078d4]"
@@ -345,7 +345,7 @@ export function ChangeInfoModal({
                 />
                 Skip cover already exists
               </label>
-              <label className="flex items-center gap-2 text-slate-700">
+              <label className="flex items-center gap-2 text-ink">
                 <input
                   type="checkbox"
                   className="accent-[#0078d4]"
@@ -362,7 +362,7 @@ export function ChangeInfoModal({
         <fieldset className="win-fieldset flex flex-col gap-2.5 p-3">
           <legend>Security</legend>
           <div>
-            <label className="flex items-center gap-2 font-medium text-slate-800">
+            <label className="flex items-center gap-2 font-medium text-ink">
               <input
                 type="checkbox"
                 className="accent-[#0078d4]"
@@ -373,7 +373,7 @@ export function ChangeInfoModal({
             </label>
             {doPassword && (
               <div className="mt-1 ml-6 flex items-center gap-2">
-                <span className="text-slate-600">Pattern (X = random char):</span>
+                <span className="text-ink-muted">Pattern (X = random char):</span>
                 <input
                   className="win-input flex-1 font-mono"
                   value={passwordPattern}
@@ -384,7 +384,7 @@ export function ChangeInfoModal({
             )}
           </div>
           <div>
-            <label className="flex items-center gap-2 font-medium text-slate-800">
+            <label className="flex items-center gap-2 font-medium text-ink">
               <input
                 type="checkbox"
                 className="accent-[#0078d4]"
@@ -394,7 +394,7 @@ export function ChangeInfoModal({
               Enable / Reset 2FA
             </label>
             {do2FA && (
-              <p className="mt-1 ml-6 text-[11px] text-slate-500">
+              <p className="mt-1 ml-6 text-[11px] text-ink-muted">
                 Disables any 2FA currently active on the account, sets up a new authenticator-app
                 2FA method, and saves the new secret into the account's 2FA column.
               </p>

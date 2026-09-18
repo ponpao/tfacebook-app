@@ -90,7 +90,7 @@ export function AddFriendsModal({
       }
     >
       <label className="flex flex-col gap-1.5 text-[12px]">
-        <span className="font-medium text-slate-700">
+        <span className="font-medium text-ink">
           Target UIDs — one per line, applied from {accountIds.length} selected account(s)
         </span>
         <textarea
@@ -101,7 +101,7 @@ export function AddFriendsModal({
           onChange={(e) => setText(e.target.value)}
         />
       </label>
-      <label className="mt-2 flex items-center gap-2 text-[12px] text-slate-700">
+      <label className="mt-2 flex items-center gap-2 text-[12px] text-ink">
         <input
           type="checkbox"
           checked={removeOnSuccess}

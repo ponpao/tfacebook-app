@@ -1,5 +1,6 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
+import './store/useThemeStore' // applies the persisted theme class before first paint
 import App from './App'
 import './styles/index.css'
 

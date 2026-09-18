@@ -64,7 +64,8 @@ export const IPC = {
     minimize: 'window:minimize',
     maximize: 'window:maximize',
     close: 'window:close',
-    isMaximized: 'window:isMaximized'
+    isMaximized: 'window:isMaximized',
+    openBrowserWindowsPanel: 'window:openBrowserWindowsPanel'
   },
   automation: {
     openProfile: 'automation:openProfile',
@@ -73,6 +74,19 @@ export const IPC = {
     autoLogin: 'automation:autoLogin',
     closeAllBrowsers: 'automation:closeAllBrowsers',
     arrangeWindows: 'automation:arrangeWindows',
+    listWindows: 'automation:listWindows',
+    focusWindow: 'automation:focusWindow',
+    closeWindow: 'automation:closeWindow',
+    reloadWindow: 'automation:reloadWindow',
+    goBackWindow: 'automation:goBackWindow',
+    goHomeWindow: 'automation:goHomeWindow',
+    screenshotWindows: 'automation:screenshotWindows',
+    startScreencast: 'automation:startScreencast',
+    stopScreencast: 'automation:stopScreencast',
+    dispatchTap: 'automation:dispatchTap',
+    dispatchScroll: 'automation:dispatchScroll',
+    dispatchKey: 'automation:dispatchKey',
+    onScreencastFrame: 'automation:onScreencastFrame',
     runQueue: 'automation:runQueue',
     stopQueue: 'automation:stopQueue',
     isQueueRunning: 'automation:isQueueRunning',
@@ -97,6 +111,7 @@ export const IPC = {
   utils: {
     parseSpinSyntax: 'utils:parseSpinSyntax',
     selectImages: 'utils:selectImages',
+    selectMedia: 'utils:selectMedia',
     selectFolder: 'utils:selectFolder',
     saveTextFile: 'utils:saveTextFile',
     selectChromiumExecutable: 'utils:selectChromiumExecutable',

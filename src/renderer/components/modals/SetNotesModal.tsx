@@ -52,7 +52,7 @@ export function SetNotesModal({
       }
     >
       <label className="flex flex-col gap-1.5 text-[12px]">
-        <span className="font-medium text-slate-700">
+        <span className="font-medium text-ink">
           Notes text — applied to {accountIds.length} account(s)
         </span>
         <textarea

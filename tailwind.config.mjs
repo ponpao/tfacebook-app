@@ -1,26 +1,21 @@
 /** @type {import('tailwindcss').Config} */
 export default {
+  darkMode: 'class',
   content: ['./src/renderer/**/*.{html,js,ts,jsx,tsx}'],
   theme: {
     extend: {
       colors: {
-        // MaxCare WinForms light-theme palette
-        mc: {
-          bg: '#f0f0f0', // window chrome gray
-          panel: '#ffffff', // white title bar / panels
-          ribbon: '#f4f4f4', // ribbon background
-          border: '#a0a0a0', // grid outer border
-          gridline: '#b8cbb0', // pastel green inner gridline
-          headbg: '#f5f5f5', // grid header gray
-          row: '#e2efda', // pastel green normal row
-          rowAlt: '#eaf4e6', // alt pastel green
-          sel: '#0078d4', // classic blue selection
-          selText: '#ffffff',
-          title: '#1a1a1a', // bold black title text
-          banner: '#c81e1e', // red announcement text
-          menu: '#333333' // menu strip text
+        surface: {
+          DEFAULT: 'rgb(var(--surface) / <alpha-value>)',
+          sunken: 'rgb(var(--surface-sunken) / <alpha-value>)'
         },
-        // Status colors (kept for badges)
+        edge: 'rgb(var(--edge) / <alpha-value>)',
+        ink: {
+          DEFAULT: 'rgb(var(--ink) / <alpha-value>)',
+          muted: 'rgb(var(--ink-muted) / <alpha-value>)'
+        },
+        accent: 'rgb(var(--accent) / <alpha-value>)',
+        // Status colors (kept for badges) — semantic, not theme colors
         live: '#1e9e4a',
         checkpoint: '#c98a00',
         die: '#c81e1e',
@@ -28,7 +23,7 @@ export default {
         unknown: '#6b7280'
       },
       fontFamily: {
-        sans: ['Segoe UI', 'Tahoma', 'system-ui', 'sans-serif'],
+        sans: ['Kantumruy Pro', 'Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Tahoma', 'system-ui', 'sans-serif'],
         mono: ['Consolas', 'monospace']
       },
       fontSize: {

@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// RibbonToolbar.tsx  — single unified, draggable/floatable WinForms ribbon.
+// RibbonToolbar.tsx  — single unified, draggable/floatable ribbon toolbar.
 //   Row 1: run controls (Start/Stop), Threads/Scenario/Search/Folder Manager
 //     fieldsets, and Import Accounts pushed to the far right.
 //   Row 2: the automation action buttons rendered as soft pastel pills.
@@ -10,10 +10,11 @@
 //   pattern as this app's column-width/scenario persistence.
 // ---------------------------------------------------------------------------
 import { useEffect, useRef, useState } from 'react'
+import iconStart from '../assets/icons/icon-start.png'
+import iconStop from '../assets/icons/icon-stop.png'
 import {
-  Play,
-  Square,
   Search,
+  X,
   Plus,
   Pencil,
   Minus,
@@ -32,6 +33,7 @@ import {
   PinOff,
   Trash2,
   LayoutGrid,
+  AppWindow,
   ChevronDown
 } from 'lucide-react'
 import type { ArrangeLayout } from '../../types/ipc'
@@ -41,6 +43,7 @@ import { ALL_FOLDERS } from '../../types/folder'
 import type { FolderDialogMode } from './modals/FolderDialogs'
 import type { AccountStatus } from '../../types/account'
 import { AutoPostModal } from './modals/AutoPostModal'
+import { PostToPageModal } from './modals/PostToPageModal'
 import { DeletePagePostsModal } from './modals/DeletePagePostsModal'
 import { AutoShareModal } from './modals/AutoShareModal'
 import { ChangeInfoModal } from './modals/ChangeInfoModal'
@@ -110,7 +113,6 @@ const ARRANGE_OPTIONS: { layout: ArrangeLayout; label: string }[] = [
 ]
 
 const TOOLBAR_POS_KEY = 'ui.toolbarFloatPosition'
-const TOOLBAR_DOCKED_KEY = 'ui.toolbarDocked'
 
 interface FloatPos {
   x: number
@@ -164,17 +166,17 @@ function PillDropdown({
         <ChevronDown size={12} />
       </button>
       {open && (
-        <div className="absolute left-0 top-full z-50 mt-1 w-52 rounded border border-slate-300 bg-white py-1 shadow-lg">
+        <div className="absolute left-0 top-full z-50 mt-1 w-52 rounded-lg border border-edge bg-surface py-1">
           {options.map((opt) => (
             <button
               key={opt.key}
-              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-slate-700 hover:bg-slate-100"
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-ink hover:bg-surface-sunken"
               onClick={() => {
                 setOpen(false)
                 opt.onClick()
               }}
             >
-              <opt.icon size={14} className="text-[#4a6a8a]" />
+              <opt.icon size={14} className="text-ink-muted" />
               {opt.label}
             </button>
           ))}
@@ -184,14 +186,10 @@ function PillDropdown({
   )
 }
 
-function loadDocked(): boolean {
-  try {
-    const raw = localStorage.getItem(TOOLBAR_DOCKED_KEY)
-    return raw === null ? true : raw === 'true'
-  } catch {
-    return true
-  }
-}
+// Always starts docked on launch — a user can still drag the grip handle to
+// float it during the session, but that choice is intentionally NOT
+// persisted across restarts (unlike floatPos below), so the app never opens
+// with the toolbar unexpectedly floating loose off in some remembered spot.
 
 function loadFloatPos(): FloatPos {
   try {
@@ -233,9 +231,11 @@ export function RibbonToolbar({
   const setActiveScenarioId = useAccountStore((s) => s.setActiveScenarioId)
   const shuffleDisplayOrder = useAccountStore((s) => s.shuffleDisplayOrder)
   const openExportModal = useAccountStore((s) => s.openExportModal)
+  const openBrowserWindows = useAccountStore((s) => s.openBrowserWindows)
   const t = useLanguageStore((s) => s.t)
 
   const [autoPostOpen, setAutoPostOpen] = useState(false)
+  const [postToPageOpen, setPostToPageOpen] = useState(false)
   const [deletePagePostsOpen, setDeletePagePostsOpen] = useState(false)
   const [autoShareOpen, setAutoShareOpen] = useState(false)
   const [changeInfoOpen, setChangeInfoOpen] = useState(false)
@@ -246,21 +246,15 @@ export function RibbonToolbar({
   const arrangeMenuRef = useRef<HTMLDivElement>(null)
 
   // Docked (normal document flow) vs floating (position: fixed, draggable by
-  // the grip handle) — both persisted so the choice survives a restart.
-  const [docked, setDocked] = useState(loadDocked)
+  // the grip handle) — always starts docked (see loadDocked's comment);
+  // floatPos alone is persisted, so a re-detach during this session still
+  // reopens at its last remembered spot.
+  const [docked, setDocked] = useState(true)
   const [floatPos, setFloatPos] = useState<FloatPos>(loadFloatPos)
   const dragState = useRef<{ startX: number; startY: number; originX: number; originY: number } | null>(
     null
   )
   const [isDragging, setIsDragging] = useState(false)
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(TOOLBAR_DOCKED_KEY, String(docked))
-    } catch {
-      /* ignore */
-    }
-  }, [docked])
 
   const beginDrag = (e: React.MouseEvent): void => {
     e.preventDefault()
@@ -360,8 +354,8 @@ export function RibbonToolbar({
     <div
       className={
         docked
-          ? 'border-b border-slate-300 bg-mc-ribbon'
-          : 'fixed z-40 rounded border border-slate-400 bg-mc-ribbon shadow-lg'
+          ? 'border-b border-edge bg-surface'
+          : 'fixed z-40 rounded-xl border border-edge bg-surface'
       }
       style={docked ? undefined : { left: floatPos.x, top: floatPos.y, width: 'min(1200px, calc(100vw - 32px))' }}
     >
@@ -370,8 +364,8 @@ export function RibbonToolbar({
           layout. Both the floating/docked state and the last floating
           position persist across restarts. */}
       <div
-        className={`flex items-center justify-between gap-2 px-2 py-1 text-[11px] text-slate-500 ${
-          docked ? 'border-b border-slate-200' : 'cursor-move border-b border-slate-300 bg-slate-100'
+        className={`flex items-center justify-between gap-2 px-2 py-1 text-[11px] text-ink-muted ${
+          docked ? 'border-b border-edge' : 'cursor-move border-b border-edge bg-surface-sunken'
         }`}
         onMouseDown={docked ? undefined : beginDrag}
       >
@@ -380,7 +374,7 @@ export function RibbonToolbar({
           onMouseDown={beginDrag}
           title="Drag to move this toolbar"
         >
-          <GripVertical size={13} className="text-slate-400" />
+          <GripVertical size={13} className="text-ink-muted" />
           <span>{docked ? 'Toolbar (drag to detach)' : 'Toolbar (floating — drag to move)'}</span>
         </div>
         {!docked && (
@@ -408,7 +402,7 @@ export function RibbonToolbar({
         {/* Action group: Start / Run + Stop */}
         <div className="flex items-center gap-1.5 shrink-0">
           <button
-            className="win-btn-start h-[38px] shrink-0 min-w-fit px-3.5"
+            className="win-btn-start relative h-[38px] w-[38px] shrink-0 justify-center px-0"
             onClick={() => void runSelectedQueue()}
             disabled={queueRunning || selectedCount === 0}
             title={
@@ -417,21 +411,20 @@ export function RibbonToolbar({
                 : `Run Auto-Login on ${selectedCount} selected account(s)`
             }
           >
-            <Play size={15} className="fill-white text-white shrink-0" />
-            <span className="whitespace-nowrap font-bold">{t('startRun')}</span>
+            <img src={iconStart} alt="Start" className="h-[16px] w-[16px] shrink-0" />
             {selectedCount > 0 && (
-              <span className="ml-1.5 rounded-full bg-emerald-800 px-2 py-0.5 text-xs font-bold text-white whitespace-nowrap min-w-[20px] text-center shadow-xs">
+              <span className="absolute -right-1.5 -top-1.5 rounded-full bg-emerald-800 px-1.5 py-0.5 text-[10px] font-bold text-white whitespace-nowrap min-w-[18px] text-center leading-none">
                 {selectedCount.toLocaleString()}
               </span>
             )}
           </button>
           <button
-            className="win-btn-stop h-[38px] shrink-0 min-w-fit px-3"
+            className="win-btn-stop h-[38px] w-[38px] shrink-0 justify-center px-0"
             onClick={() => void stopQueueRun()}
             disabled={!queueRunning}
+            title="Stop"
           >
-            <Square size={13} className="fill-[#c81e1e] text-[#c81e1e] shrink-0" />
-            <span className="whitespace-nowrap font-semibold">{t('stop')}</span>
+            <img src={iconStop} alt="Stop" className="h-[15px] w-[15px] shrink-0" />
           </button>
         </div>
 
@@ -472,7 +465,7 @@ export function RibbonToolbar({
         </fieldset>
 
         {/* Search fieldset */}
-        <fieldset className="win-fieldset flex h-[52px] items-center gap-1.5 min-w-[160px] max-w-[260px] flex-1">
+        <fieldset className="win-fieldset flex h-[52px] items-center gap-1.5 min-w-[200px] max-w-[300px] flex-1">
           <legend>{t('search')}</legend>
           <select
             className="win-select shrink-0"
@@ -485,16 +478,29 @@ export function RibbonToolbar({
               </option>
             ))}
           </select>
-          <input
-            className="win-input w-full min-w-0"
-            placeholder="Search keyword..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && runSearch()}
-          />
-          <button className="win-btn shrink-0" onClick={runSearch} title="Search">
-            <Search size={14} className="text-[#0067c0]" />
-          </button>
+          <div className="group relative flex h-[30px] min-w-0 flex-1 items-center rounded-lg border border-edge bg-surface pl-2 pr-1 transition-colors focus-within:border-accent">
+            <Search size={13} className="shrink-0 text-ink-muted transition-colors group-focus-within:text-accent" />
+            <input
+              className="min-w-0 flex-1 bg-transparent px-1.5 text-[12px] text-ink placeholder:text-ink-muted outline-none"
+              placeholder="Search keyword..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && runSearch()}
+            />
+            {search && (
+              <button
+                type="button"
+                className="flex shrink-0 items-center justify-center rounded p-0.5 text-ink-muted hover:bg-surface-sunken hover:text-ink"
+                onClick={() => {
+                  setSearch('')
+                  runSearch()
+                }}
+                title="Clear search"
+              >
+                <X size={12} />
+              </button>
+            )}
+          </div>
         </fieldset>
 
         {/* Folder management fieldset — firmly pinned to the right edge */}
@@ -560,7 +566,7 @@ export function RibbonToolbar({
       </div>
 
       {/* ---- Row 2: soft pastel action pills ---- */}
-      <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 px-2 py-1.5">
+      <div className="flex flex-wrap items-center gap-2 border-t border-edge px-2 py-1.5">
         {/* Import Accounts — moved here from Row 1, styled as the same
             amber/yellow accent pill it always was, just in pill shape to
             match its new row. */}
@@ -581,6 +587,7 @@ export function RibbonToolbar({
           text="#1a5c96"
           options={[
             { key: 'autoPost', icon: BookOpen, label: t('autoPost'), onClick: () => setAutoPostOpen(true) },
+            { key: 'postToPage', icon: BookOpen, label: t('postToPage'), onClick: () => setPostToPageOpen(true) },
             { key: 'autoShare', icon: Share2, label: t('autoShare'), onClick: () => setAutoShareOpen(true) },
             { key: 'watchLive', icon: Video, label: t('watchLive'), onClick: () => setWatchLiveOpen(true) }
           ]}
@@ -632,11 +639,11 @@ export function RibbonToolbar({
             <ChevronDown size={12} />
           </button>
           {arrangeMenuOpen && (
-            <div className="absolute left-0 top-full z-50 mt-1 w-44 rounded border border-slate-300 bg-white py-1 shadow-lg">
+            <div className="absolute left-0 top-full z-50 mt-1 w-44 rounded-lg border border-edge bg-surface py-1">
               {ARRANGE_OPTIONS.map((opt) => (
                 <button
                   key={opt.layout}
-                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-slate-700 hover:bg-slate-100"
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-ink hover:bg-surface-sunken"
                   onClick={() => void arrangeWindows(opt.layout)}
                   title={opt.layout === 'grid5x2' ? `${opt.label} (Recommended)` : opt.label}
                 >
@@ -649,6 +656,18 @@ export function RibbonToolbar({
             </div>
           )}
         </div>
+
+        {/* Browser Windows — per-window list (row #/account name) with
+            Focus/Close actions, complementing Arrange Windows' all-at-once
+            reposition with a per-window view/control. */}
+        <button
+          className="action-pill"
+          style={{ backgroundColor: '#eef0f4', borderColor: '#d3d8e2', color: '#48505e' }}
+          onClick={openBrowserWindows}
+        >
+          <AppWindow size={14} />
+          Browser Windows
+        </button>
 
         {ACTION_BUTTONS_AFTER_ARRANGE.map(({ icon: Icon, label, bg, border, text }) => (
           <button
@@ -664,6 +683,7 @@ export function RibbonToolbar({
       </div>
 
       <AutoPostModal open={autoPostOpen} onClose={() => setAutoPostOpen(false)} />
+      <PostToPageModal open={postToPageOpen} onClose={() => setPostToPageOpen(false)} />
       <DeletePagePostsModal
         open={deletePagePostsOpen}
         onClose={() => setDeletePagePostsOpen(false)}

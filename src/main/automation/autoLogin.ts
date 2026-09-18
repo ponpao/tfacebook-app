@@ -2193,7 +2193,16 @@ export async function runAutoLogin(
     checkAborted(signal)
     progress('Opening Chrome...')
     context = await launchContext({ headless, account, slotIndex })
-    trackContext(trackKey, context)
+    // Metadata so this login shows up correctly in the Browser Windows
+    // panel — without viewMode recorded, the panel can't tell an App Mode
+    // (headless, no OS window) login apart from a Browser View one and
+    // falls back to the screenshot-preview tile instead of the live
+    // interactive CDP-screencast tile App Mode is meant to get.
+    trackContext(trackKey, context, {
+      accountName: account.name?.trim() || account.uid || 'Unknown',
+      uid: account.uid ?? undefined,
+      viewMode: getAppSettings().viewMode
+    })
 
     const page = context.pages()[0] ?? (await context.newPage())
     const loginUrl = useMbasic ? FACEBOOK_URLS.mbasic : FACEBOOK_URLS.full

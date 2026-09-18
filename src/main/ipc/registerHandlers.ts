@@ -6,6 +6,8 @@
 import { ipcMain, BrowserWindow, dialog } from 'electron'
 import { rm, writeFile } from 'fs/promises'
 import { IPC } from './channels'
+import { appIconPath } from '../appPaths'
+import { openBrowserWindowsPanel } from '../windows/browserWindowsPanel'
 import { registerSystemIpcHandlers } from './systemIpc'
 import { registerLicenseIpcHandlers } from './licenseIpc'
 import { registerBackupIpcHandlers } from './backupIpc'
@@ -25,6 +27,15 @@ import {
   autoLogin
 } from '../automation/playwrightManager'
 import { arrangeBrowserWindows, type ArrangeLayout } from '../automation/windowArranger'
+import {
+  focusTrackedWindow,
+  screenshotAllTrackedWindows,
+  getViewportSize,
+  reloadTrackedWindow,
+  goBackTrackedWindow,
+  goHomeTrackedWindow
+} from '../automation/windowManager'
+import { startScreencast, stopScreencast, dispatchTap, dispatchScroll, dispatchKey } from '../automation/screencast'
 import { checkAccountsLiveBatch, probeAccountLiveFast } from '../automation/fastChecker'
 import { fetchFacebookOtp } from '../automation/imapWorker'
 import { runQueue, stopQueue, isQueueRunning } from '../automation/queueRunner'
@@ -53,7 +64,7 @@ import {
 } from '../automation/pagePostsManager'
 import { batchExtractPagesV2, stopV2Extraction } from '../automation/pageExtractorV2'
 import { fetchPagePostsV2, deletePagePostsV2, stopDeletePostsV2 } from '../automation/postDeleterV2'
-import { resolveProfileDir } from '../automation/browserContext'
+import { resolveProfileDir, listTrackedWindows, closeTrackedContext } from '../automation/browserContext'
 import { cleanProfiles } from '../automation/profileOptimizer'
 import { buildExportLines } from '../utils/exportAccounts'
 import { checkUidsLive, checkProxiesHealth } from '../automation/toolsUtilities'
@@ -335,6 +346,62 @@ export function registerIpcHandlers(): void {
     return arrangeBrowserWindows(layout)
   })
 
+  ipcMain.handle(IPC.automation.listWindows, async () => listTrackedWindows())
+
+  ipcMain.handle(IPC.automation.focusWindow, async (_e, key: string) => {
+    return { ok: await focusTrackedWindow(key) }
+  })
+
+  ipcMain.handle(IPC.automation.closeWindow, async (_e, key: string) => {
+    return { ok: await closeTrackedContext(key) }
+  })
+
+  ipcMain.handle(IPC.automation.reloadWindow, async (_e, key: string) => {
+    return { ok: await reloadTrackedWindow(key) }
+  })
+
+  ipcMain.handle(IPC.automation.goBackWindow, async (_e, key: string) => {
+    return { ok: await goBackTrackedWindow(key) }
+  })
+
+  ipcMain.handle(IPC.automation.goHomeWindow, async (_e, key: string) => {
+    return { ok: await goHomeTrackedWindow(key) }
+  })
+
+  ipcMain.handle(IPC.automation.screenshotWindows, async () => screenshotAllTrackedWindows())
+
+  // ---- App Mode live interactive tiles (CDP screencast + input) -----------
+  ipcMain.handle(IPC.automation.startScreencast, async (e, key: string) => {
+    const win = BrowserWindow.fromWebContents(e.sender)
+    const stop = await startScreencast(key, (dataUrl) => {
+      win?.webContents.send(IPC.automation.onScreencastFrame, { key, dataUrl })
+    })
+    return { ok: stop !== null, viewport: getViewportSize(key) }
+  })
+
+  ipcMain.handle(IPC.automation.stopScreencast, async (_e, key: string) => {
+    await stopScreencast(key)
+    return { ok: true }
+  })
+
+  ipcMain.handle(IPC.automation.dispatchTap, async (_e, key: string, x: number, y: number) => {
+    await dispatchTap(key, x, y)
+  })
+
+  ipcMain.handle(
+    IPC.automation.dispatchScroll,
+    async (_e, key: string, x: number, y: number, deltaX: number, deltaY: number) => {
+      await dispatchScroll(key, x, y, deltaX, deltaY)
+    }
+  )
+
+  ipcMain.handle(
+    IPC.automation.dispatchKey,
+    async (_e, key: string, event: { type: 'keyDown' | 'keyUp' | 'char'; key: string; code: string; text?: string }) => {
+      await dispatchKey(key, event)
+    }
+  )
+
   // ---- multi-thread queue runner -------------------------------------------
   ipcMain.handle(
     IPC.automation.runQueue,
@@ -355,15 +422,22 @@ export function registerIpcHandlers(): void {
 
   // ---- Row 2 marketing automation (Auto Post / Auto Share / Change Info) --
   ipcMain.handle(IPC.automation.runAutoPost, async (_e, req: AutoPostRequest) => {
-    for (const id of req.accountIds) accounts.updateAccount(id, { live_status: 'Queued' })
-    return runBatch(req.accountIds, req.concurrency, async (account, emit, signal) => {
+    const accountIds =
+      req.pageTargets && req.pageTargets.length > 0
+        ? [...new Set(req.pageTargets.map((t) => t.accountId))]
+        : req.accountIds
+    for (const id of accountIds) accounts.updateAccount(id, { live_status: 'Queued' })
+    return runBatch(accountIds, req.concurrency, async (account, emit, signal) => {
       const res = await postToFeedOrGroups(account, {
         destination: req.destination,
         contentTemplate: req.contentTemplate,
         imagePaths: req.imagePaths,
         groupCount: req.groupCount,
+        pageCount: req.pageCount,
         delayMinSeconds: req.delayMinSeconds,
         delayMaxSeconds: req.delayMaxSeconds,
+        commentTemplate: req.commentTemplate,
+        pageTargets: req.pageTargets,
         signal,
         onProgress: emit
       })
@@ -537,8 +611,8 @@ export function registerIpcHandlers(): void {
 
   // ---- Profile Optimizer (Clean Profile Storage) ---------------------------
   ipcMain.handle(IPC.profiles.clean, (_e, accountIds: number[], mode: CleanMode) => {
-    const uids = accountIds.map((id) => accounts.getAccount(id)?.uid ?? null)
-    return cleanProfiles(uids, mode)
+    const targets = accountIds.map((id) => ({ id, uid: accounts.getAccount(id)?.uid ?? null }))
+    return cleanProfiles(targets, mode)
   })
 
   // ---- Tools & Utilities ----------------------------------------------------
@@ -578,6 +652,23 @@ export function registerIpcHandlers(): void {
       title: 'Select image(s)',
       properties: ['openFile', 'multiSelections'],
       filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif'] }]
+    })
+    return result.canceled ? [] : result.filePaths
+  })
+
+  ipcMain.handle(IPC.utils.selectMedia, async (e) => {
+    const win = BrowserWindow.fromWebContents(e.sender) ?? undefined
+    const result = await dialog.showOpenDialog(win as BrowserWindow, {
+      title: 'Select photo(s) or video(s)',
+      properties: ['openFile', 'multiSelections'],
+      filters: [
+        {
+          name: 'Photos & Videos',
+          extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'mp4', 'mov', 'webm', 'mkv', 'avi', 'm4v']
+        },
+        { name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif'] },
+        { name: 'Videos', extensions: ['mp4', 'mov', 'webm', 'mkv', 'avi', 'm4v'] }
+      ]
     })
     return result.canceled ? [] : result.filePaths
   })
@@ -802,4 +893,8 @@ export function registerIpcHandlers(): void {
     winFromEvent(e)?.close()
   })
   ipcMain.handle(IPC.window.isMaximized, (e) => winFromEvent(e)?.isMaximized() ?? false)
+
+  ipcMain.handle(IPC.window.openBrowserWindowsPanel, () => {
+    openBrowserWindowsPanel(appIconPath)
+  })
 }

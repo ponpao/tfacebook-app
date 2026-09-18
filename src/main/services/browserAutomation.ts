@@ -169,7 +169,10 @@ export async function loginWithCookieBatch(
       }
 
       const settings = getAppSettings()
-      const isHeadless = settings.browserMode === 'headless'
+      // App Mode always launches headless (no OS window — see
+      // playwrightManager.ts's openProfile for the same rule), independent
+      // of the separate headless/headed Browser Mode setting.
+      const isHeadless = settings.browserMode === 'headless' || settings.viewMode === 'app'
 
       context = await launchContext({
         headless: isHeadless,
@@ -185,7 +188,12 @@ export async function loginWithCookieBatch(
         // the only session Facebook can possibly offer.
         resetProfileBeforeCookieInject: true
       })
-      trackContext(key, context)
+      trackContext(key, context, {
+        accountName: account.name?.trim() || account.uid || 'Unknown',
+        rowNumber: rowNumbers?.[account.id],
+        uid: account.uid ?? undefined,
+        viewMode: settings.viewMode
+      })
 
       const page = context.pages()[0] ?? (await context.newPage())
 

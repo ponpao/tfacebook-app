@@ -25,6 +25,16 @@ export interface StealthOptions {
    * Omitted/empty falls back to a fixed default seed.
    */
   profileSeed?: string
+  /**
+   * True for an App View (mobile device emulation) launch — selects a
+   * mobile-accurate GPU renderer pool (Adreno/Mali, not desktop ANGLE/D3D11)
+   * when gpuVendor/gpuRenderer aren't explicitly passed, and reports an
+   * empty navigator.plugins list (real Android Chrome has no PDF-viewer-
+   * style plugin entries, unlike desktop Chrome). Without this, a mobile
+   * user-agent would be paired with impossible desktop-only internals — an
+   * obvious mismatch, not a real device fingerprint.
+   */
+  isMobile?: boolean
 }
 
 const NVIDIA_RENDERERS = [
@@ -46,6 +56,28 @@ export function randomGpu(): { vendor: string; renderer: string } {
     ['Google Inc. (NVIDIA)', NVIDIA_RENDERERS],
     ['Google Inc. (Intel)', INTEL_RENDERERS],
     ['Google Inc. (AMD)', AMD_RENDERERS]
+  ]
+  const [vendor, renderers] = pools[Math.floor(Math.random() * pools.length)]
+  return { vendor, renderer: renderers[Math.floor(Math.random() * renderers.length)] }
+}
+
+// Android's WebGL renderer strings report the actual mobile GPU family via
+// ANGLE's OpenGL ES backend, never Direct3D11 (that's Windows-only) — a
+// mobile UA paired with one of the D3D11 strings above would be an
+// immediate tell. Qualcomm Adreno and ARM Mali cover the large majority of
+// real Android devices (Snapdragon and Exynos/MediaTek respectively).
+const ADRENO_RENDERERS = [
+  'ANGLE (Qualcomm, Adreno (TM) 730, OpenGL ES 3.2)',
+  'ANGLE (Qualcomm, Adreno (TM) 740, OpenGL ES 3.2)',
+  'ANGLE (Qualcomm, Adreno (TM) 750, OpenGL ES 3.2)'
+]
+const MALI_RENDERERS = ['ANGLE (ARM, Mali-G715-Immortalis MC11, OpenGL ES 3.2)']
+
+/** Pick a plausible mobile (Android) GPU vendor/renderer pair — see randomGpu() for the desktop equivalent. */
+export function randomMobileGpu(): { vendor: string; renderer: string } {
+  const pools: [string, string[]][] = [
+    ['Google Inc. (Qualcomm)', ADRENO_RENDERERS],
+    ['Google Inc. (ARM)', MALI_RENDERERS]
   ]
   const [vendor, renderers] = pools[Math.floor(Math.random() * pools.length)]
   return { vendor, renderer: renderers[Math.floor(Math.random() * renderers.length)] }
@@ -74,16 +106,20 @@ function seedFromString(input: string): number {
 
 export function buildStealthScript(options: StealthOptions = {}): string {
   const languages = options.languages ?? ['en-US', 'en']
+  const isMobile = options.isMobile ?? false
   const gpu = options.gpuVendor && options.gpuRenderer
     ? { vendor: options.gpuVendor, renderer: options.gpuRenderer }
-    : randomGpu()
+    : isMobile
+      ? randomMobileGpu()
+      : randomGpu()
   const seed = seedFromString(options.profileSeed?.trim() || 'default-profile-seed')
 
   const config = JSON.stringify({
     languages,
     gpuVendor: gpu.vendor,
     gpuRenderer: gpu.renderer,
-    seed
+    seed,
+    isMobile
   })
 
   return `(() => {
@@ -124,26 +160,34 @@ export function buildStealthScript(options: StealthOptions = {}): string {
         configurable: true
       });
 
-      const makePlugin = (name, filename, description) => {
-        const plugin = Object.create(Plugin.prototype);
-        Object.defineProperties(plugin, {
-          name: { value: name, enumerable: true },
-          filename: { value: filename, enumerable: true },
-          description: { value: description, enumerable: true },
-          length: { value: 1, enumerable: true }
-        });
-        return plugin;
-      };
-      const fakePlugins = [
-        makePlugin('PDF Viewer', 'internal-pdf-viewer', 'Portable Document Format'),
-        makePlugin('Chrome PDF Viewer', 'internal-pdf-viewer', 'Portable Document Format'),
-        makePlugin('Chromium PDF Viewer', 'internal-pdf-viewer', 'Portable Document Format'),
-        makePlugin('Microsoft Edge PDF Viewer', 'internal-pdf-viewer', 'Portable Document Format'),
-        makePlugin('WebKit built-in PDF', 'internal-pdf-viewer', 'Portable Document Format')
-      ];
+      // Real Android Chrome reports an empty plugin list — the PDF-viewer
+      // entries below are a desktop-Chrome-only feature, so a mobile launch
+      // must NOT get them (an Android UA with 5 desktop plugin entries is an
+      // easy, obvious mismatch for any fingerprinting script to catch).
       const pluginArray = Object.create(PluginArray.prototype);
-      fakePlugins.forEach((p, i) => { pluginArray[i] = p; pluginArray[p.name] = p; });
-      Object.defineProperty(pluginArray, 'length', { value: fakePlugins.length });
+      if (CFG.isMobile) {
+        Object.defineProperty(pluginArray, 'length', { value: 0 });
+      } else {
+        const makePlugin = (name, filename, description) => {
+          const plugin = Object.create(Plugin.prototype);
+          Object.defineProperties(plugin, {
+            name: { value: name, enumerable: true },
+            filename: { value: filename, enumerable: true },
+            description: { value: description, enumerable: true },
+            length: { value: 1, enumerable: true }
+          });
+          return plugin;
+        };
+        const fakePlugins = [
+          makePlugin('PDF Viewer', 'internal-pdf-viewer', 'Portable Document Format'),
+          makePlugin('Chrome PDF Viewer', 'internal-pdf-viewer', 'Portable Document Format'),
+          makePlugin('Chromium PDF Viewer', 'internal-pdf-viewer', 'Portable Document Format'),
+          makePlugin('Microsoft Edge PDF Viewer', 'internal-pdf-viewer', 'Portable Document Format'),
+          makePlugin('WebKit built-in PDF', 'internal-pdf-viewer', 'Portable Document Format')
+        ];
+        fakePlugins.forEach((p, i) => { pluginArray[i] = p; pluginArray[p.name] = p; });
+        Object.defineProperty(pluginArray, 'length', { value: fakePlugins.length });
+      }
       Object.defineProperty(Navigator.prototype, 'plugins', {
         get: () => pluginArray,
         configurable: true

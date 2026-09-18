@@ -8,7 +8,7 @@ import { Settings, FolderOpen, Eye, EyeOff } from 'lucide-react'
 import { ModalShell } from './ModalShell'
 import { useAccountStore } from '../../store/useAccountStore'
 import { useLanguageStore } from '../../store/useLanguageStore'
-import { DEFAULT_SETTINGS, type AppSettings, type BrowserMode, type HardwareMode } from '../../../types/settings'
+import { DEFAULT_SETTINGS, type AppSettings, type BrowserMode, type HardwareMode, type ViewMode } from '../../../types/settings'
 
 export function GeneralSettingsModal({
   open,
@@ -99,7 +99,7 @@ export function GeneralSettingsModal({
       }
     >
       {loading ? (
-        <div className="flex h-40 items-center justify-center text-[12px] text-slate-500">
+        <div className="flex h-40 items-center justify-center text-[12px] text-ink-muted">
           Loading settings…
         </div>
       ) : (
@@ -114,7 +114,7 @@ export function GeneralSettingsModal({
               value={settings.defaultConcurrency}
               onChange={(e) => patch({ defaultConcurrency: Number(e.target.value) })}
             />
-            <span className="text-[11px] text-slate-500">{t('accountsRunInParallel')}</span>
+            <span className="text-[11px] text-ink-muted">{t('accountsRunInParallel')}</span>
           </fieldset>
 
           <fieldset className="win-fieldset">
@@ -137,6 +137,30 @@ export function GeneralSettingsModal({
                   onChange={() => patch({ browserMode: 'headed' as BrowserMode })}
                 />
                 {t('headedDesc')}
+              </label>
+            </div>
+          </fieldset>
+
+          <fieldset className="win-fieldset">
+            <legend>{t('viewMode')}</legend>
+            <div className="flex gap-4 py-1">
+              <label className="flex items-center gap-1.5" title="Desktop Chromium — current behavior, unchanged.">
+                <input
+                  type="radio"
+                  name="view-mode"
+                  checked={settings.viewMode === 'browser'}
+                  onChange={() => patch({ viewMode: 'browser' as ViewMode })}
+                />
+                {t('browserViewDesc')}
+              </label>
+              <label className="flex items-center gap-1.5" title="Emulates a random real modern Android device (phone/tablet) per account launch.">
+                <input
+                  type="radio"
+                  name="view-mode"
+                  checked={settings.viewMode === 'app'}
+                  onChange={() => patch({ viewMode: 'app' as ViewMode })}
+                />
+                {t('appViewDesc')}
               </label>
             </div>
           </fieldset>
@@ -175,7 +199,7 @@ export function GeneralSettingsModal({
           </fieldset>
 
           <label className="flex flex-col gap-1.5">
-            <span className="font-medium text-slate-700">
+            <span className="font-medium text-ink">
               {t('customChromiumPath')}
             </span>
             <div className="flex gap-1.5">
@@ -246,7 +270,7 @@ export function GeneralSettingsModal({
           </label>
 
           <label className="flex flex-col gap-1.5">
-            <span className="font-medium text-slate-700">
+            <span className="font-medium text-ink">
               {t('chromeProfilePath')}
             </span>
             <div className="flex gap-1.5">
@@ -264,7 +288,7 @@ export function GeneralSettingsModal({
           </label>
 
           <label className="flex flex-col gap-1.5">
-            <span className="font-medium text-slate-700">
+            <span className="font-medium text-ink">
               {t('avatarDownloadDir')}
             </span>
             <div className="flex gap-1.5">
@@ -282,7 +306,7 @@ export function GeneralSettingsModal({
           </label>
 
           <label className="flex flex-col gap-1.5">
-            <span className="font-medium text-slate-700">Default Scenario</span>
+            <span className="font-medium text-ink">Default Scenario</span>
             <select
               className="win-input"
               value={settings.defaultScenarioId ?? ''}
@@ -297,7 +321,7 @@ export function GeneralSettingsModal({
                 </option>
               ))}
             </select>
-            <span className="text-[11px] text-slate-500">
+            <span className="text-[11px] text-ink-muted">
               Preselected in the Scenario dropdown when the app starts.
             </span>
           </label>
@@ -314,9 +338,9 @@ export function GeneralSettingsModal({
                   onChange={() => patch({ metadataExtractionMode: 'full' })}
                 />
                 <span>
-                  <span className="font-medium text-slate-700">Full Extraction</span>
+                  <span className="font-medium text-ink">Full Extraction</span>
                   <br />
-                  <span className="text-[11px] text-slate-500">
+                  <span className="text-[11px] text-ink-muted">
                     Cookies, Name, Avatar (.jpg), Primary Location, Created Date.
                   </span>
                 </span>
@@ -330,9 +354,9 @@ export function GeneralSettingsModal({
                   onChange={() => patch({ metadataExtractionMode: 'fast' })}
                 />
                 <span>
-                  <span className="font-medium text-slate-700">Fast Mode (Name &amp; Cookies Only)</span>
+                  <span className="font-medium text-ink">Fast Mode (Name &amp; Cookies Only)</span>
                   <br />
-                  <span className="text-[11px] text-slate-500">
+                  <span className="text-[11px] text-ink-muted">
                     Skips Primary Location and Created Date scraping for high-speed batch runs.
                   </span>
                 </span>
@@ -352,11 +376,11 @@ export function GeneralSettingsModal({
                   onChange={() => patch({ loginMode: 'standard_pipeline' })}
                 />
                 <span>
-                  <span className="font-medium text-slate-700">
+                  <span className="font-medium text-ink">
                     🔘 UID | Pass | 2FA Pipeline (Standard MaxCare Flow)
                   </span>
                   <br />
-                  <span className="text-[11px] text-slate-500">
+                  <span className="text-[11px] text-ink-muted">
                     ពិនិត្យ Session ស្រាប់ → ព្យាយាមបញ្ចូល Cookie → Fallback ទៅ UID/Pass + 2FA
                     ប្រសិនបើ Cookie ផុតកំណត់ → Update Cookie ថ្មីត្រឡប់មកវិញ។
                   </span>
@@ -371,11 +395,11 @@ export function GeneralSettingsModal({
                   onChange={() => patch({ loginMode: 'cookie_only' })}
                 />
                 <span>
-                  <span className="font-medium text-slate-700">
+                  <span className="font-medium text-ink">
                     🔘 Cookie Login Only (ចូលដោយ Cookie ផ្ទាល់)
                   </span>
                   <br />
-                  <span className="text-[11px] text-slate-500">
+                  <span className="text-[11px] text-ink-muted">
                     ចាក់បញ្ចូល Cookie និងពិនិត្យ Session ផ្ទាល់។ ប្រសិនបើ Cookie ស្លាប់ ឬផុតកំណត់
                     នឹងបញ្ឈប់ភ្លាមៗ (មិនវាយ UID/Pass/2FA ឡើយ ដើម្បីការពារ Checkpoint)។
                   </span>
@@ -385,8 +409,8 @@ export function GeneralSettingsModal({
           </fieldset>
 
           <label className="flex flex-col gap-1.5">
-            <span className="font-medium text-slate-700">
-              {t('twoCaptchaApiKey')} <span className="text-slate-400">(optional)</span>
+            <span className="font-medium text-ink">
+              {t('twoCaptchaApiKey')} <span className="text-ink-muted">(optional)</span>
             </span>
             <div className="flex gap-1.5">
               <input
@@ -405,7 +429,7 @@ export function GeneralSettingsModal({
                 {showApiKey ? <EyeOff size={13} className="text-[#4a6a8a]" /> : <Eye size={13} className="text-[#4a6a8a]" />}
               </button>
             </div>
-            <span className="text-[11px] text-slate-500">
+            <span className="text-[11px] text-ink-muted">
               Used to solve image/reCAPTCHA challenges via the 2Captcha.com API.
             </span>
           </label>

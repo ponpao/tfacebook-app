@@ -731,11 +731,11 @@ export function DeletePagePostsModal({ open, onClose }: DeletePagePostsModalProp
       icon={Trash2}
       width="max-w-[1300px]"
       height="h-[88vh] max-h-[760px]"
-      bodyClassName="flex-1 min-h-0 overflow-hidden p-2 bg-[#f0f2f5]"
+      bodyClassName="flex-1 min-h-0 overflow-hidden p-2 bg-surface-sunken"
       footer={
         <div className="flex w-full items-center justify-between">
           {/* Left Footer Info / Progress */}
-          <div className="flex items-center gap-2 text-xs text-slate-600 truncate max-w-[420px]">
+          <div className="flex items-center gap-2 text-xs text-ink-muted truncate max-w-[420px]">
             {progressMsg ? (
               <span className="flex items-center gap-1.5 font-medium text-blue-700 animate-pulse">
                 <RefreshCw size={13} className="animate-spin text-blue-600 shrink-0" />
@@ -753,8 +753,8 @@ export function DeletePagePostsModal({ open, onClose }: DeletePagePostsModalProp
           <div className="flex items-center gap-2 shrink-0">
             {/* LIVE DELETION STATS BAR */}
             {(deleting || deleteTotal > 0) && (
-              <div className="flex items-center gap-1.5 rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-xs shadow-2xs animate-in fade-in">
-                <span className="flex items-center gap-1 font-mono font-bold text-rose-800 text-[11px]">
+              <div className="flex items-center gap-1.5 rounded-md border border-rose-200 dark:border-rose-700/40 bg-rose-50 dark:bg-rose-500/15 px-2 py-1 text-xs shadow-2xs animate-in fade-in">
+                <span className="flex items-center gap-1 font-mono font-bold text-rose-800 dark:text-rose-300 text-[11px]">
                   <Timer size={12} className={deleting ? 'animate-spin text-rose-600' : 'text-rose-600'} />
                   {formatTimer(deleteSeconds)}
                 </span>
@@ -784,8 +784,8 @@ export function DeletePagePostsModal({ open, onClose }: DeletePagePostsModalProp
               }
               className={`flex items-center gap-1 rounded border px-2 py-1 text-xs font-semibold transition-all ${
                 headlessMode
-                  ? 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
-                  : 'border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100'
+                  ? 'border-emerald-300 dark:border-emerald-700/40 bg-emerald-50 dark:bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-500/25'
+                  : 'border-amber-300 dark:border-amber-700/40 bg-amber-50 dark:bg-amber-500/15 text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-500/25'
               }`}
             >
               {headlessMode ? (
@@ -835,28 +835,28 @@ export function DeletePagePostsModal({ open, onClose }: DeletePagePostsModalProp
         {/* ========================================================================= */}
         {/* LEFT COLUMN: Accounts & Managed Pages (UID | ID Page | Name Page)         */}
         {/* ========================================================================= */}
-        <div className="flex w-[450px] shrink-0 flex-col rounded border border-slate-300 bg-white shadow-sm overflow-hidden">
+        <div className="flex w-[450px] shrink-0 flex-col rounded-xl border border-edge bg-surface overflow-hidden">
           {/* Header */}
-          <div className="flex items-center justify-between border-b border-slate-200 bg-slate-100 px-3 py-2">
-            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
-              <User size={14} className="text-[#0067c0]" />
+          <div className="flex items-center justify-between border-b border-edge bg-surface-sunken px-3 py-2">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-ink">
+              <User size={14} className="text-accent" />
               <span>{t('accountsAndPages')} ({filteredAccountPageList.length})</span>
             </div>
             {selectedLeftKeys.size > 0 && (
-              <span className="text-[10px] font-bold text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded">
+              <span className="text-[10px] font-bold text-blue-700 dark:text-blue-300 bg-blue-100 dark:bg-blue-500/15 px-1.5 py-0.5 rounded">
                 {selectedLeftKeys.size} selected
               </span>
             )}
           </div>
 
           {/* Category Folder selector & Search box */}
-          <div className="border-b border-slate-200 p-1.5 bg-slate-50 flex flex-col gap-1.5">
+          <div className="border-b border-edge p-1.5 bg-surface-sunken flex flex-col gap-1.5">
             <div className="flex items-center gap-1.5">
-              <label className="text-[11px] font-semibold text-slate-700 whitespace-nowrap">Folder:</label>
+              <label className="text-[11px] font-semibold text-ink-muted whitespace-nowrap">Folder:</label>
               <select
                 value={selectedFolderId}
                 onChange={(e) => setSelectedFolderId(Number(e.target.value))}
-                className="w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 focus:outline-none focus:border-blue-500 shadow-2xs"
+                className="w-full rounded-lg border border-edge bg-surface px-2 py-1 text-xs text-ink focus:outline-none focus:border-blue-500"
               >
                 <option value={ALL_FOLDERS}>
                   All Folders ({folders.reduce((acc, f) => acc + (f.account_count || 0), 0)})
@@ -869,12 +869,12 @@ export function DeletePagePostsModal({ open, onClose }: DeletePagePostsModalProp
               </select>
             </div>
 
-            <div className="flex items-center gap-1 rounded border border-slate-300 bg-white px-2 py-1">
-              <Search size={12} className="text-slate-400" />
+            <div className="flex items-center gap-1 rounded-lg border border-edge bg-surface px-2 py-1">
+              <Search size={12} className="text-ink-muted" />
               <input
                 type="text"
                 placeholder={t('searchPlaceholder')}
-                className="w-full text-xs text-slate-800 focus:outline-none bg-transparent"
+                className="w-full text-xs text-ink focus:outline-none bg-transparent"
                 value={searchAccountQuery}
                 onChange={(e) => setSearchAccountQuery(e.target.value)}
               />
@@ -884,18 +884,18 @@ export function DeletePagePostsModal({ open, onClose }: DeletePagePostsModalProp
           {/* Table list with Right Click & Mouse Drag / Shift-Click Selection */}
           <div className="flex-1 overflow-y-auto select-none">
             <table className="w-full border-collapse text-left text-xs">
-              <thead className="sticky top-0 bg-slate-100 text-[11px] font-bold text-slate-700 border-b border-slate-200 shadow-xs">
+              <thead className="sticky top-0 bg-surface-sunken text-[11px] font-bold text-ink-muted border-b border-edge">
                 <tr>
                   <th className="py-1.5 px-2 w-8 text-center">
                     <button
                       type="button"
                       onClick={toggleSelectAllLeft}
-                      className="text-slate-500 hover:text-slate-800"
+                      className="text-ink-muted hover:text-ink"
                     >
                       {selectedLeftKeys.size === filteredAccountPageList.length && filteredAccountPageList.length > 0 ? (
                         <CheckSquare size={13} className="text-blue-600 mx-auto" />
                       ) : (
-                        <Square size={13} className="text-slate-400 mx-auto" />
+                        <Square size={13} className="text-ink-muted mx-auto" />
                       )}
                     </button>
                   </th>
@@ -951,8 +951,8 @@ export function DeletePagePostsModal({ open, onClose }: DeletePagePostsModalProp
                             ? 'bg-[#0078d4] text-white font-semibold border-l-4 border-l-amber-400'
                             : 'bg-[#0078d4]/90 text-white font-medium'
                           : isActive
-                            ? 'bg-blue-100 text-blue-950 font-semibold border-l-4 border-l-blue-600'
-                            : 'hover:bg-slate-50 text-slate-700'
+                            ? 'bg-blue-100 dark:bg-blue-500/15 text-blue-950 dark:text-blue-300 font-semibold border-l-4 border-l-blue-600'
+                            : 'hover:bg-slate-50 dark:hover:bg-slate-500/10 text-slate-700 dark:text-ink'
                       }`}
                     >
                       <td className="py-2 px-2 text-center" onClick={(e) => toggleLeftRowSelection(key, e)}>
@@ -982,14 +982,14 @@ export function DeletePagePostsModal({ open, onClose }: DeletePagePostsModalProp
         {/* ========================================================================= */}
         {/* RIGHT COLUMN: Filters, Metrics Bar, and Posts Table (Full Mouse Select)   */}
         {/* ========================================================================= */}
-        <div className="flex flex-1 min-w-0 flex-col rounded border border-slate-300 bg-white shadow-sm overflow-hidden">
+        <div className="flex flex-1 min-w-0 flex-col rounded-xl border border-edge bg-surface overflow-hidden">
           {/* Top Controls Card - Ultra Slim Single Line (From, To, Type, Threads) */}
-          <div className="border-b border-slate-200 bg-slate-50 px-2.5 py-1.5">
+          <div className="border-b border-edge bg-surface-sunken px-2.5 py-1.5">
             <div className="flex items-center gap-3">
               {/* From Date */}
               <div className="flex items-center gap-1 text-xs">
-                <Calendar size={13} className="text-slate-500" />
-                <span className="text-slate-600 font-medium text-[11px]">From:</span>
+                <Calendar size={13} className="text-ink-muted" />
+                <span className="text-ink-muted font-medium text-[11px]">From:</span>
                 <input
                   type="date"
                   className="win-input text-xs h-[26px] px-1.5 py-0"
@@ -1000,8 +1000,8 @@ export function DeletePagePostsModal({ open, onClose }: DeletePagePostsModalProp
 
               {/* To Date */}
               <div className="flex items-center gap-1 text-xs">
-                <Calendar size={13} className="text-slate-500" />
-                <span className="text-slate-600 font-medium text-[11px]">To:</span>
+                <Calendar size={13} className="text-ink-muted" />
+                <span className="text-ink-muted font-medium text-[11px]">To:</span>
                 <input
                   type="date"
                   className="win-input text-xs h-[26px] px-1.5 py-0"
@@ -1011,14 +1011,14 @@ export function DeletePagePostsModal({ open, onClose }: DeletePagePostsModalProp
               </div>
 
               {/* Type buttons */}
-              <div className="flex items-center rounded border border-slate-300 bg-white p-0.5">
+              <div className="flex items-center rounded-lg border border-edge bg-surface p-0.5">
                 {(['ALL', 'REEL', 'PHOTO', 'STATUS'] as PagePostType[]).map((t) => (
                   <button
                     key={t}
                     type="button"
                     onClick={() => setTargetType(t)}
-                    className={`rounded px-2 py-0.5 text-[11px] font-semibold transition-all ${
-                      targetType === t ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
+                    className={`rounded-lg px-2 py-0.5 text-[11px] font-semibold transition-all ${
+                      targetType === t ? 'bg-blue-600 text-white' : 'text-ink-muted hover:bg-surface-sunken'
                     }`}
                   >
                     {t === 'ALL' ? 'All' : t}
@@ -1027,8 +1027,8 @@ export function DeletePagePostsModal({ open, onClose }: DeletePagePostsModalProp
               </div>
 
               {/* Threads setting */}
-              <div className="flex items-center gap-1 text-xs border border-slate-300 rounded bg-white px-2 py-0.5" title="Concurrent threads for processing">
-                <span className="text-slate-600 font-semibold text-[11px]">Threads:</span>
+              <div className="flex items-center gap-1 text-xs border border-edge rounded-lg bg-surface px-2 py-0.5" title="Concurrent threads for processing">
+                <span className="text-ink-muted font-semibold text-[11px]">Threads:</span>
                 <input
                   type="number"
                   min={1}
@@ -1042,25 +1042,25 @@ export function DeletePagePostsModal({ open, onClose }: DeletePagePostsModalProp
           </div>
 
           {/* Metrics summary bar with Select All */}
-          <div className="flex items-center justify-between border-b border-slate-200 bg-slate-100 px-3 py-1 text-xs text-slate-700">
+          <div className="flex items-center justify-between border-b border-edge bg-surface-sunken px-3 py-1 text-xs text-ink-muted">
             <div className="flex items-center gap-2">
               <button
                 onClick={toggleSelectAll}
                 disabled={visiblePosts.length === 0}
-                className="flex items-center gap-1 font-semibold text-slate-700 hover:text-slate-900 disabled:opacity-50"
+                className="flex items-center gap-1 font-semibold text-ink-muted hover:text-ink disabled:opacity-50"
               >
                 {visiblePosts.length > 0 && selectedPostIds.size === visiblePosts.filter((p) => p.status !== '✓ Completed').length ? (
                   <CheckSquare size={15} className="text-blue-600" />
                 ) : (
-                  <Square size={15} className="text-slate-400" />
+                  <Square size={15} className="text-ink-muted" />
                 )}
                 <span>Select All ({selectedPostIds.size}/{visiblePosts.length})</span>
               </button>
             </div>
 
             <div className="flex items-center gap-3 text-[11px]">
-              <span className="flex items-center gap-1 text-slate-600">
-                <Layers size={12} className="text-blue-600" /> Posts: <strong className="text-slate-900">{visiblePosts.length}</strong>
+              <span className="flex items-center gap-1 text-ink-muted">
+                <Layers size={12} className="text-blue-600" /> Posts: <strong className="text-ink">{visiblePosts.length}</strong>
               </span>
               <span className="flex items-center gap-1 text-slate-600">
                 <Eye size={12} className="text-emerald-600" /> Views: <strong className="text-emerald-700">{stats.views.toLocaleString()}</strong>
@@ -1078,7 +1078,7 @@ export function DeletePagePostsModal({ open, onClose }: DeletePagePostsModalProp
           <div className="flex-1 overflow-y-auto select-none">
             {visiblePosts.length > 0 ? (
               <table className="w-full border-collapse text-left text-xs">
-                <thead className="sticky top-0 bg-slate-100 text-[11px] font-bold text-slate-700 border-b border-slate-200 shadow-xs">
+                <thead className="sticky top-0 bg-surface-sunken text-[11px] font-bold text-ink-muted border-b border-edge">
                   <tr>
                     <th className="py-2 px-3 w-10 text-center">#</th>
                     <th className="py-2 px-2 w-24">Type</th>
@@ -1133,10 +1133,10 @@ export function DeletePagePostsModal({ open, onClose }: DeletePagePostsModalProp
                         onContextMenu={(e) => handlePostContextMenu(e, post)}
                         className={`cursor-pointer transition-colors ${
                           isCompleted
-                            ? 'bg-slate-100/60 opacity-60'
+                            ? 'bg-slate-100/60 dark:bg-slate-500/10 opacity-60'
                             : isSelected
                               ? 'bg-[#0078d4] text-white font-medium shadow-xs'
-                              : 'hover:bg-slate-50 text-slate-800'
+                              : 'hover:bg-slate-50 dark:hover:bg-slate-500/10 text-slate-800 dark:text-ink'
                         }`}
                       >
                         <td
@@ -1162,7 +1162,7 @@ export function DeletePagePostsModal({ open, onClose }: DeletePagePostsModalProp
                           {post.type === 'Reel' ? (
                             <span
                               className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-bold ${
-                                isSelected ? 'bg-purple-900 text-purple-100' : 'bg-purple-100 text-purple-800'
+                                isSelected ? 'bg-purple-900 text-purple-100' : 'bg-purple-100 dark:bg-purple-500/15 text-purple-800 dark:text-purple-300'
                               }`}
                             >
                               <Film size={10} /> Reel
@@ -1170,7 +1170,7 @@ export function DeletePagePostsModal({ open, onClose }: DeletePagePostsModalProp
                           ) : post.type === 'Photo' ? (
                             <span
                               className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-bold ${
-                                isSelected ? 'bg-blue-900 text-blue-100' : 'bg-blue-100 text-blue-800'
+                                isSelected ? 'bg-blue-900 text-blue-100' : 'bg-blue-100 dark:bg-blue-500/15 text-blue-800 dark:text-blue-300'
                               }`}
                             >
                               <ImageIcon size={10} /> Photo
@@ -1228,19 +1228,19 @@ export function DeletePagePostsModal({ open, onClose }: DeletePagePostsModalProp
                         </td>
                         <td className="py-2 px-3 text-center">
                           {isCompleted ? (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800 border border-emerald-200">
+                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 dark:bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-700/40">
                               <CheckCircle2 size={11} /> Completed
                             </span>
                           ) : isDeleting ? (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-800 border border-blue-200 animate-pulse">
+                            <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 dark:bg-blue-500/15 px-2 py-0.5 text-[10px] font-bold text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-700/40 animate-pulse">
                               <RefreshCw size={10} className="animate-spin" /> Deleting...
                             </span>
                           ) : isProcessing ? (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800 border border-amber-200 animate-pulse">
+                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-700/40 animate-pulse">
                               <Clock size={10} /> Processing...
                             </span>
                           ) : isFailed ? (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-800 border border-rose-200">
+                            <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 dark:bg-rose-500/15 px-2 py-0.5 text-[10px] font-bold text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-700/40">
                               <XCircle size={11} /> Failed
                             </span>
                           ) : (
@@ -1261,10 +1261,10 @@ export function DeletePagePostsModal({ open, onClose }: DeletePagePostsModalProp
                 </tbody>
               </table>
             ) : (
-              <div className="flex h-full min-h-[300px] flex-col items-center justify-center text-center p-6 text-slate-400">
-                <Layers size={36} className="text-slate-300 mb-2" />
-                <h4 className="text-sm font-semibold text-slate-700">{t('noPostsLoaded')}</h4>
-                <p className="text-xs text-slate-500 max-w-sm mt-0.5">
+              <div className="flex h-full min-h-[300px] flex-col items-center justify-center text-center p-6 text-ink-muted">
+                <Layers size={36} className="text-ink-muted mb-2" />
+                <h4 className="text-sm font-semibold text-ink-muted">{t('noPostsLoaded')}</h4>
+                <p className="text-xs text-ink-muted max-w-sm mt-0.5">
                   {t('noPostsDesc')}
                 </p>
               </div>
@@ -1276,34 +1276,34 @@ export function DeletePagePostsModal({ open, onClose }: DeletePagePostsModalProp
       {/* Right Click Context Menu on Left Accounts & Pages Table */}
       {contextMenu.visible && (
         <div
-          className="fixed z-70 min-w-[260px] rounded-md border border-slate-300 bg-white py-1 shadow-2xl animate-in fade-in-50 zoom-in-95 text-xs text-slate-800"
+          className="fixed z-70 min-w-[260px] rounded-xl border border-edge bg-surface py-1 animate-in fade-in-50 zoom-in-95 text-xs text-ink"
           style={{ top: contextMenu.y, left: contextMenu.x }}
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="px-3 py-1.5 font-bold border-b border-slate-100 text-slate-500 text-[11px] bg-slate-50">
+          <div className="px-3 py-1.5 font-bold border-b border-edge text-ink-muted text-[11px] bg-surface-sunken">
             {selectedLeftKeys.size > 0 ? `${selectedLeftKeys.size} Selected Item(s)` : 'Account/Page Actions'}
           </div>
 
           <button
-            className="flex w-full items-center gap-2 px-3 py-2 text-slate-700 hover:bg-slate-100 text-left"
+            className="flex w-full items-center gap-2 px-3 py-2 text-ink hover:bg-surface-sunken text-left"
             onClick={() => handleClearView(contextMenu.row)}
           >
-            <Eraser size={14} className="text-slate-500" />
+            <Eraser size={14} className="text-ink-muted" />
             <span>Clear View ({selectedLeftKeys.size > 0 ? selectedLeftKeys.size : 1} selected)</span>
           </button>
 
           <button
-            className="flex w-full items-center gap-2 px-3 py-2 text-blue-700 hover:bg-blue-50 text-left font-medium"
+            className="flex w-full items-center gap-2 px-3 py-2 text-blue-700 hover:bg-surface-sunken text-left font-medium"
             onClick={handleBatchScanPages}
           >
             <Sparkles size={14} className="text-blue-600" />
             <span>Get new data (Page) ({selectedLeftKeys.size > 0 ? selectedLeftKeys.size : 1} selected)</span>
           </button>
 
-          <div className="my-1 border-t border-slate-100" />
+          <div className="my-1 border-t border-edge" />
 
           <button
-            className="flex w-full items-center gap-2 px-3 py-2 text-rose-700 hover:bg-rose-50 text-left font-bold"
+            className="flex w-full items-center gap-2 px-3 py-2 text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-500/15 text-left font-bold"
             onClick={() => handleDeletePageData(contextMenu.row)}
           >
             <Trash2 size={14} className="text-rose-600" />
@@ -1315,16 +1315,16 @@ export function DeletePagePostsModal({ open, onClose }: DeletePagePostsModalProp
       {/* Right Click Context Menu on Right Posts Table */}
       {postContextMenu.visible && (
         <div
-          className="fixed z-70 min-w-[240px] rounded-md border border-slate-300 bg-white py-1 shadow-2xl animate-in fade-in-50 zoom-in-95 text-xs text-slate-800"
+          className="fixed z-70 min-w-[240px] rounded-xl border border-edge bg-surface py-1 animate-in fade-in-50 zoom-in-95 text-xs text-ink"
           style={{ top: postContextMenu.y, left: postContextMenu.x }}
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="px-3 py-1.5 font-bold border-b border-slate-100 text-slate-500 text-[11px] bg-slate-50">
+          <div className="px-3 py-1.5 font-bold border-b border-edge text-ink-muted text-[11px] bg-surface-sunken">
             {selectedPostIds.size > 0 ? `${selectedPostIds.size} Selected Post(s)` : 'Post Actions'}
           </div>
 
           <button
-            className="flex w-full items-center gap-2 px-3 py-2 text-rose-700 hover:bg-rose-50 text-left font-bold"
+            className="flex w-full items-center gap-2 px-3 py-2 text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-500/15 text-left font-bold"
             onClick={() => {
               setPostContextMenu((c) => ({ ...c, visible: false }))
               setConfirmDeleteOpen(true)
@@ -1334,18 +1334,18 @@ export function DeletePagePostsModal({ open, onClose }: DeletePagePostsModalProp
             <span>Move to Trash ({selectedPostIds.size > 0 ? selectedPostIds.size : 1} selected)</span>
           </button>
 
-          <div className="my-1 border-t border-slate-100" />
+          <div className="my-1 border-t border-edge" />
 
           <button
-            className="flex w-full items-center gap-2 px-3 py-2 text-slate-700 hover:bg-slate-100 text-left"
+            className="flex w-full items-center gap-2 px-3 py-2 text-ink hover:bg-surface-sunken text-left"
             onClick={handleClearPostsView}
           >
-            <Eraser size={14} className="text-slate-500" />
+            <Eraser size={14} className="text-ink-muted" />
             <span>Clear from View ({selectedPostIds.size > 0 ? selectedPostIds.size : 1} selected)</span>
           </button>
 
           <button
-            className="flex w-full items-center gap-2 px-3 py-2 text-blue-700 hover:bg-blue-50 text-left font-medium"
+            className="flex w-full items-center gap-2 px-3 py-2 text-blue-700 hover:bg-surface-sunken text-left font-medium"
             onClick={toggleSelectAll}
           >
             <CheckSquare size={14} className="text-blue-600" />
@@ -1357,20 +1357,20 @@ export function DeletePagePostsModal({ open, onClose }: DeletePagePostsModalProp
       {/* "Get new data (Page)" Live Progress Dialog */}
       {batchScanOpen && (
         <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/60 p-4 animate-in fade-in">
-          <div className="w-full max-w-md rounded-lg border border-slate-300 bg-white p-6 shadow-2xl">
+          <div className="w-full max-w-md rounded-xl border border-edge bg-surface p-6">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2.5">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 text-blue-600">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-500/15 text-blue-600 dark:text-blue-400">
                   <Sparkles size={22} className="animate-pulse" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-slate-900">Get new data (Page)</h3>
-                  <p className="text-xs text-slate-500">Scanning Managed Pages in Background</p>
+                  <h3 className="text-sm font-bold text-ink">Get new data (Page)</h3>
+                  <p className="text-xs text-ink-muted">Scanning Managed Pages in Background</p>
                 </div>
               </div>
 
               {/* Timer Badge */}
-              <div className="flex items-center gap-1.5 rounded-md bg-slate-100 px-2.5 py-1 text-xs font-mono font-bold text-slate-700 border border-slate-200">
+              <div className="flex items-center gap-1.5 rounded-lg bg-surface-sunken px-2.5 py-1 text-xs font-mono font-bold text-ink-muted border border-edge">
                 <Clock size={13} className="text-blue-600" />
                 <span>{formatTimer(elapsedSeconds)}</span>
               </div>
@@ -1378,7 +1378,7 @@ export function DeletePagePostsModal({ open, onClose }: DeletePagePostsModalProp
 
             {/* Progress Bar */}
             <div className="space-y-2 mb-4">
-              <div className="flex justify-between text-xs text-slate-600">
+              <div className="flex justify-between text-xs text-ink-muted">
                 <span>
                   Account: <strong>{batchProgress ? `${batchProgress.index} / ${batchProgress.total}` : '0 / 0'}</strong>
                 </span>
@@ -1389,7 +1389,7 @@ export function DeletePagePostsModal({ open, onClose }: DeletePagePostsModalProp
                 </span>
               </div>
 
-              <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-200">
+              <div className="h-2.5 w-full overflow-hidden rounded-full bg-surface-sunken">
                 <div
                   className="h-full bg-blue-600 transition-all duration-300 ease-out"
                   style={{
@@ -1404,7 +1404,7 @@ export function DeletePagePostsModal({ open, onClose }: DeletePagePostsModalProp
             </div>
 
             {/* Activity Status */}
-            <div className="rounded bg-slate-50 p-2.5 border border-slate-200 text-xs text-slate-700 mb-4">
+            <div className="rounded-lg bg-surface-sunken p-2.5 border border-edge text-xs text-ink mb-4">
               <div className="flex items-center gap-2">
                 <RefreshCw size={13} className="animate-spin text-blue-600 shrink-0" />
                 <span className="truncate">
@@ -1433,22 +1433,22 @@ export function DeletePagePostsModal({ open, onClose }: DeletePagePostsModalProp
       {/* Confirmation Dialog for Move to Trash */}
       {confirmDeleteOpen && (
         <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/60 p-4 animate-in fade-in">
-          <div className="w-full max-w-md rounded border border-slate-300 bg-white p-5 shadow-2xl">
+          <div className="w-full max-w-md rounded-xl border border-edge bg-surface p-5">
             <div className="flex items-center gap-2.5 mb-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-rose-100 text-rose-600">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-rose-100 dark:bg-rose-500/15 text-rose-600 dark:text-rose-400">
                 <AlertTriangle size={20} />
               </div>
               <div>
-                <h3 className="text-sm font-bold text-slate-900">Confirm Move to Trash</h3>
-                <p className="text-xs text-slate-500">Facebook Meta Business Suite</p>
+                <h3 className="text-sm font-bold text-ink">Confirm Move to Trash</h3>
+                <p className="text-xs text-ink-muted">Facebook Meta Business Suite</p>
               </div>
             </div>
 
-            <p className="text-xs text-slate-700 mb-5 leading-relaxed">
+            <p className="text-xs text-ink mb-5 leading-relaxed">
               Are you sure you want to move <strong>{selectedPostIds.size} post(s)</strong> of page{' '}
               <strong className="text-blue-700">{activeRow?.pageName}</strong> to Trash?
               <br />
-              <span className="text-[11px] text-slate-600 mt-2 block space-y-0.5 bg-slate-50 p-2 rounded border border-slate-200">
+              <span className="text-[11px] text-ink-muted mt-2 block space-y-0.5 bg-surface-sunken p-2 rounded-lg border border-edge">
                 <div>• Threads: <strong className="text-blue-700">{threads} thread(s)</strong></div>
                 <div>
                   • Mode:{' '}

@@ -102,6 +102,8 @@ export interface WindowApi {
   maximize(): Promise<boolean>
   close(): Promise<void>
   isMaximized(): Promise<boolean>
+  /** Opens the Browser Windows panel as a separate OS window (its own taskbar entry), or focuses it if already open. */
+  openBrowserWindowsPanel(): Promise<void>
 }
 
 export interface OpenProfileResult {
@@ -188,6 +190,22 @@ export interface QueueSummary {
  */
 export type ArrangeLayout = 'grid5x2' | 'grid4x2' | 'leftHalf' | 'rightHalf' | 'maximized' | 'restore'
 
+/** One row in the Browser Windows panel — see browserContext.ts's listTrackedWindows(). */
+export interface TrackedWindowInfo {
+  key: string
+  accountName: string
+  rowNumber?: number
+  uid?: string
+  /** 'app' = headless + live interactive tile (no OS window exists); 'browser' = real headed window, screenshot-preview tile with Focus/Close. */
+  viewMode?: 'browser' | 'app'
+}
+
+/** One tile's live capture in the Browser Windows panel — see windowManager.ts's screenshotAllTrackedWindows(). */
+export interface WindowSnapshot {
+  dataUrl: string
+  url: string
+}
+
 export interface AutomationApi {
   /**
    * slotIndex positions this account's headed window in the MaxCare-style
@@ -204,6 +222,32 @@ export interface AutomationApi {
   closeAllBrowsers(): Promise<{ closed: number }>
   /** Tiles/splits every currently-open headed browser window into the given layout — see ArrangeLayout. */
   arrangeWindows(layout: ArrangeLayout): Promise<{ arranged: number; total: number }>
+  /** Every currently-open, trackContext()-keyed browser window with its display metadata, for the Browser Windows panel. */
+  listWindows(): Promise<TrackedWindowInfo[]>
+  /** Brings one tracked window's page to the front. */
+  focusWindow(key: string): Promise<{ ok: boolean }>
+  /** Closes one tracked window by its trackContext() key. */
+  closeWindow(key: string): Promise<{ ok: boolean }>
+  /** Reloads one tracked window's current page. */
+  reloadWindow(key: string): Promise<{ ok: boolean }>
+  /** Browser back-navigation for one tracked window. */
+  goBackWindow(key: string): Promise<{ ok: boolean }>
+  /** Navigates one tracked window back to the Facebook feed. */
+  goHomeWindow(key: string): Promise<{ ok: boolean }>
+  /** Low-quality JPEG screenshot + current URL for every currently-tracked window's page, keyed by trackContext() key — omits any window whose capture failed. */
+  screenshotWindows(): Promise<Record<string, WindowSnapshot>>
+  /** Starts a live CDP screencast for one tracked window (App Mode tiles) — frames arrive via onScreencastFrame. Idempotent. `viewport` is the page's real CSS-pixel size, needed to scale a tile click back to real page coordinates. */
+  startScreencast(key: string): Promise<{ ok: boolean; viewport: { width: number; height: number } | null }>
+  /** Stops a tracked window's screencast. Safe to call even if nothing is streaming. */
+  stopScreencast(key: string): Promise<{ ok: boolean }>
+  /** Simulates a tap at (x, y) in the tracked window's own viewport CSS-pixel coordinates (renderer scales from the tile's rendered size before calling). */
+  dispatchTap(key: string, x: number, y: number): Promise<void>
+  /** Forwards a scroll/wheel gesture at (x, y), same coordinate space as dispatchTap. */
+  dispatchScroll(key: string, x: number, y: number, deltaX: number, deltaY: number): Promise<void>
+  /** Forwards one keyboard event to the tracked window. */
+  dispatchKey(key: string, event: { type: 'keyDown' | 'keyUp' | 'char'; key: string; code: string; text?: string }): Promise<void>
+  /** Fires with each new screencast frame for a streaming key — filter by `key` client-side, since this is one shared channel for every tile. */
+  onScreencastFrame(cb: (payload: { key: string; dataUrl: string }) => void): () => void
   runQueue(accountIds: number[], concurrency: number, scenarioId?: number): Promise<QueueSummary>
   stopQueue(): Promise<boolean>
   isQueueRunning(): Promise<boolean>
@@ -253,6 +297,7 @@ export interface CookieLoginSummary {
 export interface UtilsApi {
   parseSpinSyntax(text: string): Promise<string>
   selectImages(): Promise<string[]>
+  selectMedia(): Promise<string[]>
   selectFolder(): Promise<string | null>
   saveTextFile(
     content: string,

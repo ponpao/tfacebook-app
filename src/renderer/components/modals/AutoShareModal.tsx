@@ -91,7 +91,7 @@ export function AutoShareModal({
       icon={Share2}
       footer={
         <>
-          <span className="mr-auto text-[11px] text-slate-500">
+          <span className="mr-auto text-[11px] text-ink-muted">
             {count} account(s) selected · {threadCount} thread(s)
           </span>
           <button
@@ -113,7 +113,7 @@ export function AutoShareModal({
     >
       <div className="flex flex-col gap-4 text-[12px]">
         <label className="flex flex-col gap-1.5">
-          <span className="font-medium text-slate-700">
+          <span className="font-medium text-ink">
             Target URL (Post, Reel, Video, or Livestream)
           </span>
           <input
@@ -149,11 +149,11 @@ export function AutoShareModal({
         </fieldset>
 
         <label className="flex flex-col gap-1.5">
-          <span className="font-medium text-slate-700">
+          <span className="font-medium text-ink">
             Optional Caption (supports Spin Syntax: {'{a|b|c}'})
           </span>
           <textarea
-            className="h-20 resize-none rounded border border-slate-300 bg-white p-2 font-mono text-[12px] text-slate-900 outline-none focus:border-[#0078d4]"
+            className="h-20 resize-none rounded-lg border border-edge bg-surface p-2 font-mono text-[12px] text-ink outline-none focus:border-[#0078d4]"
             placeholder={'{Check this out|Worth watching}!'}
             value={caption}
             onChange={(e) => setCaption(e.target.value)}
@@ -163,11 +163,11 @@ export function AutoShareModal({
             Test Spin
           </button>
           {spinPreview.length > 0 && (
-            <div className="rounded border border-slate-300 bg-white p-2 text-[11px] text-slate-700">
-              <div className="mb-1 font-semibold text-slate-500">Preview (3 samples):</div>
+            <div className="rounded-lg border border-edge bg-surface p-2 text-[11px] text-ink">
+              <div className="mb-1 font-semibold text-ink-muted">Preview (3 samples):</div>
               {spinPreview.map((p, i) => (
-                <div key={i} className="border-t border-slate-100 py-1 first:border-t-0">
-                  {p || <span className="text-slate-400">(empty)</span>}
+                <div key={i} className="border-t border-edge py-1 first:border-t-0">
+                  {p || <span className="text-ink-muted">(empty)</span>}
                 </div>
               ))}
             </div>

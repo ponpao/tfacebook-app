@@ -63,7 +63,7 @@ export function ImportProxyModal({
       width="max-w-xl"
       footer={
         <>
-          <span className="mr-auto text-[11px] text-slate-500">
+          <span className="mr-auto text-[11px] text-ink-muted">
             {count} account(s) selected · {lines.length} proxy line(s)
           </span>
           <button className="win-btn" onClick={onClose} disabled={busy}>
@@ -77,11 +77,11 @@ export function ImportProxyModal({
     >
       <div className="flex flex-col gap-3 text-[12px]">
         <label className="flex flex-col gap-1.5">
-          <span className="font-medium text-slate-700">
+          <span className="font-medium text-ink">
             Proxy list (one per line — ip:port, ip:port:user:pass, or socks5://...)
           </span>
           <textarea
-            className="h-40 resize-none rounded border border-slate-300 bg-white p-2 font-mono text-[12px] text-slate-900 outline-none focus:border-[#0078d4]"
+            className="h-40 resize-none rounded-lg border border-edge bg-surface p-2 font-mono text-[12px] text-ink outline-none focus:border-[#0078d4]"
             placeholder={'192.168.1.10:8080\n192.168.1.11:8080:user:pass\nsocks5://user:pass@10.0.0.1:1080'}
             value={text}
             onChange={(e) => setText(e.target.value)}

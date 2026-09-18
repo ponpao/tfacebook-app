@@ -164,7 +164,13 @@ export async function runQueue(
 
   const scenario = scenarioId != null ? scenariosRepo.getScenario(scenarioId) : null
   const settings = getAppSettings()
-  const headless = settings.browserMode === 'headless'
+  // App Mode always launches headless (no OS window) regardless of the
+  // separate Browser Mode setting — same rule as every other launch site
+  // (playwrightManager.ts's openProfile, browserAutomation.ts's cookie
+  // login). Without the viewMode check here, a queue run with App View on
+  // but Browser Mode left "Headed" would open real, visible windows for
+  // every account — the exact thing App Mode exists to prevent.
+  const headless = settings.browserMode === 'headless' || settings.viewMode === 'app'
 
   const limit = Math.max(1, Math.min(10, Math.floor(concurrency) || 1))
   const total = accountIds.length

@@ -760,12 +760,12 @@ export const GetPageInfoModal: React.FC<GetPageInfoModalProps> = (props) => {
       icon={Layers}
       width="max-w-[1420px]"
       height="h-[92vh] max-h-[880px]"
-      bodyClassName="flex-1 min-h-0 overflow-hidden flex flex-col p-2.5 bg-[#f0f2f5]"
+      bodyClassName="flex-1 min-h-0 overflow-hidden flex flex-col p-2.5 bg-surface-sunken"
       footer={
-        <div className="flex w-full items-center justify-between text-xs text-slate-600">
+        <div className="flex w-full items-center justify-between text-xs text-ink-muted">
           <div className="flex items-center gap-4">
             <span>
-              Accounts in Folder: <strong className="text-slate-800">{sortedAccounts.length}</strong>
+              Accounts in Folder: <strong className="text-ink">{sortedAccounts.length}</strong>
             </span>
             <span>
               Selected Accounts: <strong className="text-blue-700">{selectedAccountIds.size}</strong>
@@ -774,7 +774,7 @@ export const GetPageInfoModal: React.FC<GetPageInfoModalProps> = (props) => {
               Active Pages Displayed: <strong className="text-emerald-700">{sortedPages.length}</strong>
             </span>
             {selectedPageKeys.size > 0 && (
-              <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-800 font-semibold text-[11px]">
+              <span className="px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-500/15 text-blue-800 dark:text-blue-300 font-semibold text-[11px]">
                 Selected Pages: {selectedPageKeys.size}
               </span>
             )}
@@ -791,19 +791,19 @@ export const GetPageInfoModal: React.FC<GetPageInfoModalProps> = (props) => {
     >
       {/* Toast Notification */}
       {toastMsg && (
-        <div className="absolute top-12 right-6 z-50 px-4 py-2 bg-slate-800 text-white font-medium text-xs rounded shadow-xl animate-in slide-in-from-top-2 duration-150 flex items-center gap-2 border border-slate-700">
+        <div className="absolute top-12 right-6 z-50 px-4 py-2 bg-slate-800 text-white font-medium text-xs rounded-lg animate-in slide-in-from-top-2 duration-150 flex items-center gap-2 border border-slate-700">
           <CheckCircle2 className="w-4 h-4 text-emerald-400" />
           <span>{toastMsg}</span>
         </div>
       )}
 
       {/* TOP TOOLBAR: Single clean row, NO WRAP, perfectly aligned on one line */}
-      <div className="flex items-center justify-between gap-2 rounded border border-slate-300 bg-white px-3 py-1.5 mb-2 shrink-0 shadow-2xs">
+      <div className="flex items-center justify-between gap-2 rounded-xl border border-edge bg-surface px-3 py-1.5 mb-2 shrink-0">
         {/* Left Controls in a single non-wrapping flex row */}
         <div className="flex items-center gap-2.5 flex-nowrap min-w-0">
           {/* Category Folder selector */}
           <div className="flex items-center gap-1.5 shrink-0">
-            <label className="text-xs font-semibold text-slate-700 whitespace-nowrap">Category Folder:</label>
+            <label className="text-xs font-semibold text-ink-muted whitespace-nowrap">Category Folder:</label>
             <select
               value={selectedFolderId}
               onChange={(e) => {
@@ -812,7 +812,7 @@ export const GetPageInfoModal: React.FC<GetPageInfoModalProps> = (props) => {
                 setSelectedAccountIds(new Set())
                 setSelectedPageKeys(new Set())
               }}
-              className="rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 focus:outline-none focus:border-blue-500 shadow-2xs max-w-[150px] truncate"
+              className="rounded-lg border border-edge bg-surface px-2 py-1 text-xs text-ink focus:outline-none focus:border-blue-500 max-w-[150px] truncate"
             >
               <option value={ALL_FOLDERS}>
                 All Folders ({folders.reduce((acc, f) => acc + (f.account_count || 0), 0)})
@@ -826,25 +826,25 @@ export const GetPageInfoModal: React.FC<GetPageInfoModalProps> = (props) => {
           </div>
 
           {/* Search box */}
-          <div className="flex items-center gap-1 rounded border border-slate-300 bg-white px-2 py-1 w-36 shrink-0 shadow-2xs">
-            <Search size={12} className="text-slate-400 shrink-0" />
+          <div className="flex items-center gap-1 rounded-lg border border-edge bg-surface px-2 py-1 w-36 shrink-0">
+            <Search size={12} className="text-ink-muted shrink-0" />
             <input
               type="text"
               placeholder="Search UID / Name…"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full text-xs text-slate-800 focus:outline-none bg-transparent"
+              className="w-full text-xs text-ink focus:outline-none bg-transparent"
             />
           </div>
 
           {/* Engine selector */}
           <div className="flex items-center gap-1.5 shrink-0">
             <Sparkles size={13} className="text-blue-600 shrink-0" />
-            <label className="text-xs font-semibold text-slate-700 whitespace-nowrap">Engine:</label>
+            <label className="text-xs font-semibold text-ink-muted whitespace-nowrap">Engine:</label>
             <select
               value={engineVersion}
               onChange={(e) => setEngineVersion(e.target.value as 'V1' | 'V2')}
-              className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-blue-800 focus:outline-none focus:border-blue-500 shadow-2xs max-w-[210px] truncate"
+              className="rounded-lg border border-edge bg-surface px-2 py-1 text-xs font-semibold text-blue-800 focus:outline-none focus:border-blue-500 max-w-[210px] truncate"
             >
               <option value="V2">V2 (Fast Extractor — Anti Obfuscation & Details)</option>
               <option value="V1">V1 (Standard Page Extractor)</option>
@@ -852,7 +852,7 @@ export const GetPageInfoModal: React.FC<GetPageInfoModalProps> = (props) => {
           </div>
 
           {/* Headless Toggle */}
-          <label className="flex items-center gap-1.5 text-xs text-slate-700 font-medium cursor-pointer shrink-0 whitespace-nowrap">
+          <label className="flex items-center gap-1.5 text-xs text-ink-muted font-medium cursor-pointer shrink-0 whitespace-nowrap">
             <input
               type="checkbox"
               checked={headlessMode}
@@ -885,7 +885,7 @@ export const GetPageInfoModal: React.FC<GetPageInfoModalProps> = (props) => {
 
           <button
             onClick={handleExportCSV}
-            className="win-btn flex items-center gap-1.5 px-3.5 py-1 text-xs font-medium text-slate-700"
+            className="win-btn flex items-center gap-1.5 px-3.5 py-1 text-xs font-medium text-ink-muted"
           >
             <Download size={12} />
             <span>Export CSV</span>
@@ -895,8 +895,8 @@ export const GetPageInfoModal: React.FC<GetPageInfoModalProps> = (props) => {
 
       {/* Progress & Live Status Banner */}
       {progressMsg && (
-        <div className="flex items-center justify-between rounded border border-slate-300 bg-white px-3 py-1.5 mb-2 text-xs shadow-2xs shrink-0">
-          <div className="flex items-center gap-2 text-slate-700 font-medium">
+        <div className="flex items-center justify-between rounded-xl border border-edge bg-surface px-3 py-1.5 mb-2 text-xs shrink-0">
+          <div className="flex items-center gap-2 text-ink-muted font-medium">
             {isRunning ? (
               <RefreshCw size={13} className="text-blue-600 animate-spin shrink-0" />
             ) : (
@@ -904,9 +904,9 @@ export const GetPageInfoModal: React.FC<GetPageInfoModalProps> = (props) => {
             )}
             <span className="truncate max-w-xl">{progressMsg}</span>
           </div>
-          <div className="flex items-center gap-4 text-slate-600 font-semibold text-[11px]">
+          <div className="flex items-center gap-4 text-ink-muted font-semibold text-[11px]">
             <span>
-              Progress: <strong className="text-slate-900">{progressStats.current}/{progressStats.total}</strong>
+              Progress: <strong className="text-ink">{progressStats.current}/{progressStats.total}</strong>
             </span>
             <span>
               Pages Found: <strong className="text-emerald-700">{progressStats.pages}</strong>
@@ -918,26 +918,26 @@ export const GetPageInfoModal: React.FC<GetPageInfoModalProps> = (props) => {
       {/* Split Tables Container */}
       <div className="flex-1 flex gap-2 overflow-hidden min-h-0">
         {/* LEFT PANEL: Accounts Table (w-[450px]) */}
-        <div className="w-[450px] shrink-0 rounded border border-slate-300 bg-white shadow-xs overflow-hidden flex flex-col">
+        <div className="w-[450px] shrink-0 rounded-xl border border-edge bg-surface overflow-hidden flex flex-col">
           {/* Header */}
-          <div className="flex items-center justify-between border-b border-slate-200 bg-slate-100 px-3 py-1.5 text-xs">
+          <div className="flex items-center justify-between border-b border-edge bg-surface-sunken px-3 py-1.5 text-xs">
             <div className="flex items-center gap-2">
               <button
                 onClick={toggleSelectAllAccounts}
-                className="text-slate-500 hover:text-slate-800 transition-colors"
+                className="text-ink-muted hover:text-ink transition-colors"
                 title="Select / Deselect All Accounts"
               >
                 {selectedAccountIds.size === sortedAccounts.length && sortedAccounts.length > 0 ? (
                   <CheckSquare size={13} className="text-blue-600" />
                 ) : (
-                  <Square size={13} className="text-slate-400" />
+                  <Square size={13} className="text-ink-muted" />
                 )}
               </button>
-              <span className="font-bold text-slate-800">
+              <span className="font-bold text-ink">
                 Accounts ({sortedAccounts.length})
               </span>
             </div>
-            <span className="text-[10px] text-slate-500 italic">
+            <span className="text-[10px] text-ink-muted italic">
               Drag mouse or double-click to sort
             </span>
           </div>
@@ -945,7 +945,7 @@ export const GetPageInfoModal: React.FC<GetPageInfoModalProps> = (props) => {
           {/* Table */}
           <div className="flex-1 overflow-y-auto select-none">
             <table className="w-full border-collapse text-left text-xs">
-              <thead className="sticky top-0 bg-slate-100 text-[11px] font-bold text-slate-700 border-b border-slate-200 shadow-2xs">
+              <thead className="sticky top-0 bg-surface-sunken text-[11px] font-bold text-ink-muted border-b border-edge">
                 <tr>
                   <th
                     className="w-10 px-2 py-1.5 text-center group cursor-pointer"
@@ -1001,7 +1001,7 @@ export const GetPageInfoModal: React.FC<GetPageInfoModalProps> = (props) => {
               <tbody className="divide-y divide-slate-100">
                 {sortedAccounts.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-4 py-8 text-center text-slate-400">
+                    <td colSpan={7} className="px-4 py-8 text-center text-ink-muted">
                       No accounts found in this folder.
                     </td>
                   </tr>
@@ -1018,13 +1018,13 @@ export const GetPageInfoModal: React.FC<GetPageInfoModalProps> = (props) => {
                         onContextMenu={(e) => handleContextMenu(e, false, undefined, acc.id)}
                         className={`cursor-pointer select-none transition-colors ${
                           isSelected
-                            ? 'bg-blue-100 text-blue-900 font-medium'
+                            ? 'bg-blue-100 dark:bg-blue-500/15 text-blue-900 dark:text-blue-300 font-medium'
                             : index % 2 === 0
-                            ? 'bg-white hover:bg-slate-50'
-                            : 'bg-slate-50/70 hover:bg-slate-100'
+                            ? 'bg-surface hover:bg-surface-sunken'
+                            : 'bg-surface-sunken/70 hover:bg-surface-sunken'
                         }`}
                       >
-                        <td className="px-2 py-1.5 text-center text-slate-500 font-mono text-[11px]">
+                        <td className="px-2 py-1.5 text-center text-ink-muted font-mono text-[11px]">
                           {index + 1}
                         </td>
                         <td className="px-1 py-1.5 text-center">
@@ -1043,17 +1043,17 @@ export const GetPageInfoModal: React.FC<GetPageInfoModalProps> = (props) => {
                         <td className="px-2 py-1.5 font-mono text-[11px] text-slate-700 truncate max-w-[110px]" title={acc.uid || ''}>
                           {acc.uid || `#${acc.id}`}
                         </td>
-                        <td className="px-2 py-1.5 font-medium text-slate-900 truncate max-w-[120px]" title={acc.name || ''}>
+                        <td className="px-2 py-1.5 font-medium text-ink truncate max-w-[120px]" title={acc.name || ''}>
                           {acc.name || '-'}
                         </td>
                         <td className="px-2 py-1.5 text-center">
-                          <span className="inline-block px-1.5 py-0.2 rounded text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                          <span className="inline-block px-1.5 py-0.2 rounded text-[11px] font-bold bg-emerald-100 dark:bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700/40">
                             {acc.pages_count ?? 0}
                           </span>
                         </td>
                         <td className="px-2 py-1.5 text-center">
                           {deactCount > 0 ? (
-                            <span className="inline-block px-1.5 py-0.2 rounded text-[11px] font-bold bg-rose-100 text-rose-700 border border-rose-300">
+                            <span className="inline-block px-1.5 py-0.2 rounded text-[11px] font-bold bg-rose-100 dark:bg-rose-500/15 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-700/40">
                               {deactCount}
                             </span>
                           ) : (
@@ -1064,10 +1064,10 @@ export const GetPageInfoModal: React.FC<GetPageInfoModalProps> = (props) => {
                           <span
                             className={`inline-block px-1.5 py-0.2 rounded text-[10px] font-bold ${
                               acc.status === 'Live'
-                                ? 'bg-emerald-100 text-emerald-800'
+                                ? 'bg-emerald-100 dark:bg-emerald-500/15 text-emerald-800 dark:text-emerald-300'
                                 : acc.status === 'Checkpoint'
-                                ? 'bg-amber-100 text-amber-800'
-                                : 'bg-rose-100 text-rose-800'
+                                ? 'bg-amber-100 dark:bg-amber-500/15 text-amber-800 dark:text-amber-300'
+                                : 'bg-rose-100 dark:bg-rose-500/15 text-rose-800 dark:text-rose-300'
                             }`}
                           >
                             {acc.status || 'Live'}
@@ -1083,31 +1083,31 @@ export const GetPageInfoModal: React.FC<GetPageInfoModalProps> = (props) => {
         </div>
 
         {/* RIGHT PANEL: Pages List Table */}
-        <div className="flex-1 rounded border border-slate-300 bg-white shadow-xs overflow-hidden flex flex-col min-w-0">
+        <div className="flex-1 rounded-xl border border-edge bg-surface overflow-hidden flex flex-col min-w-0">
           {/* Header */}
-          <div className="flex items-center justify-between border-b border-slate-200 bg-slate-100 px-3 py-1.5 text-xs">
+          <div className="flex items-center justify-between border-b border-edge bg-surface-sunken px-3 py-1.5 text-xs">
             <div className="flex items-center gap-2">
               <button
                 onClick={toggleSelectAllPages}
-                className="text-slate-500 hover:text-slate-800 transition-colors"
+                className="text-ink-muted hover:text-ink transition-colors"
                 title="Select / Deselect All Pages"
               >
                 {selectedPageKeys.size === sortedPages.length && sortedPages.length > 0 ? (
                   <CheckSquare size={13} className="text-blue-600" />
                 ) : (
-                  <Square size={13} className="text-slate-400" />
+                  <Square size={13} className="text-ink-muted" />
                 )}
               </button>
-              <span className="font-bold text-slate-800">
+              <span className="font-bold text-ink">
                 Pages List ({sortedPages.length})
               </span>
               {selectedAccountIds.size > 0 && (
-                <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-blue-100 text-blue-800">
+                <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-500/15 text-blue-800 dark:text-blue-300">
                   Filtered by {selectedAccountIds.size} selected account(s)
                 </span>
               )}
             </div>
-            <span className="text-[10px] text-slate-500 italic">
+            <span className="text-[10px] text-ink-muted italic">
               Right-click: Import / Clear media paths | Double-click to sort
             </span>
           </div>
@@ -1115,7 +1115,7 @@ export const GetPageInfoModal: React.FC<GetPageInfoModalProps> = (props) => {
           {/* Table with horizontal & vertical scroll */}
           <div className="flex-1 overflow-x-auto overflow-y-auto select-none">
             <table className="w-max min-w-full border-collapse text-left text-xs">
-              <thead className="sticky top-0 z-10 bg-slate-100 text-[11px] font-bold text-slate-700 border-b border-slate-200 shadow-2xs">
+              <thead className="sticky top-0 z-10 bg-surface-sunken text-[11px] font-bold text-ink-muted border-b border-edge">
                 <tr>
                   <th
                     className="w-10 min-w-[40px] px-2 py-1.5 text-center group cursor-pointer"
@@ -1195,9 +1195,9 @@ export const GetPageInfoModal: React.FC<GetPageInfoModalProps> = (props) => {
               <tbody className="divide-y divide-slate-100">
                 {sortedPages.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="px-4 py-16 text-center text-slate-400">
+                    <td colSpan={10} className="px-4 py-16 text-center text-ink-muted">
                       <div className="flex flex-col items-center justify-center gap-2">
-                        <Layers size={32} className="text-slate-300" />
+                        <Layers size={32} className="text-ink-muted" />
                         <p>No active pages extracted yet. Select accounts and click <strong>Get Page Info</strong> above.</p>
                       </div>
                     </td>
@@ -1214,13 +1214,13 @@ export const GetPageInfoModal: React.FC<GetPageInfoModalProps> = (props) => {
                         onContextMenu={(e) => handleContextMenu(e, true, row.rowKey)}
                         className={`cursor-pointer select-none transition-colors ${
                           isSelected
-                            ? 'bg-blue-100 text-blue-900 font-medium'
+                            ? 'bg-blue-100 dark:bg-blue-500/15 text-blue-900 dark:text-blue-300 font-medium'
                             : index % 2 === 0
-                            ? 'bg-white hover:bg-slate-50'
-                            : 'bg-slate-50/70 hover:bg-slate-100'
+                            ? 'bg-surface hover:bg-surface-sunken'
+                            : 'bg-surface-sunken/70 hover:bg-surface-sunken'
                         }`}
                       >
-                        <td className="w-10 min-w-[40px] px-2 py-1.5 text-center text-slate-500 font-mono text-[11px]">
+                        <td className="w-10 min-w-[40px] px-2 py-1.5 text-center text-ink-muted font-mono text-[11px]">
                           {index + 1}
                         </td>
                         <td className="w-8 min-w-[32px] px-1 py-1.5 text-center">
@@ -1236,13 +1236,13 @@ export const GetPageInfoModal: React.FC<GetPageInfoModalProps> = (props) => {
                             className="rounded border-slate-300 text-blue-600 focus:ring-0"
                           />
                         </td>
-                        <td className="w-[130px] min-w-[130px] px-2.5 py-1.5 font-mono text-[11px] text-slate-500 truncate" title={row.accountUid}>
+                        <td className="w-[130px] min-w-[130px] px-2.5 py-1.5 font-mono text-[11px] text-ink-muted truncate" title={row.accountUid}>
                           {row.accountUid}
                         </td>
                         <td className="w-[140px] min-w-[140px] px-2.5 py-1.5 font-mono text-[11px] text-blue-700 font-semibold truncate" title={row.pageId}>
                           {row.pageId}
                         </td>
-                        <td className="w-[180px] min-w-[180px] px-2.5 py-1.5 font-medium text-slate-900 truncate" title={row.name}>
+                        <td className="w-[180px] min-w-[180px] px-2.5 py-1.5 font-medium text-ink truncate" title={row.name}>
                           {row.name}
                         </td>
                         <td className="w-[90px] min-w-[90px] px-2 py-1.5 text-center font-mono font-bold text-emerald-700">
@@ -1250,35 +1250,35 @@ export const GetPageInfoModal: React.FC<GetPageInfoModalProps> = (props) => {
                         </td>
                         <td className="w-[120px] min-w-[120px] px-2 py-1.5 text-center">
                           {row.deactivatedCount > 0 ? (
-                            <span className="inline-block px-1.5 py-0.2 rounded text-[11px] font-bold bg-rose-100 text-rose-700 border border-rose-300">
+                            <span className="inline-block px-1.5 py-0.2 rounded text-[11px] font-bold bg-rose-100 dark:bg-rose-500/15 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-700/40">
                               {row.deactivatedCount}
                             </span>
                           ) : (
-                            <span className="text-slate-400 text-[11px]">0</span>
+                            <span className="text-ink-muted text-[11px]">0</span>
                           )}
                         </td>
                         {/* Image Column: Clean plain text without boxes */}
                         <td className="w-[160px] min-w-[160px] px-2.5 py-1.5 truncate" title={row.folderImage}>
                           {row.folderImage ? (
-                            <span className="text-slate-800 font-mono text-[11px] select-all">{row.folderImage}</span>
+                            <span className="text-ink font-mono text-[11px] select-all">{row.folderImage}</span>
                           ) : (
-                            <span className="text-slate-400 italic text-[11px]">-</span>
+                            <span className="text-ink-muted italic text-[11px]">-</span>
                           )}
                         </td>
                         {/* Video Column: Clean plain text without boxes */}
                         <td className="w-[160px] min-w-[160px] px-2.5 py-1.5 truncate" title={row.folderVideo}>
                           {row.folderVideo ? (
-                            <span className="text-slate-800 font-mono text-[11px] select-all">{row.folderVideo}</span>
+                            <span className="text-ink font-mono text-[11px] select-all">{row.folderVideo}</span>
                           ) : (
-                            <span className="text-slate-400 italic text-[11px]">-</span>
+                            <span className="text-ink-muted italic text-[11px]">-</span>
                           )}
                         </td>
                         {/* Reel Column: Clean plain text without boxes */}
                         <td className="w-[160px] min-w-[160px] px-2.5 py-1.5 truncate" title={row.folderReel}>
                           {row.folderReel ? (
-                            <span className="text-slate-800 font-mono text-[11px] select-all">{row.folderReel}</span>
+                            <span className="text-ink font-mono text-[11px] select-all">{row.folderReel}</span>
                           ) : (
-                            <span className="text-slate-400 italic text-[11px]">-</span>
+                            <span className="text-ink-muted italic text-[11px]">-</span>
                           )}
                         </td>
                       </tr>
@@ -1294,7 +1294,7 @@ export const GetPageInfoModal: React.FC<GetPageInfoModalProps> = (props) => {
       {/* Context Menu (WinForms clean white shadow style) */}
       {contextMenu?.visible && (
         <div
-          className="fixed z-50 min-w-[210px] py-1 bg-white border border-slate-300 rounded shadow-xl text-xs text-slate-800 animate-in fade-in zoom-in-95 duration-100"
+          className="fixed z-50 min-w-[210px] py-1 bg-surface border border-edge rounded-xl text-xs text-ink animate-in fade-in zoom-in-95 duration-100"
           style={{
             top: Math.min(contextMenu.y, window.innerHeight - 280),
             left: Math.min(contextMenu.x, window.innerWidth - 230)
@@ -1303,114 +1303,114 @@ export const GetPageInfoModal: React.FC<GetPageInfoModalProps> = (props) => {
         >
           {contextMenu.isPageTable ? (
             <>
-              <div className="px-3 py-1 text-[10px] font-bold tracking-wider text-slate-500 uppercase border-b border-slate-100">
+              <div className="px-3 py-1 text-[10px] font-bold tracking-wider text-ink-muted uppercase border-b border-edge">
                 Import Paths from Clipboard
               </div>
               <button
                 onClick={() => handleImportClipboard('folderImage')}
-                className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-blue-50 hover:text-blue-700 text-left transition-colors font-medium"
+                className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-surface-sunken hover:text-blue-700 text-left transition-colors font-medium"
               >
                 <ClipboardPaste size={13} className="text-blue-600" />
                 <span>Import Image Path (Paste)</span>
               </button>
               <button
                 onClick={() => handleImportClipboard('folderVideo')}
-                className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-blue-50 hover:text-blue-700 text-left transition-colors font-medium"
+                className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-surface-sunken hover:text-blue-700 text-left transition-colors font-medium"
               >
                 <ClipboardPaste size={13} className="text-blue-600" />
                 <span>Import Video Path (Paste)</span>
               </button>
               <button
                 onClick={() => handleImportClipboard('folderReel')}
-                className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-blue-50 hover:text-blue-700 text-left transition-colors font-medium"
+                className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-surface-sunken hover:text-blue-700 text-left transition-colors font-medium"
               >
                 <ClipboardPaste size={13} className="text-blue-600" />
                 <span>Import Reel Path (Paste)</span>
               </button>
 
-              <div className="my-1 border-t border-slate-100" />
-              <div className="px-3 py-1 text-[10px] font-bold tracking-wider text-slate-500 uppercase">
+              <div className="my-1 border-t border-edge" />
+              <div className="px-3 py-1 text-[10px] font-bold tracking-wider text-ink-muted uppercase">
                 Clear Media Paths
               </div>
               <button
                 onClick={() => handleClearPath('folderImage')}
-                className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-rose-50 hover:text-rose-700 text-left transition-colors"
+                className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-rose-50 dark:hover:bg-rose-500/15 hover:text-rose-700 dark:hover:text-rose-300 text-left transition-colors"
               >
                 <Trash2 size={13} className="text-rose-600" />
                 <span>Clear Image Path</span>
               </button>
               <button
                 onClick={() => handleClearPath('folderVideo')}
-                className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-rose-50 hover:text-rose-700 text-left transition-colors"
+                className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-rose-50 dark:hover:bg-rose-500/15 hover:text-rose-700 dark:hover:text-rose-300 text-left transition-colors"
               >
                 <Trash2 size={13} className="text-rose-600" />
                 <span>Clear Video Path</span>
               </button>
               <button
                 onClick={() => handleClearPath('folderReel')}
-                className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-rose-50 hover:text-rose-700 text-left transition-colors"
+                className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-rose-50 dark:hover:bg-rose-500/15 hover:text-rose-700 dark:hover:text-rose-300 text-left transition-colors"
               >
                 <Trash2 size={13} className="text-rose-600" />
                 <span>Clear Reel Path</span>
               </button>
               <button
                 onClick={() => handleClearPath('all')}
-                className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-rose-50 hover:text-rose-700 text-left transition-colors"
+                className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-rose-50 dark:hover:bg-rose-500/15 hover:text-rose-700 dark:hover:text-rose-300 text-left transition-colors"
               >
                 <Trash2 size={13} className="text-rose-600" />
                 <span>Clear All Media Paths</span>
               </button>
 
-              <div className="my-1 border-t border-slate-100" />
-              <div className="px-3 py-1 text-[10px] font-bold tracking-wider text-slate-500 uppercase">
+              <div className="my-1 border-t border-edge" />
+              <div className="px-3 py-1 text-[10px] font-bold tracking-wider text-ink-muted uppercase">
                 Copy Values ({selectedPageKeys.size > 0 ? selectedPageKeys.size : 1})
               </div>
               <button
                 onClick={() => handleCopyPages('pageId')}
-                className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-slate-100 text-left transition-colors"
+                className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-surface-sunken text-left transition-colors"
               >
-                <Copy size={13} className="text-slate-500" />
+                <Copy size={13} className="text-ink-muted" />
                 <span>Copy Page ID(s)</span>
               </button>
               <button
                 onClick={() => handleCopyPages('name')}
-                className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-slate-100 text-left transition-colors"
+                className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-surface-sunken text-left transition-colors"
               >
-                <Copy size={13} className="text-slate-500" />
+                <Copy size={13} className="text-ink-muted" />
                 <span>Copy Page Name(s)</span>
               </button>
               <button
                 onClick={() => handleCopyPages('accountUid')}
-                className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-slate-100 text-left transition-colors"
+                className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-surface-sunken text-left transition-colors"
               >
-                <Copy size={13} className="text-slate-500" />
+                <Copy size={13} className="text-ink-muted" />
                 <span>Copy Account UID(s)</span>
               </button>
               <button
                 onClick={() => handleCopyPages('url')}
-                className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-slate-100 text-left transition-colors"
+                className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-surface-sunken text-left transition-colors"
               >
-                <Copy size={13} className="text-slate-500" />
+                <Copy size={13} className="text-ink-muted" />
                 <span>Copy Page URL(s)</span>
               </button>
             </>
           ) : (
             <>
-              <div className="px-3 py-1 text-[10px] font-bold tracking-wider text-slate-500 uppercase border-b border-slate-100">
+              <div className="px-3 py-1 text-[10px] font-bold tracking-wider text-ink-muted uppercase border-b border-edge">
                 Copy Account Data ({selectedAccountIds.size > 0 ? selectedAccountIds.size : 1})
               </div>
               <button
                 onClick={() => handleCopyAccounts('uid')}
-                className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-slate-100 text-left transition-colors"
+                className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-surface-sunken text-left transition-colors"
               >
-                <Copy size={13} className="text-slate-500" />
+                <Copy size={13} className="text-ink-muted" />
                 <span>Copy UID(s)</span>
               </button>
               <button
                 onClick={() => handleCopyAccounts('name')}
-                className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-slate-100 text-left transition-colors"
+                className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-surface-sunken text-left transition-colors"
               >
-                <Copy size={13} className="text-slate-500" />
+                <Copy size={13} className="text-ink-muted" />
                 <span>Copy Account Name(s)</span>
               </button>
             </>

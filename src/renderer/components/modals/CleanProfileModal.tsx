@@ -70,16 +70,16 @@ export function CleanProfileModal({
       }
     >
       <div className="flex flex-col gap-3 text-[12px]">
-        <p className="text-slate-600">
+        <p className="text-ink-muted">
           Target: <b>{count}</b> account(s).
         </p>
 
         <label
-          className={`flex cursor-pointer flex-col gap-1 rounded border px-3 py-2.5 ${
-            mode === 'safe_fb_only' ? 'border-[#1e9e4a] bg-[#eafaf0]' : 'border-slate-300 bg-white'
+          className={`flex cursor-pointer flex-col gap-1 rounded-xl border px-3 py-2.5 ${
+            mode === 'safe_fb_only' ? 'border-[#1e9e4a] bg-[#eafaf0]' : 'border-edge bg-surface'
           }`}
         >
-          <span className="flex items-center gap-2 font-medium text-slate-800">
+          <span className="flex items-center gap-2 font-medium text-ink">
             <input
               type="radio"
               name="clean-mode"
@@ -88,18 +88,18 @@ export function CleanProfileModal({
             />
             🟢 Optimize &amp; Keep Facebook Login (Recommended)
           </span>
-          <span className="pl-5 text-slate-500">
+          <span className="pl-5 text-ink-muted">
             Clears cache, logs, and crash-reporting bloat — frees the majority of a profile's disk
             usage while the account stays logged in.
           </span>
         </label>
 
         <label
-          className={`flex cursor-pointer flex-col gap-1 rounded border px-3 py-2.5 ${
-            mode === 'full_wipe' ? 'border-[#c81e1e] bg-[#fdecec]' : 'border-slate-300 bg-white'
+          className={`flex cursor-pointer flex-col gap-1 rounded-xl border px-3 py-2.5 ${
+            mode === 'full_wipe' ? 'border-[#c81e1e] bg-[#fdecec]' : 'border-edge bg-surface'
           }`}
         >
-          <span className="flex items-center gap-2 font-medium text-slate-800">
+          <span className="flex items-center gap-2 font-medium text-ink">
             <input
               type="radio"
               name="clean-mode"
@@ -108,20 +108,20 @@ export function CleanProfileModal({
             />
             🔴 Full Wipe / Reset Profile
           </span>
-          <span className="pl-5 text-slate-500">
+          <span className="pl-5 text-ink-muted">
             Completely erases the profile folder — all cookies, cache, and the local session.
             The account will need to log in again.
           </span>
         </label>
 
         {mode === 'full_wipe' && (
-          <div className="flex items-start gap-2 rounded border border-[#e8b4b4] bg-[#fdecec] px-3 py-2 text-[11px] text-[#c81e1e]">
+          <div className="flex items-start gap-2 rounded-lg border border-[#e8b4b4] bg-[#fdecec] px-3 py-2 text-[11px] text-[#c81e1e]">
             <AlertTriangle size={14} className="mt-0.5 shrink-0" />
             <span>This cannot be undone. Only use this if the profile is corrupted or you want a clean slate.</span>
           </div>
         )}
 
-        <p className="text-[11px] text-slate-400">
+        <p className="text-[11px] text-ink-muted">
           A profile currently open in a browser window is skipped automatically — close it first to
           clean that account.
         </p>

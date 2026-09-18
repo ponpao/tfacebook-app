@@ -43,16 +43,26 @@ const COLUMN_WIDTHS_KEY = 'tfacebook_column_widths'
  * or not, hence a single flat white/slate pair by index parity for texture
  * without implying any status meaning.
  */
-const UNKNOWN_ROW_BG = ['bg-white hover:bg-slate-100/70', 'bg-slate-50/40 hover:bg-slate-100/70']
+const UNKNOWN_ROW_BG = ['bg-surface hover:bg-surface-sunken', 'bg-surface-sunken/40 hover:bg-surface-sunken']
 
+// Each status tint pairs a light-mode pastel with a matching dark-mode tint
+// that stays a visible, saturated hue against the dark surface instead of
+// going muddy/near-black — plain `bg-emerald-50` etc. render almost
+// indistinguishable from the base dark background with default text on top.
 function rowStatusTint(status: string, index: number): string {
   const normalized = status.trim().toLowerCase()
-  if (normalized === 'live') return 'bg-emerald-50/60 hover:bg-emerald-100/70'
-  if (normalized.startsWith('checkpoint')) return 'bg-amber-50/70 hover:bg-amber-100/80'
-  if (normalized === 'die' || normalized === 'banned' || normalized === 'disabled') {
-    return 'bg-rose-50/70 hover:bg-rose-100/80'
+  if (normalized === 'live') {
+    return 'bg-emerald-50/60 hover:bg-emerald-100/70 dark:bg-emerald-500/15 dark:hover:bg-emerald-500/25'
   }
-  if (normalized === 'changed pass') return 'bg-sky-50/70 hover:bg-sky-100/80'
+  if (normalized.startsWith('checkpoint')) {
+    return 'bg-amber-50/70 hover:bg-amber-100/80 dark:bg-amber-500/15 dark:hover:bg-amber-500/25'
+  }
+  if (normalized === 'die' || normalized === 'banned' || normalized === 'disabled') {
+    return 'bg-rose-50/70 hover:bg-rose-100/80 dark:bg-rose-500/15 dark:hover:bg-rose-500/25'
+  }
+  if (normalized === 'changed pass') {
+    return 'bg-sky-50/70 hover:bg-sky-100/80 dark:bg-sky-500/15 dark:hover:bg-sky-500/25'
+  }
   return UNKNOWN_ROW_BG[index % 2]
 }
 
@@ -209,7 +219,7 @@ const GridRow = memo(function GridRow({
   return (
     <div
       className={`absolute left-0 flex w-full ${
-        selected ? 'bg-mc-sel text-mc-selText' : `${rowBg} text-[#1a1a1a]`
+        selected ? 'bg-accent text-white' : `${rowBg} text-ink`
       }`}
       style={{
         position: 'absolute',
@@ -229,7 +239,7 @@ const GridRow = memo(function GridRow({
       {/* Locked left edge: checkbox + row number */}
       <div
         className={`flex shrink-0 items-center ${stickyLeft} ${
-          selected ? 'bg-mc-sel' : rowBg
+          selected ? 'bg-accent' : rowBg
         }`}
         style={{ width: LEFT_EDGE_W }}
       >
@@ -240,7 +250,7 @@ const GridRow = memo(function GridRow({
         >
           <input
             type="checkbox"
-            className="accent-[#0078d4]"
+            className="accent-accent"
             checked={selected}
             onChange={(e) => onToggleRow(a.id, e.target.checked)}
           />
@@ -521,8 +531,8 @@ export function AccountsGrid(): React.JSX.Element {
   const totalWidth = LEFT_EDGE_W + columns.reduce((sum, c) => sum + c.width, 0)
   const virtualRows = virtualizer.getVirtualItems()
 
-  const cellBorder = 'border-r border-b border-[#b8cbb0]'
-  const headBorder = 'border-r border-b border-slate-200'
+  const cellBorder = 'border-r border-b border-edge'
+  const headBorder = 'border-r border-b border-edge'
   const stickyLeft = ''
 
   const onRowContextMenu = useCallback((e: React.MouseEvent, a: Account): void => {
@@ -571,12 +581,12 @@ export function AccountsGrid(): React.JSX.Element {
   )
 
   return (
-    <div className="flex w-full flex-1 flex-col overflow-hidden rounded-md border border-slate-300 bg-white shadow-2xs select-none">
+    <div className="flex w-full flex-1 flex-col overflow-hidden rounded-xl border border-edge bg-surface select-none">
       <div ref={parentRef} className="relative flex-1 overflow-x-auto overflow-y-auto">
         {/* Inner width = at least the window width, expanding to fit all columns */}
         <div className="w-full" style={{ minWidth: totalWidth }}>
           {/* Header */}
-          <div className="sticky top-0 z-10 flex w-full bg-slate-100">
+          <div className="sticky top-0 z-10 flex w-full bg-surface-sunken">
             {/* Checkbox + row number */}
             <div
               className={`flex shrink-0 items-center ${stickyLeft}`}
@@ -588,7 +598,7 @@ export function AccountsGrid(): React.JSX.Element {
               >
                 <input
                   type="checkbox"
-                  className="accent-[#0078d4]"
+                  className="accent-accent"
                   checked={allChecked}
                   ref={(el) => {
                     if (el) el.indeterminate = someChecked
@@ -597,7 +607,7 @@ export function AccountsGrid(): React.JSX.Element {
                 />
               </div>
               <div
-                className={`flex h-full shrink-0 items-center justify-center text-center text-2xs font-semibold text-slate-800 ${headBorder}`}
+                className={`flex h-full shrink-0 items-center justify-center text-center text-2xs font-semibold text-ink ${headBorder}`}
                 style={{ width: ROW_NUMBER_COLUMN.width }}
               >
                 {ROW_NUMBER_COLUMN.header}
@@ -608,7 +618,7 @@ export function AccountsGrid(): React.JSX.Element {
             {columns.map((c) => (
               <div
                 key={c.key}
-                className={`group relative flex shrink-0 cursor-pointer select-none items-center justify-center gap-0.5 bg-transparent px-1.5 text-center text-2xs font-semibold text-slate-800 hover:bg-slate-200/60 ${headBorder}`}
+                className={`group relative flex shrink-0 cursor-pointer select-none items-center justify-center gap-0.5 bg-transparent px-1.5 text-center text-2xs font-semibold text-ink hover:bg-surface-sunken ${headBorder}`}
                 style={{ width: c.width, height: ROW_HEIGHT }}
                 onClick={(e) => {
                   // Defense-in-depth alongside the resize handle's own
@@ -623,11 +633,11 @@ export function AccountsGrid(): React.JSX.Element {
               >
                 <span className="truncate">{c.header}</span>
                 {sortState?.key === c.key && (
-                  <span className="text-[#0078d4]">{sortState.dir === 'asc' ? '▲' : '▼'}</span>
+                  <span className="text-accent">{sortState.dir === 'asc' ? '▲' : '▼'}</span>
                 )}
                 <div
                   data-col-resize-handle="true"
-                  className="absolute right-0 top-0 z-10 h-full w-1.5 -mr-0.5 cursor-col-resize hover:bg-[#0078d4]/40"
+                  className="absolute right-0 top-0 z-10 h-full w-1.5 -mr-0.5 cursor-col-resize hover:bg-accent/40"
                   onClick={(e) => {
                     // A double-click fires click -> click -> dblclick on this
                     // element; each of those two intermediate `click`s bubbles

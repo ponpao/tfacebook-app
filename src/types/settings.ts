@@ -18,6 +18,17 @@ export type BrowserMode = 'headless' | 'headed'
 export type HardwareMode = 'cpu' | 'gpu' | 'auto'
 
 /**
+ * 'browser' — today's desktop-only Chromium launch (existing VIEWPORTS/
+ *   USER_AGENTS pools), unchanged.
+ * 'app'     — emulates a randomly-picked real Android device preset per
+ *   launch (viewport, user agent, touch, pixel ratio, and a matching mobile
+ *   GPU/plugin stealth profile) so a large batch of accounts each present a
+ *   different authentic-looking phone/tablet instead of sharing a handful
+ *   of desktop UAs. See MOBILE_DEVICE_NAMES in browserContext.ts.
+ */
+export type ViewMode = 'browser' | 'app'
+
+/**
  * 'full' runs every post-login enrichment step (cookies, name, avatar,
  * primary location, created date). 'fast' skips the two steps that each
  * require a full navigation + page interaction (primary_location/info, and
@@ -42,6 +53,7 @@ export type LoginMode = 'standard_pipeline' | 'cookie_only'
 export interface AppSettings {
   defaultConcurrency: number
   browserMode: BrowserMode
+  viewMode: ViewMode
   customChromiumPath: string
   delayMinSeconds: number
   delayMaxSeconds: number
@@ -111,6 +123,7 @@ export interface AppSettings {
 export const DEFAULT_SETTINGS: AppSettings = {
   defaultConcurrency: 3,
   browserMode: 'headless',
+  viewMode: 'browser',
   customChromiumPath: '',
   delayMinSeconds: 2,
   delayMaxSeconds: 6,

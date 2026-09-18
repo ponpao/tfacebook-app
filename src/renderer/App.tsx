@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// App.tsx  — WinForms-style shell:
+// App.tsx  — app shell:
 //   TitleBar → MenuBar → RibbonToolbar → AccountsGrid → StatusBar
 //   plus the import modal and folder-management dialogs.
 // ---------------------------------------------------------------------------
@@ -15,6 +15,7 @@ import { FolderDialogs, type FolderDialogMode } from './components/modals/Folder
 import { ColumnVisibilityModal } from './components/modals/ColumnVisibilityModal'
 import { ScenarioBuilderModal } from './components/modals/ScenarioBuilderModal'
 import { ExportAccountsModal } from './components/modals/ExportAccountsModal'
+import { BrowserWindowsModal } from './components/modals/BrowserWindowsModal'
 import { RecycleBinModal } from './components/modals/RecycleBinModal'
 import { GeneralSettingsModal } from './components/modals/GeneralSettingsModal'
 import { ToolsUtilitiesModal } from './components/modals/ToolsUtilitiesModal'
@@ -28,14 +29,31 @@ import { AssignUrlModal } from './components/modals/AssignUrlModal'
 import { DeletePagePostsModal } from './components/modals/DeletePagePostsModal'
 import { DeletePagePostsV2Modal } from './components/modals/DeletePagePostsV2Modal'
 import { GetPageInfoModal } from './components/modals/GetPageInfoModal'
+import { PostToPageModal } from './components/modals/PostToPageModal'
 import { UpdateNotificationModal } from './components/modals/UpdateNotificationModal'
 import { AutoShutdownDialog } from './components/modals/AutoShutdownDialog'
 import { useAccountStore } from './store/useAccountStore'
 import { ALL_FOLDERS } from '../types/folder'
 import type { LicenseStatus } from '../types/license'
 
+/**
+ * The Browser Windows panel is a genuinely separate OS window (see
+ * windows/browserWindowsPanel.ts) that reuses this SAME compiled renderer
+ * bundle rather than a second Vite entry point — it's told apart from the
+ * main window purely by a `?panel=browserWindows` query param on the URL
+ * it's loaded with. No license gate here: it's a viewer into the same
+ * already-licensed running app, not a standalone entry point of its own.
+ */
+function BrowserWindowsPanelApp(): React.JSX.Element {
+  return <BrowserWindowsModal open onClose={() => window.close()} />
+}
+
 export default function App(): React.JSX.Element {
   const [license, setLicense] = useState<LicenseStatus | null>(null)
+
+  if (new URLSearchParams(window.location.search).get('panel') === 'browserWindows') {
+    return <BrowserWindowsPanelApp />
+  }
 
   useEffect(() => {
     void window.api.license.getStatus().then(setLicense)
@@ -45,7 +63,7 @@ export default function App(): React.JSX.Element {
   // blocking (rendering the gate, not the dashboard) until it's activated —
   // the dashboard tree below never mounts otherwise.
   if (!license) {
-    return <div className="flex h-screen items-center justify-center bg-mc-bg" />
+    return <div className="flex h-screen items-center justify-center bg-surface-sunken" />
   }
   if (!license.isActivated) {
     return (
@@ -75,6 +93,7 @@ function Dashboard({
   const [pageManagerOpen, setPageManagerOpen] = useState(false)
   const [pageManagerV2Open, setPageManagerV2Open] = useState(false)
   const [getPageInfoOpen, setGetPageInfoOpen] = useState(false)
+  const [postToPageOpen, setPostToPageOpen] = useState(false)
 
   const refresh = useAccountStore((s) => s.refresh)
   const refreshFolders = useAccountStore((s) => s.refreshFolders)
@@ -159,7 +178,7 @@ function Dashboard({
   }
 
   return (
-    <div className="flex h-screen w-full min-w-full max-w-none flex-col overflow-hidden border-t-4 border-blue-900 bg-mc-bg">
+    <div className="flex h-screen w-full min-w-full max-w-none flex-col overflow-hidden border-t-4 border-accent bg-surface-sunken">
       <TitleBar />
       <MenuBar
         onDisplayColumns={() => setColumnsOpen(true)}
@@ -170,6 +189,7 @@ function Dashboard({
         onOpenPageManager={() => setPageManagerOpen(true)}
         onOpenPageManagerV2={() => setPageManagerV2Open(true)}
         onOpenGetPageInfo={() => setGetPageInfoOpen(true)}
+        onOpenPostToPage={() => setPostToPageOpen(true)}
       />
       <RibbonToolbar
         onImport={() => setImportOpen(true)}
@@ -186,6 +206,10 @@ function Dashboard({
       <GetPageInfoModal
         open={getPageInfoOpen}
         onClose={() => setGetPageInfoOpen(false)}
+      />
+      <PostToPageModal
+        open={postToPageOpen}
+        onClose={() => setPostToPageOpen(false)}
       />
       <DeletePagePostsModal
         open={pageManagerOpen}

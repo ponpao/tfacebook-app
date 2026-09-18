@@ -4,6 +4,26 @@
 
 :root {
   color-scheme: light;
+  --surface: 255 255 255;
+  --surface-sunken: 250 248 245;
+  --edge: 232 226 217;
+  --ink: 45 43 41;
+  --ink-muted: 107 105 102;
+  --accent: 204 90 54;
+}
+
+/* Dark mode uses the "Domrey" reference palette (VS Code dark theme) rather
+   than a darkened version of the light-mode warm/terracotta tokens — chosen
+   to match a specific reference app's look, not derived from the light
+   palette above. */
+.dark {
+  color-scheme: dark;
+  --surface: 37 37 38;
+  --surface-sunken: 30 30 30;
+  --edge: 60 60 60;
+  --ink: 204 204 204;
+  --ink-muted: 133 133 133;
+  --accent: 0 122 204;
 }
 
 html,
@@ -17,35 +37,40 @@ body,
   overflow: hidden;
 }
 
+/* No local() lookups — on a Windows PC with some unrelated font also
+   registered under a name like "Kantumruy Pro SemiBold"/"Medium"/"Bold",
+   local() can match that wrong font first (usually Latin-only), which then
+   renders every Khmer glyph in bold/semibold UI text as tofu boxes or
+   mismatched characters. Always loading the bundled file removes that risk
+   entirely — it's a local, already-downloaded .ttf either way, so there's
+   no real cost to skipping the local() fast path. */
 @font-face {
   font-family: 'Kantumruy Pro';
   font-style: normal;
   font-weight: 400;
-  src: local('Kantumruy Pro'), local('Kantumruy Pro Regular'),
-       url('../assets/fonts/KantumruyPro-Regular.ttf') format('truetype');
+  src: url('../assets/fonts/KantumruyPro-Regular.ttf') format('truetype');
 }
 
 @font-face {
   font-family: 'Kantumruy Pro';
   font-style: normal;
   font-weight: 600;
-  src: local('Kantumruy Pro SemiBold'), local('Kantumruy Pro Medium'),
-       url('../assets/fonts/KantumruyPro-Bold.ttf') format('truetype');
+  src: url('../assets/fonts/KantumruyPro-Bold.ttf') format('truetype');
 }
 
 @font-face {
   font-family: 'Kantumruy Pro';
   font-style: normal;
   font-weight: 700;
-  src: local('Kantumruy Pro Bold'),
-       url('../assets/fonts/KantumruyPro-Bold.ttf') format('truetype');
+  src: url('../assets/fonts/KantumruyPro-Bold.ttf') format('truetype');
 }
 
 body {
-  background: #f0f0f0;
-  color: #1a1a1a;
-  font-family: 'Kantumruy Pro', 'Segoe UI', Tahoma, system-ui, sans-serif;
+  background: rgb(var(--surface-sunken));
+  color: rgb(var(--ink));
+  font-family: 'Kantumruy Pro', Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Tahoma, system-ui, sans-serif;
   font-size: 12px;
+  line-height: 1.5;
   user-select: none;
 }
 
@@ -65,82 +90,80 @@ body {
   -webkit-app-region: no-drag;
 }
 
-/* Thin classic scrollbars */
+/* Thin flat scrollbars */
 *::-webkit-scrollbar {
   width: 14px;
   height: 14px;
 }
 *::-webkit-scrollbar-thumb {
-  background: #c8c8c8;
-  border: 3px solid #f0f0f0;
+  background: rgb(var(--edge));
+  border: 3px solid rgb(var(--surface-sunken));
   border-radius: 8px;
 }
 *::-webkit-scrollbar-thumb:hover {
-  background: #a8a8a8;
+  background: rgb(var(--ink-muted));
 }
 *::-webkit-scrollbar-track {
-  background: #f0f0f0;
+  background: rgb(var(--surface-sunken));
 }
 
 @layer components {
-  /* Classic raised WinForms-style button */
+  /* Flat neutral button — no gradient, thin border, subtle hover fill. */
   .win-btn {
-    @apply inline-flex items-center gap-1 rounded-[3px] border border-[#adadad] bg-gradient-to-b
-           from-white to-[#e6e6e6] px-2.5 py-1 text-[12px] text-[#1a1a1a]
-           hover:from-[#f5faff] hover:to-[#dceefb] hover:border-[#7eb4ea]
-           active:from-[#dce9f7] active:to-[#c7ddf5]
+    @apply inline-flex items-center gap-1 rounded-lg border border-edge
+           bg-surface px-2.5 py-1 text-[12px] text-ink
+           hover:bg-surface-sunken hover:border-accent/40
+           active:bg-surface-sunken
            disabled:opacity-50 disabled:pointer-events-none transition-colors;
   }
   /* Small icon-only square button (folder +/-/edit) */
   .win-btn-sq {
-    @apply inline-flex h-[26px] w-[26px] items-center justify-center rounded-[3px]
-           border border-[#adadad] bg-gradient-to-b from-white to-[#e6e6e6]
-           text-[#1a1a1a] hover:from-[#f5faff] hover:to-[#dceefb] hover:border-[#7eb4ea]
-           active:from-[#dce9f7] active:to-[#c7ddf5]
+    @apply inline-flex h-[26px] w-[26px] items-center justify-center rounded-lg
+           border border-edge bg-surface
+           text-ink hover:bg-surface-sunken hover:border-accent/40
+           active:bg-surface-sunken
            disabled:opacity-50 disabled:pointer-events-none transition-colors;
   }
-  /* Yellow/orange highlighted primary action (Import) */
+  /* Terracotta highlighted primary action (Import) */
   .win-btn-accent {
-    @apply inline-flex items-center gap-1 rounded-[3px] border border-[#d9a300]
-           bg-gradient-to-b from-[#ffe08a] to-[#ffc93c] px-3 py-1 text-[12px]
-           font-semibold text-[#5a4300] hover:from-[#ffe9a8] hover:to-[#ffd35c]
-           active:from-[#f5c93c] active:to-[#e8b52a] transition-colors;
+    @apply inline-flex items-center gap-1 rounded-lg border border-accent
+           bg-accent px-3 py-1 text-[12px]
+           font-semibold text-white hover:brightness-110
+           active:brightness-95 transition-colors;
   }
-  /* Classic fieldset group box — thin, clean 1px line (folder manager,
-     search, threads, scenario boxes all use this one class). A previous
-     pass thickened this to border-2 for a "heavier" look; reverted per
-     feedback that it read as too bulky/less professional, not more defined. */
+  /* Fieldset group box — thin, flat 1px line (folder manager, search,
+     threads, scenario boxes all use this one class). */
   .win-fieldset {
-    @apply relative rounded-[2px] border border-slate-300 bg-[#fbfbfb] px-2.5 pb-1.5 pt-2 shadow-none;
+    @apply relative rounded-lg border border-edge bg-surface px-2.5 pb-1.5 pt-2 shadow-none;
   }
   .win-fieldset > legend {
-    @apply px-1 text-[11px] text-[#555];
+    @apply px-1 text-[11px] text-ink-muted;
   }
-  /* Classic sunken input / select — thin border, no focus glow/ring. Flat,
-     professional desktop look: no box-shadow on focus, just a color change. */
+  /* Sunken input / select — thin border, no focus glow/ring. Flat, no
+     box-shadow on focus, just a color change. */
   .win-input {
-    @apply rounded-[2px] border border-slate-300 bg-white px-1.5 py-[3px] text-[12px]
-           text-[#1a1a1a] shadow-none outline-none ring-0 focus:border-[#0078d4] focus:shadow-none focus:ring-0
-           disabled:bg-[#f0f0f0] disabled:text-[#888];
+    @apply rounded-lg border border-edge bg-surface px-1.5 py-[3px] text-[12px]
+           text-ink shadow-none outline-none ring-0 focus:border-accent focus:shadow-none focus:ring-0
+           disabled:bg-surface-sunken disabled:text-ink-muted;
   }
   .win-select {
-    @apply rounded-[2px] border border-slate-300 bg-white px-1.5 py-[3px] text-[12px]
-           text-[#1a1a1a] shadow-none outline-none ring-0 focus:border-[#0078d4] focus:shadow-none focus:ring-0;
+    @apply rounded-lg border border-edge bg-surface px-1.5 py-[3px] text-[12px]
+           text-ink shadow-none outline-none ring-0 focus:border-accent focus:shadow-none focus:ring-0;
   }
   /* Solid green primary action (Start / Run) — flex-row + whitespace-nowrap
      so a large selected-count badge never wraps the label onto a second
      line or grows the button's height. */
   .win-btn-start {
-    @apply inline-flex flex-row items-center gap-1.5 whitespace-nowrap rounded-[6px]
+    @apply inline-flex flex-row items-center gap-1.5 whitespace-nowrap rounded-lg
            border border-[#178a3e] bg-[#1e9e4a] px-3 py-1 text-[12px] font-semibold
            text-white hover:bg-[#22ab52] active:bg-[#178a3e]
            disabled:opacity-50 disabled:pointer-events-none transition-colors;
   }
   /* Red-outline secondary action (Stop) */
   .win-btn-stop {
-    @apply inline-flex items-center gap-1.5 rounded-[6px] border border-[#c81e1e]
-           bg-white px-3 py-1 text-[12px] font-semibold text-[#c81e1e]
-           hover:bg-[#fdecec] active:bg-[#fadbdb]
+    @apply inline-flex items-center gap-1.5 rounded-lg border border-[#c81e1e]
+           bg-surface px-3 py-1 text-[12px] font-semibold text-[#c81e1e]
+           hover:bg-[#c81e1e]/10 active:bg-[#c81e1e]/20
            disabled:opacity-50 disabled:pointer-events-none transition-colors;
   }
   /* Soft pastel action pill (Auto Post / Auto Share / Watch Live / ... row).
@@ -153,8 +176,8 @@ body {
   }
   /* Menu strip item */
   .menu-item {
-    @apply inline-flex items-center gap-1 px-2.5 py-1 text-[12px] text-[#333]
-           hover:bg-[#e5f1fb] hover:border hover:border-[#b6d5f0] border border-transparent
-           rounded-[2px] cursor-default;
+    @apply inline-flex items-center gap-1 px-2.5 py-1 text-[12px] text-ink
+           hover:bg-accent/10 hover:border hover:border-accent/30 border border-transparent
+           rounded-lg cursor-default;
   }
 }

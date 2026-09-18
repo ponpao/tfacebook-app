@@ -65,7 +65,7 @@ const AVATAR_PLACEHOLDER =
  */
 function AvatarCell({ uid, cacheBust }: { uid: string | null; cacheBust: string }): React.ReactNode {
   return (
-    <div className="mx-auto flex h-7 w-7 items-center justify-center overflow-hidden rounded-full border border-slate-300 bg-slate-100">
+    <div className="mx-auto flex h-7 w-7 items-center justify-center overflow-hidden rounded-full border border-edge bg-surface-sunken">
       {uid ? (
         <img
           src={`avatar://local/${encodeURIComponent(uid)}?v=${encodeURIComponent(cacheBust)}`}

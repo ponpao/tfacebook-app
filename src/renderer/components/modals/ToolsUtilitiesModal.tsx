@@ -475,7 +475,7 @@ export function ToolsUtilitiesModal({
     }
     if (detail.includes('200')) return <span className="text-emerald-700 font-semibold">Fast (200)</span>
     if (detail.includes('404')) return <span className="text-rose-700 font-semibold">404</span>
-    return <span className="text-slate-500 font-mono text-[11px]">{detail || '—'}</span>
+    return <span className="text-ink-muted font-mono text-[11px]">{detail || '—'}</span>
   }
 
   const getLatencyBadge = (p: ProxyHealthResult): React.ReactNode => {
@@ -796,14 +796,14 @@ export function ToolsUtilitiesModal({
       }
     >
       <div className="flex flex-col gap-3 text-[12px]">
-        <div className="flex gap-1 border-b border-slate-300 pb-2">
+        <div className="flex gap-1 border-b border-edge pb-2">
           {TABS.map(({ key, label, icon: Icon }) => (
             <button
               key={key}
-              className={`inline-flex items-center gap-1.5 rounded-[3px] px-2.5 py-1.5 text-[12px] ${
+              className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] ${
                 tab === key
                   ? 'bg-[#0078d4] text-white'
-                  : 'text-slate-700 hover:bg-slate-200'
+                  : 'text-ink-muted hover:bg-surface-sunken'
               }`}
               onClick={() => setTab(key)}
             >
@@ -819,14 +819,14 @@ export function ToolsUtilitiesModal({
         {tab === 'uid' && (
           <div className="flex flex-col gap-2.5">
             {/* Dual Input Mode Toggle & Action Bar */}
-            <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50/80 p-2 rounded-lg">
-              <div className="flex items-center gap-1 rounded bg-slate-200/90 p-0.5 text-xs font-semibold">
+            <div className="flex items-center justify-between border-b border-edge bg-surface-sunken p-2 rounded-lg">
+              <div className="flex items-center gap-1 rounded-lg bg-surface-sunken p-0.5 text-xs font-semibold">
                 <button
                   onClick={() => setUidInputMode('DB')}
-                  className={`flex items-center gap-1 rounded px-2.5 py-1 text-xs transition-colors cursor-pointer ${
+                  className={`flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs transition-colors cursor-pointer ${
                     uidInputMode === 'DB'
-                      ? 'bg-white text-blue-600 shadow-2xs font-bold'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-surface text-blue-600 font-bold'
+                      : 'text-ink-muted hover:text-ink'
                   }`}
                 >
                   <Database size={12} />
@@ -834,16 +834,16 @@ export function ToolsUtilitiesModal({
                 </button>
                 <button
                   onClick={() => setUidInputMode('CUSTOM')}
-                  className={`flex items-center gap-1 rounded px-2.5 py-1 text-xs transition-colors cursor-pointer ${
+                  className={`flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs transition-colors cursor-pointer ${
                     uidInputMode === 'CUSTOM'
-                      ? 'bg-white text-blue-600 shadow-2xs font-bold'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-surface text-blue-600 font-bold'
+                      : 'text-ink-muted hover:text-ink'
                   }`}
                 >
                   <ClipboardPaste size={12} />
                   <span>{t('customUidInput')}</span>
                   {parsedCustomUids.length > 0 && (
-                    <span className="rounded-full bg-blue-100 px-1.5 py-0.2 text-[10px] text-blue-700">
+                    <span className="rounded-full bg-blue-100 dark:bg-blue-500/15 px-1.5 py-0.2 text-[10px] text-blue-700 dark:text-blue-300">
                       {parsedCustomUids.length}
                     </span>
                   )}
@@ -867,7 +867,7 @@ export function ToolsUtilitiesModal({
                 </button>
                 {uidResults.length > 0 && (
                   <button
-                    className="win-btn px-2 py-1 text-xs text-slate-500 hover:text-rose-600"
+                    className="win-btn px-2 py-1 text-xs text-ink-muted hover:text-rose-600"
                     onClick={() => setUidResults([])}
                     title="Clear all current results"
                   >
@@ -879,25 +879,25 @@ export function ToolsUtilitiesModal({
 
             {/* Custom Multi-line UID Batch Textarea if Mode === CUSTOM */}
             {uidInputMode === 'CUSTOM' && (
-              <div className="flex flex-col gap-1.5 rounded-lg border border-blue-200 bg-blue-50/50 p-2.5 shadow-2xs">
+              <div className="flex flex-col gap-1.5 rounded-lg border border-blue-200 dark:border-blue-700/40 bg-blue-50/50 dark:bg-blue-500/10 p-2.5">
                 <div className="flex items-center justify-between text-xs">
                   <div className="flex items-center gap-2">
-                    <span className="font-bold text-slate-800">
+                    <span className="font-bold text-ink">
                       Multi-line Raw UID Batch Input (1 per line)
                     </span>
-                    <span className="text-[10px] text-slate-500 bg-white px-1.5 py-0.5 rounded border border-slate-200">
+                    <span className="text-[10px] text-ink-muted bg-surface px-1.5 py-0.5 rounded-lg border border-edge">
                       Auto-sanitizes spaces, commas, pipes, quotes
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full">
+                    <span className="font-mono text-xs font-bold text-blue-700 dark:text-blue-300 bg-blue-100 dark:bg-blue-500/15 px-2 py-0.5 rounded-full">
                       {t('totalInputUids')}: {parsedCustomUids.length}
                     </span>
                     {customUidText && (
                       <button
                         type="button"
                         onClick={() => setCustomUidText('')}
-                        className="text-[11px] text-slate-500 hover:text-rose-600 cursor-pointer"
+                        className="text-[11px] text-ink-muted hover:text-rose-600 cursor-pointer"
                       >
                         Clear
                       </button>
@@ -905,7 +905,7 @@ export function ToolsUtilitiesModal({
                   </div>
                 </div>
                 <textarea
-                  className="win-input h-28 w-full font-mono text-xs p-2 bg-white resize-y shadow-2xs"
+                  className="win-input h-28 w-full font-mono text-xs p-2 bg-surface resize-y"
                   placeholder="Paste thousands of UIDs here (1 UID per line or comma/pipe separated)...&#10;100012345678901&#10;100098765432109&#10;100055556666777"
                   value={customUidText}
                   onChange={(e) => setCustomUidText(e.target.value)}
@@ -916,18 +916,18 @@ export function ToolsUtilitiesModal({
             {/* Split View Container */}
             <div className="grid grid-cols-12 gap-3 min-h-[340px] h-[370px]">
               {/* Left Panel: Metrics & Live Counters */}
-              <div className="col-span-4 flex flex-col gap-2.5 rounded-lg border border-slate-200 bg-slate-50/70 p-3 shadow-2xs">
-                <div className="flex items-center gap-1.5 border-b border-slate-200 pb-2 text-xs font-bold text-slate-800">
+              <div className="col-span-4 flex flex-col gap-2.5 rounded-lg border border-edge bg-surface-sunken p-3">
+                <div className="flex items-center gap-1.5 border-b border-edge pb-2 text-xs font-bold text-ink">
                   <BarChart3 size={14} className="text-blue-600" />
                   <span>{t('summaryStats')}</span>
                 </div>
 
                 <div className="flex flex-col gap-2 flex-1 justify-center">
-                  <div className="flex items-center justify-between rounded bg-white p-2 border border-slate-200 shadow-2xs">
-                    <span className="text-xs text-slate-600 font-medium">
+                  <div className="flex items-center justify-between rounded-lg bg-surface p-2 border border-edge">
+                    <span className="text-xs text-ink-muted font-medium">
                       {uidInputMode === 'DB' ? t('totalAccounts') : 'Total UIDs'}
                     </span>
-                    <strong className="text-sm font-bold text-slate-800">
+                    <strong className="text-sm font-bold text-ink">
                       {uidInputMode === 'DB'
                         ? selectedIds().length > 0
                           ? selectedIds().length
@@ -936,26 +936,26 @@ export function ToolsUtilitiesModal({
                     </strong>
                   </div>
 
-                  <div className="flex items-center justify-between rounded bg-emerald-50/80 p-2 border border-emerald-200 shadow-2xs">
-                    <span className="flex items-center gap-1 text-xs text-emerald-800 font-semibold">
-                      <CheckCircle2 size={13} className="text-emerald-600" />
+                  <div className="flex items-center justify-between rounded bg-emerald-50/80 dark:bg-emerald-500/15 p-2 border border-emerald-200 dark:border-emerald-700/40 shadow-2xs">
+                    <span className="flex items-center gap-1 text-xs text-emerald-800 dark:text-emerald-300 font-semibold">
+                      <CheckCircle2 size={13} className="text-emerald-600 dark:text-emerald-400" />
                       {t('liveAccounts')}
                     </span>
-                    <strong className="text-sm font-extrabold text-emerald-700">{uidLiveCount}</strong>
+                    <strong className="text-sm font-extrabold text-emerald-700 dark:text-emerald-300">{uidLiveCount}</strong>
                   </div>
 
-                  <div className="flex items-center justify-between rounded bg-rose-50/80 p-2 border border-rose-200 shadow-2xs">
-                    <span className="flex items-center gap-1 text-xs text-rose-800 font-semibold">
-                      <XCircle size={13} className="text-rose-600" />
+                  <div className="flex items-center justify-between rounded bg-rose-50/80 dark:bg-rose-500/15 p-2 border border-rose-200 dark:border-rose-700/40 shadow-2xs">
+                    <span className="flex items-center gap-1 text-xs text-rose-800 dark:text-rose-300 font-semibold">
+                      <XCircle size={13} className="text-rose-600 dark:text-rose-400" />
                       {t('deadAccounts')}
                     </span>
-                    <strong className="text-sm font-extrabold text-rose-700">{uidDeadCount}</strong>
+                    <strong className="text-sm font-extrabold text-rose-700 dark:text-rose-300">{uidDeadCount}</strong>
                   </div>
 
                   {uidOtherCount > 0 && (
-                    <div className="flex items-center justify-between rounded bg-slate-100 p-2 border border-slate-200">
-                      <span className="text-xs text-slate-600 font-medium">Other / Unknown</span>
-                      <strong className="text-sm font-bold text-slate-700">{uidOtherCount}</strong>
+                    <div className="flex items-center justify-between rounded bg-slate-100 dark:bg-slate-500/15 p-2 border border-slate-200 dark:border-slate-700/40">
+                      <span className="text-xs text-slate-600 dark:text-slate-300 font-medium">Other / Unknown</span>
+                      <strong className="text-sm font-bold text-slate-700 dark:text-slate-300">{uidOtherCount}</strong>
                     </div>
                   )}
 
@@ -965,7 +965,7 @@ export function ToolsUtilitiesModal({
                         <span>Checking Progress...</span>
                         <span>{uidProgress.done} / {uidProgress.total}</span>
                       </div>
-                      <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200">
+                      <div className="h-2 w-full overflow-hidden rounded-full bg-surface">
                         <div
                           className="h-full bg-blue-600 transition-all duration-300"
                           style={{
@@ -979,16 +979,16 @@ export function ToolsUtilitiesModal({
               </div>
 
               {/* Right Panel: Interactive Table with Quick Action Toolbar */}
-              <div className="col-span-8 flex flex-col rounded-lg border border-slate-200 bg-white shadow-2xs overflow-hidden">
+              <div className="col-span-8 flex flex-col rounded-lg border border-edge bg-surface overflow-hidden">
                 {/* Quick Action Toolbar (Filter tabs + Action Buttons) */}
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-slate-100 px-3 py-1.5">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-edge bg-surface-sunken px-3 py-1.5">
                   {/* Filter tabs */}
                   <div className="flex items-center gap-1">
                     <button
-                      className={`rounded px-2 py-0.5 text-xs font-semibold transition-colors cursor-pointer ${
+                      className={`rounded-lg px-2 py-0.5 text-xs font-semibold transition-colors cursor-pointer ${
                         uidFilter === 'ALL'
-                          ? 'bg-blue-600 text-white shadow-2xs'
-                          : 'text-slate-600 hover:bg-slate-200'
+                          ? 'bg-blue-600 text-white'
+                          : 'text-ink-muted hover:bg-surface-sunken'
                       }`}
                       onClick={() => setUidFilter('ALL')}
                     >
@@ -998,7 +998,7 @@ export function ToolsUtilitiesModal({
                       className={`rounded px-2 py-0.5 text-xs font-semibold transition-colors cursor-pointer ${
                         uidFilter === 'LIVE'
                           ? 'bg-emerald-600 text-white shadow-2xs'
-                          : 'text-emerald-700 hover:bg-emerald-100'
+                          : 'text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-500/25'
                       }`}
                       onClick={() => setUidFilter('LIVE')}
                     >
@@ -1008,7 +1008,7 @@ export function ToolsUtilitiesModal({
                       className={`rounded px-2 py-0.5 text-xs font-semibold transition-colors cursor-pointer ${
                         uidFilter === 'DIE'
                           ? 'bg-rose-600 text-white shadow-2xs'
-                          : 'text-rose-700 hover:bg-rose-100'
+                          : 'text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-500/25'
                       }`}
                       onClick={() => setUidFilter('DIE')}
                     >
@@ -1033,7 +1033,7 @@ export function ToolsUtilitiesModal({
                       disabled={uidResults.length === 0}
                       title="Export table results to CSV"
                     >
-                      <Download size={11} className="text-[#0067c0]" />
+                      <Download size={11} className="text-accent" />
                       <span>{t('exportResults')}</span>
                     </button>
                   </div>
@@ -1043,7 +1043,7 @@ export function ToolsUtilitiesModal({
                 <div className="flex-1 overflow-y-auto">
                   {filteredUidResults.length > 0 ? (
                     <table className="w-full text-xs">
-                      <thead className="sticky top-0 bg-slate-100 border-b border-slate-200 font-bold text-slate-700 text-[11px] shadow-2xs">
+                      <thead className="sticky top-0 bg-surface-sunken border-b border-edge font-bold text-ink-muted text-[11px]">
                         <tr>
                           <th className="px-2.5 py-1.5 text-center w-12">{t('colIndex')}</th>
                           <th className="px-3 py-1.5 text-left w-36">UID</th>
@@ -1052,15 +1052,15 @@ export function ToolsUtilitiesModal({
                           <th className="px-3 py-1.5 text-left w-36">{t('colResponseTime')}</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-100 text-[11px]">
+                      <tbody className="divide-y divide-edge text-[11px]">
                         {filteredUidResults.map((r, idx) => {
                           const acc = r.accountId > 0 ? accountMap.get(r.accountId) : null
                           return (
                             <tr key={`${r.uid}-${idx}`} className="hover:bg-blue-50/40 transition-colors">
-                              <td className="px-2.5 py-1.5 text-center text-slate-400 font-mono">
+                              <td className="px-2.5 py-1.5 text-center text-ink-muted font-mono">
                                 {idx + 1}
                               </td>
-                              <td className="px-3 py-1.5 font-mono font-semibold text-slate-800">
+                              <td className="px-3 py-1.5 font-mono font-semibold text-ink">
                                 <div className="flex items-center gap-1.5">
                                   <span>{r.uid ?? '—'}</span>
                                   {r.uid && (
@@ -1070,7 +1070,7 @@ export function ToolsUtilitiesModal({
                                         void navigator.clipboard.writeText(r.uid!)
                                         showToast('UID copied to clipboard!', 2000)
                                       }}
-                                      className="text-slate-400 hover:text-blue-600 transition-colors cursor-pointer"
+                                      className="text-ink-muted hover:text-blue-600 transition-colors cursor-pointer"
                                       title="Copy UID"
                                     >
                                       <Copy size={11} />
@@ -1078,17 +1078,17 @@ export function ToolsUtilitiesModal({
                                   )}
                                 </div>
                               </td>
-                              <td className="px-3 py-1.5 text-slate-700 font-medium truncate max-w-[150px]">
+                              <td className="px-3 py-1.5 text-ink font-medium truncate max-w-[150px]">
                                 {acc?.name || (r.accountId < 0 ? 'Custom Input' : '—')}
                               </td>
                               <td className="px-3 py-1.5 text-center">
                                 <span
                                   className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${
                                     r.status === 'Live'
-                                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                      ? 'bg-emerald-100 dark:bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700/40'
                                       : r.status === 'Die'
-                                        ? 'bg-rose-100 text-rose-800 border border-rose-300'
-                                        : 'bg-slate-100 text-slate-700 border border-slate-300'
+                                        ? 'bg-rose-100 dark:bg-rose-500/15 text-rose-800 dark:text-rose-300 border border-rose-300 dark:border-rose-700/40'
+                                        : 'bg-slate-100 dark:bg-slate-500/15 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700/40'
                                   }`}
                                 >
                                   {r.status === 'Live' ? <CheckCircle2 size={10} /> : <XCircle size={10} />}
@@ -1104,8 +1104,8 @@ export function ToolsUtilitiesModal({
                       </tbody>
                     </table>
                   ) : (
-                    <div className="flex h-full flex-col items-center justify-center p-6 text-center text-slate-400">
-                      <Activity size={32} className="text-slate-300 mb-1.5" />
+                    <div className="flex h-full flex-col items-center justify-center p-6 text-center text-ink-muted">
+                      <Activity size={32} className="text-ink-muted mb-1.5" />
                       <p className="text-xs">{t('noActivityYet')}</p>
                     </div>
                   )}
@@ -1121,7 +1121,7 @@ export function ToolsUtilitiesModal({
         {tab === 'proxy' && (
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
-              <p className="text-[11px] text-slate-500">
+              <p className="text-[11px] text-ink-muted">
                 Tests TCP connectivity and ping latency for every proxy assigned to accounts.
               </p>
               <div className="flex items-center gap-2 shrink-0">
@@ -1139,37 +1139,37 @@ export function ToolsUtilitiesModal({
             {/* Split View Container */}
             <div className="grid grid-cols-12 gap-3 min-h-[340px] h-[380px]">
               {/* Left Panel: Metrics */}
-              <div className="col-span-4 flex flex-col gap-2.5 rounded-lg border border-slate-200 bg-slate-50/70 p-3 shadow-2xs">
-                <div className="flex items-center gap-1.5 border-b border-slate-200 pb-2 text-xs font-bold text-slate-800">
+              <div className="col-span-4 flex flex-col gap-2.5 rounded-lg border border-edge bg-surface-sunken p-3">
+                <div className="flex items-center gap-1.5 border-b border-edge pb-2 text-xs font-bold text-ink">
                   <BarChart3 size={14} className="text-blue-600" />
                   <span>{t('summaryStats')}</span>
                 </div>
 
                 <div className="flex flex-col gap-2 flex-1 justify-center">
-                  <div className="flex items-center justify-between rounded bg-white p-2 border border-slate-200 shadow-2xs">
-                    <span className="text-xs text-slate-600 font-medium">{t('totalProxies')}</span>
-                    <strong className="text-sm font-bold text-slate-800">{proxyResults.length}</strong>
+                  <div className="flex items-center justify-between rounded-lg bg-surface p-2 border border-edge">
+                    <span className="text-xs text-ink-muted font-medium">{t('totalProxies')}</span>
+                    <strong className="text-sm font-bold text-ink">{proxyResults.length}</strong>
                   </div>
 
-                  <div className="flex items-center justify-between rounded bg-emerald-50/80 p-2 border border-emerald-200 shadow-2xs">
-                    <span className="flex items-center gap-1 text-xs text-emerald-800 font-semibold">
-                      <CheckCircle2 size={13} className="text-emerald-600" />
+                  <div className="flex items-center justify-between rounded bg-emerald-50/80 dark:bg-emerald-500/15 p-2 border border-emerald-200 dark:border-emerald-700/40 shadow-2xs">
+                    <span className="flex items-center gap-1 text-xs text-emerald-800 dark:text-emerald-300 font-semibold">
+                      <CheckCircle2 size={13} className="text-emerald-600 dark:text-emerald-400" />
                       {t('healthyProxies')}
                     </span>
-                    <strong className="text-sm font-extrabold text-emerald-700">{proxyAliveCount}</strong>
+                    <strong className="text-sm font-extrabold text-emerald-700 dark:text-emerald-300">{proxyAliveCount}</strong>
                   </div>
 
-                  <div className="flex items-center justify-between rounded bg-rose-50/80 p-2 border border-rose-200 shadow-2xs">
-                    <span className="flex items-center gap-1 text-xs text-rose-800 font-semibold">
-                      <XCircle size={13} className="text-rose-600" />
+                  <div className="flex items-center justify-between rounded bg-rose-50/80 dark:bg-rose-500/15 p-2 border border-rose-200 dark:border-rose-700/40 shadow-2xs">
+                    <span className="flex items-center gap-1 text-xs text-rose-800 dark:text-rose-300 font-semibold">
+                      <XCircle size={13} className="text-rose-600 dark:text-rose-400" />
                       {t('deadProxies')}
                     </span>
-                    <strong className="text-sm font-extrabold text-rose-700">{proxyDeadCount}</strong>
+                    <strong className="text-sm font-extrabold text-rose-700 dark:text-rose-300">{proxyDeadCount}</strong>
                   </div>
 
-                  <div className="flex items-center justify-between rounded bg-blue-50/80 p-2 border border-blue-200 shadow-2xs">
-                    <span className="text-xs text-blue-800 font-semibold">{t('avgPing')}</span>
-                    <strong className="text-sm font-extrabold text-blue-700">
+                  <div className="flex items-center justify-between rounded bg-blue-50/80 dark:bg-blue-500/15 p-2 border border-blue-200 dark:border-blue-700/40 shadow-2xs">
+                    <span className="text-xs text-blue-800 dark:text-blue-300 font-semibold">{t('avgPing')}</span>
+                    <strong className="text-sm font-extrabold text-blue-700 dark:text-blue-300">
                       {avgProxyLatency > 0 ? `${avgProxyLatency}ms` : '—'}
                     </strong>
                   </div>
@@ -1180,7 +1180,7 @@ export function ToolsUtilitiesModal({
                         <span>Testing Progress...</span>
                         <span>{proxyProgress.done} / {proxyProgress.total}</span>
                       </div>
-                      <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200">
+                      <div className="h-2 w-full overflow-hidden rounded-full bg-surface">
                         <div
                           className="h-full bg-blue-600 transition-all duration-300"
                           style={{
@@ -1194,16 +1194,16 @@ export function ToolsUtilitiesModal({
               </div>
 
               {/* Right Panel: Interactive Proxy Table with Toolbar */}
-              <div className="col-span-8 flex flex-col rounded-lg border border-slate-200 bg-white shadow-2xs overflow-hidden">
+              <div className="col-span-8 flex flex-col rounded-lg border border-edge bg-surface overflow-hidden">
                 {/* Quick Action Toolbar */}
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-slate-100 px-3 py-1.5">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-edge bg-surface-sunken px-3 py-1.5">
                   {/* Filter tabs */}
                   <div className="flex items-center gap-1">
                     <button
-                      className={`rounded px-2 py-0.5 text-xs font-semibold transition-colors cursor-pointer ${
+                      className={`rounded-lg px-2 py-0.5 text-xs font-semibold transition-colors cursor-pointer ${
                         proxyFilter === 'ALL'
-                          ? 'bg-blue-600 text-white shadow-2xs'
-                          : 'text-slate-600 hover:bg-slate-200'
+                          ? 'bg-blue-600 text-white'
+                          : 'text-ink-muted hover:bg-surface-sunken'
                       }`}
                       onClick={() => setProxyFilter('ALL')}
                     >
@@ -1213,7 +1213,7 @@ export function ToolsUtilitiesModal({
                       className={`rounded px-2 py-0.5 text-xs font-semibold transition-colors cursor-pointer ${
                         proxyFilter === 'HEALTHY'
                           ? 'bg-emerald-600 text-white shadow-2xs'
-                          : 'text-emerald-700 hover:bg-emerald-100'
+                          : 'text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-500/25'
                       }`}
                       onClick={() => setProxyFilter('HEALTHY')}
                     >
@@ -1223,7 +1223,7 @@ export function ToolsUtilitiesModal({
                       className={`rounded px-2 py-0.5 text-xs font-semibold transition-colors cursor-pointer ${
                         proxyFilter === 'DEAD'
                           ? 'bg-rose-600 text-white shadow-2xs'
-                          : 'text-rose-700 hover:bg-rose-100'
+                          : 'text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-500/25'
                       }`}
                       onClick={() => setProxyFilter('DEAD')}
                     >
@@ -1243,7 +1243,7 @@ export function ToolsUtilitiesModal({
                       <span>{t('copyWorkingProxies')}</span>
                     </button>
                     <button
-                      className="win-btn flex items-center gap-1 text-[11px] px-2 py-0.5 text-rose-700 hover:bg-rose-50"
+                      className="win-btn flex items-center gap-1 text-[11px] px-2 py-0.5 text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-500/15"
                       onClick={() => void removeDeadProxies()}
                       disabled={proxyDeadCount === 0}
                       title="Clear dead proxies from affected accounts"
@@ -1258,7 +1258,7 @@ export function ToolsUtilitiesModal({
                 <div className="flex-1 overflow-y-auto">
                   {filteredProxyResults.length > 0 ? (
                     <table className="w-full text-xs">
-                      <thead className="sticky top-0 bg-slate-100 border-b border-slate-200 font-bold text-slate-700 text-[11px] shadow-2xs">
+                      <thead className="sticky top-0 bg-surface-sunken border-b border-edge font-bold text-ink-muted text-[11px]">
                         <tr>
                           <th className="px-2.5 py-1.5 text-center w-12">{t('colIndex')}</th>
                           <th className="px-3 py-1.5 text-left">{t('colProxyAddress')}</th>
@@ -1267,13 +1267,13 @@ export function ToolsUtilitiesModal({
                           <th className="px-3 py-1.5 text-center w-28">{t('colStatus')}</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-100 font-mono text-[11px]">
+                      <tbody className="divide-y divide-edge font-mono text-[11px]">
                         {filteredProxyResults.map((r, i) => (
                           <tr key={`${r.proxy}-${i}`} className="hover:bg-blue-50/40 transition-colors">
-                            <td className="px-2.5 py-1.5 text-center text-slate-400">
+                            <td className="px-2.5 py-1.5 text-center text-ink-muted">
                               {i + 1}
                             </td>
-                            <td className="px-3 py-1.5 font-semibold text-slate-800">
+                            <td className="px-3 py-1.5 font-semibold text-ink">
                               <div className="flex items-center gap-1.5 truncate max-w-[200px]" title={r.proxy}>
                                 <span className="truncate">{r.proxy}</span>
                                 <button
@@ -1282,7 +1282,7 @@ export function ToolsUtilitiesModal({
                                     void navigator.clipboard.writeText(r.proxy)
                                     showToast('Proxy copied to clipboard!', 2000)
                                   }}
-                                  className="text-slate-400 hover:text-blue-600 transition-colors cursor-pointer shrink-0"
+                                  className="text-ink-muted hover:text-blue-600 transition-colors cursor-pointer shrink-0"
                                   title="Copy Proxy"
                                 >
                                   <Copy size={11} />
@@ -1290,7 +1290,7 @@ export function ToolsUtilitiesModal({
                               </div>
                             </td>
                             <td className="px-3 py-1.5 text-center">
-                              <span className="inline-flex items-center gap-1 rounded bg-slate-100 px-2 py-0.5 text-[10px] font-sans font-semibold text-slate-700 border border-slate-200">
+                              <span className="inline-flex items-center gap-1 rounded-lg bg-surface-sunken px-2 py-0.5 text-[10px] font-sans font-semibold text-ink-muted border border-edge">
                                 {getProxyGeo(r.proxy)}
                               </span>
                             </td>
@@ -1301,8 +1301,8 @@ export function ToolsUtilitiesModal({
                               <span
                                 className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${
                                   r.alive
-                                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                                    : 'bg-rose-100 text-rose-800 border border-rose-300'
+                                    ? 'bg-emerald-100 dark:bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700/40'
+                                    : 'bg-rose-100 dark:bg-rose-500/15 text-rose-800 dark:text-rose-300 border border-rose-300 dark:border-rose-700/40'
                                 }`}
                               >
                                 {r.alive ? <CheckCircle2 size={10} /> : <XCircle size={10} />}
@@ -1314,8 +1314,8 @@ export function ToolsUtilitiesModal({
                       </tbody>
                     </table>
                   ) : (
-                    <div className="flex h-full flex-col items-center justify-center p-6 text-center text-slate-400">
-                      <Globe2 size={32} className="text-slate-300 mb-1.5" />
+                    <div className="flex h-full flex-col items-center justify-center p-6 text-center text-ink-muted">
+                      <Globe2 size={32} className="text-ink-muted mb-1.5" />
                       <p className="text-xs">{t('noActivityYet')}</p>
                     </div>
                   )}
@@ -1331,14 +1331,14 @@ export function ToolsUtilitiesModal({
         {tab === 'dupes' && (
           <div className="flex flex-col gap-2.5">
             {/* Dual Input Mode Toggle & Action Bar */}
-            <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50/80 p-2 rounded-lg">
-              <div className="flex items-center gap-1 rounded bg-slate-200/90 p-0.5 text-xs font-semibold">
+            <div className="flex items-center justify-between border-b border-edge bg-surface-sunken p-2 rounded-lg">
+              <div className="flex items-center gap-1 rounded-lg bg-surface-sunken p-0.5 text-xs font-semibold">
                 <button
                   onClick={() => setDupesInputMode('DB')}
-                  className={`flex items-center gap-1 rounded px-2.5 py-1 text-xs transition-colors cursor-pointer ${
+                  className={`flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs transition-colors cursor-pointer ${
                     dupesInputMode === 'DB'
-                      ? 'bg-white text-blue-600 shadow-2xs font-bold'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-surface text-blue-600 font-bold'
+                      : 'text-ink-muted hover:text-ink'
                   }`}
                 >
                   <Database size={12} />
@@ -1346,16 +1346,16 @@ export function ToolsUtilitiesModal({
                 </button>
                 <button
                   onClick={() => setDupesInputMode('CUSTOM')}
-                  className={`flex items-center gap-1 rounded px-2.5 py-1 text-xs transition-colors cursor-pointer ${
+                  className={`flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs transition-colors cursor-pointer ${
                     dupesInputMode === 'CUSTOM'
-                      ? 'bg-white text-blue-600 shadow-2xs font-bold'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-surface text-blue-600 font-bold'
+                      : 'text-ink-muted hover:text-ink'
                   }`}
                 >
                   <Scissors size={12} />
                   <span>{t('customListDedupe')}</span>
                   {customDupesAnalysis.totalLines > 0 && (
-                    <span className="rounded-full bg-blue-100 px-1.5 py-0.2 text-[10px] text-blue-700">
+                    <span className="rounded-full bg-blue-100 dark:bg-blue-500/15 px-1.5 py-0.2 text-[10px] text-blue-700 dark:text-blue-300">
                       {customDupesAnalysis.totalLines}
                     </span>
                   )}
@@ -1376,12 +1376,12 @@ export function ToolsUtilitiesModal({
                 </button>
               ) : (
                 <div className="flex items-center gap-1.5">
-                  <label className="flex items-center gap-1.5 text-xs text-slate-700 font-medium cursor-pointer mr-2 select-none">
+                  <label className="flex items-center gap-1.5 text-xs text-ink-muted font-medium cursor-pointer mr-2 select-none">
                     <input
                       type="checkbox"
                       checked={crossCheckWithDb}
                       onChange={(e) => setCrossCheckWithDb(e.target.checked)}
-                      className="rounded border-slate-300 text-blue-600 focus:ring-0 cursor-pointer"
+                      className="rounded border-edge text-blue-600 focus:ring-0 cursor-pointer"
                     />
                     <span>{t('crossCheckWithDb')}</span>
                   </label>
@@ -1427,26 +1427,26 @@ export function ToolsUtilitiesModal({
 
             {/* Custom List Input Textarea if Mode === CUSTOM */}
             {dupesInputMode === 'CUSTOM' && (
-              <div className="flex flex-col gap-1.5 rounded-lg border border-amber-200 bg-amber-50/50 p-2.5 shadow-2xs">
+              <div className="flex flex-col gap-1.5 rounded-lg border border-amber-200 dark:border-amber-700/40 bg-amber-50/50 dark:bg-amber-500/10 p-2.5">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-slate-800">
+                  <span className="font-bold text-ink">
                     Multi-line Raw UID / Account List (1 per line)
                   </span>
                   <div className="flex items-center gap-3 text-xs font-mono">
-                    <span className="bg-white px-2 py-0.5 rounded border border-slate-200">
+                    <span className="bg-surface px-2 py-0.5 rounded-lg border border-edge">
                       Total Lines: <strong>{customDupesAnalysis.totalLines}</strong>
                     </span>
-                    <span className="text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded font-bold">
+                    <span className="text-emerald-800 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-500/15 px-2 py-0.5 rounded font-bold">
                       Unique: <strong>{customDupesAnalysis.uniqueCount}</strong>
                     </span>
-                    <span className="text-amber-800 bg-amber-100 px-2 py-0.5 rounded font-bold">
+                    <span className="text-amber-800 dark:text-amber-300 bg-amber-100 dark:bg-amber-500/15 px-2 py-0.5 rounded font-bold">
                       Duplicates: <strong>{customDupesAnalysis.duplicateCount}</strong>
                     </span>
                     {customDupesText && (
                       <button
                         type="button"
                         onClick={() => setCustomDupesText('')}
-                        className="text-[11px] text-slate-500 hover:text-rose-600 cursor-pointer font-sans"
+                        className="text-[11px] text-ink-muted hover:text-rose-600 cursor-pointer font-sans"
                       >
                         Clear
                       </button>
@@ -1454,7 +1454,7 @@ export function ToolsUtilitiesModal({
                   </div>
                 </div>
                 <textarea
-                  className="win-input h-28 w-full font-mono text-xs p-2 bg-white resize-y shadow-2xs"
+                  className="win-input h-28 w-full font-mono text-xs p-2 bg-surface resize-y"
                   placeholder="Paste accounts or raw UID list here (1 item per line)...&#10;100011112222&#10;100011112222&#10;100033334444|password|..."
                   value={customDupesText}
                   onChange={(e) => setCustomDupesText(e.target.value)}
@@ -1465,37 +1465,37 @@ export function ToolsUtilitiesModal({
             {/* Split View Container */}
             <div className="grid grid-cols-12 gap-3 min-h-[340px] h-[370px]">
               {/* Left Panel: Summary & Action */}
-              <div className="col-span-4 flex flex-col gap-2.5 rounded-lg border border-slate-200 bg-slate-50/70 p-3 shadow-2xs">
-                <div className="flex items-center gap-1.5 border-b border-slate-200 pb-2 text-xs font-bold text-slate-800">
+              <div className="col-span-4 flex flex-col gap-2.5 rounded-lg border border-edge bg-surface-sunken p-3">
+                <div className="flex items-center gap-1.5 border-b border-edge pb-2 text-xs font-bold text-ink">
                   <BarChart3 size={14} className="text-blue-600" />
                   <span>{t('summaryStats')}</span>
                 </div>
 
                 <div className="flex flex-col gap-2 flex-1 justify-center">
-                  <div className="flex items-center justify-between rounded bg-white p-2 border border-slate-200 shadow-2xs">
-                    <span className="text-xs text-slate-600 font-medium">
+                  <div className="flex items-center justify-between rounded-lg bg-surface p-2 border border-edge">
+                    <span className="text-xs text-ink-muted font-medium">
                       {dupesInputMode === 'DB' ? t('totalAccounts') : 'Total Lines'}
                     </span>
-                    <strong className="text-sm font-bold text-slate-800">
+                    <strong className="text-sm font-bold text-ink">
                       {dupesInputMode === 'DB' ? accounts.length : customDupesAnalysis.totalLines}
                     </strong>
                   </div>
 
-                  <div className="flex items-center justify-between rounded bg-amber-50/80 p-2 border border-amber-200 shadow-2xs">
-                    <span className="flex items-center gap-1 text-xs text-amber-800 font-semibold">
-                      <Copy size={13} className="text-amber-600" />
+                  <div className="flex items-center justify-between rounded bg-amber-50/80 dark:bg-amber-500/15 p-2 border border-amber-200 dark:border-amber-700/40 shadow-2xs">
+                    <span className="flex items-center gap-1 text-xs text-amber-800 dark:text-amber-300 font-semibold">
+                      <Copy size={13} className="text-amber-600 dark:text-amber-400" />
                       {dupesInputMode === 'DB' ? t('accountsToRemove') : 'Duplicate Lines'}
                     </span>
-                    <strong className="text-sm font-extrabold text-amber-700">
+                    <strong className="text-sm font-extrabold text-amber-700 dark:text-amber-300">
                       {dupesInputMode === 'DB' ? dupes.length : customDupesAnalysis.duplicateCount}
                     </strong>
                   </div>
 
-                  <div className="flex items-center justify-between rounded bg-blue-50/80 p-2 border border-blue-200 shadow-2xs">
-                    <span className="text-xs text-blue-800 font-semibold">
+                  <div className="flex items-center justify-between rounded bg-blue-50/80 dark:bg-blue-500/15 p-2 border border-blue-200 dark:border-blue-700/40 shadow-2xs">
+                    <span className="text-xs text-blue-800 dark:text-blue-300 font-semibold">
                       {dupesInputMode === 'DB' ? t('duplicateGroups') : 'Unique Items'}
                     </span>
-                    <strong className="text-sm font-extrabold text-blue-700">
+                    <strong className="text-sm font-extrabold text-blue-700 dark:text-blue-300">
                       {dupesInputMode === 'DB' ? duplicateGroups.length : customDupesAnalysis.uniqueCount}
                     </strong>
                   </div>
@@ -1513,17 +1513,17 @@ export function ToolsUtilitiesModal({
                             {dupesRemoving ? 'Removing…' : `${t('cleanAllDuplicates')} (${dupes.length})`}
                           </span>
                         </button>
-                        <p className="text-[10px] text-slate-500 text-center">
+                        <p className="text-[10px] text-ink-muted text-center">
                           Safely moves extra duplicates to the Recycle Bin.
                         </p>
                       </div>
                     ) : dupesCleaned ? (
-                      <div className="rounded border border-emerald-200 bg-emerald-50/80 p-2.5 text-center text-xs text-emerald-800 font-medium flex items-center justify-center gap-1.5">
-                        <CheckCircle2 size={14} className="text-emerald-600" />
+                      <div className="rounded border border-emerald-200 dark:border-emerald-700/40 bg-emerald-50/80 dark:bg-emerald-500/15 p-2.5 text-center text-xs text-emerald-800 dark:text-emerald-300 font-medium flex items-center justify-center gap-1.5">
+                        <CheckCircle2 size={14} className="text-emerald-600 dark:text-emerald-400" />
                         <span>{t('cleaned')}! All duplicate accounts resolved.</span>
                       </div>
                     ) : (
-                      <div className="rounded border border-slate-200 bg-white p-2.5 text-center text-xs text-slate-500 font-medium">
+                      <div className="rounded-lg border border-edge bg-surface p-2.5 text-center text-xs text-ink-muted font-medium">
                         Click "{t('scanDuplicates')}" to analyze database
                       </div>
                     )
@@ -1546,9 +1546,9 @@ export function ToolsUtilitiesModal({
               </div>
 
               {/* Right Panel: Structured Duplicate Resolution Table */}
-              <div className="col-span-8 flex flex-col rounded-lg border border-slate-200 bg-white shadow-2xs overflow-hidden">
+              <div className="col-span-8 flex flex-col rounded-lg border border-edge bg-surface overflow-hidden">
                 {/* Action Toolbar */}
-                <div className="flex items-center justify-between border-b border-slate-200 bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-800">
+                <div className="flex items-center justify-between border-b border-edge bg-surface-sunken px-3 py-1.5 text-xs font-bold text-ink">
                   <div className="flex items-center gap-1.5">
                     <Activity size={14} className="text-blue-600" />
                     <span>
@@ -1586,7 +1586,7 @@ export function ToolsUtilitiesModal({
                   {dupesInputMode === 'DB' ? (
                     duplicateGroups.length > 0 ? (
                       <table className="w-full text-xs">
-                        <thead className="sticky top-0 bg-slate-100 border-b border-slate-200 font-bold text-slate-700 text-[11px] shadow-2xs">
+                        <thead className="sticky top-0 bg-surface-sunken border-b border-edge font-bold text-ink-muted text-[11px]">
                           <tr>
                             <th className="px-2.5 py-1.5 text-center w-12">{t('colIndex')}</th>
                             <th className="px-3 py-1.5 text-left w-36">{t('colDuplicatedUid')}</th>
@@ -1595,13 +1595,13 @@ export function ToolsUtilitiesModal({
                             <th className="px-3 py-1.5 text-center w-36">{t('colAction')}</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-100 text-[11px]">
+                        <tbody className="divide-y divide-edge text-[11px]">
                           {duplicateGroups.map((g, i) => (
                             <tr key={g.uid} className="hover:bg-amber-50/40 transition-colors">
-                              <td className="px-2.5 py-1.5 text-center text-slate-400 font-mono">
+                              <td className="px-2.5 py-1.5 text-center text-ink-muted font-mono">
                                 {i + 1}
                               </td>
-                              <td className="px-3 py-1.5 font-mono font-bold text-slate-800">
+                              <td className="px-3 py-1.5 font-mono font-bold text-ink">
                                 <div className="flex items-center gap-1.5">
                                   <span>{g.uid}</span>
                                   <button
@@ -1610,7 +1610,7 @@ export function ToolsUtilitiesModal({
                                       void navigator.clipboard.writeText(g.uid)
                                       showToast('UID copied to clipboard!', 2000)
                                     }}
-                                    className="text-slate-400 hover:text-blue-600 transition-colors cursor-pointer"
+                                    className="text-ink-muted hover:text-blue-600 transition-colors cursor-pointer"
                                     title="Copy UID"
                                   >
                                     <Copy size={11} />
@@ -1618,18 +1618,18 @@ export function ToolsUtilitiesModal({
                                 </div>
                               </td>
                               <td className="px-3 py-1.5 text-center">
-                                <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800 border border-amber-300">
+                                <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700/40">
                                   {g.occurrences} Accounts
                                 </span>
                               </td>
                               <td className="px-3 py-1.5 font-sans">
                                 <div className="flex flex-col gap-0.5 max-w-[220px]">
                                   {g.accounts.map((acc, aIdx) => (
-                                    <div key={acc.accountId} className="truncate text-slate-700">
-                                      <span className="font-mono text-[10px] text-slate-400 font-semibold">
+                                    <div key={acc.accountId} className="truncate text-ink-muted">
+                                      <span className="font-mono text-[10px] text-ink-muted font-semibold">
                                         #{acc.accountId}
                                       </span>{' '}
-                                      <span className="font-medium text-slate-800">
+                                      <span className="font-medium text-ink">
                                         {acc.name || acc.email || 'No Name'}
                                       </span>
                                       {aIdx === 0 && (
@@ -1642,7 +1642,7 @@ export function ToolsUtilitiesModal({
                                 </div>
                               </td>
                               <td className="px-3 py-1.5 text-center">
-                                <span className="inline-flex items-center gap-1 rounded bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-800 border border-amber-200">
+                                <span className="inline-flex items-center gap-1 rounded bg-amber-50 dark:bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-700/40">
                                   {t('keepOldestBinOthers')}
                                 </span>
                               </td>
@@ -1651,8 +1651,8 @@ export function ToolsUtilitiesModal({
                         </tbody>
                       </table>
                     ) : (
-                      <div className="flex h-full flex-col items-center justify-center p-6 text-center text-slate-400">
-                        <Copy size={32} className="text-slate-300 mb-1.5" />
+                      <div className="flex h-full flex-col items-center justify-center p-6 text-center text-ink-muted">
+                        <Copy size={32} className="text-ink-muted mb-1.5" />
                         <p className="text-xs">
                           {dupesCleaned
                             ? `${t('cleaned')}! No duplicate accounts remaining.`
@@ -1664,7 +1664,7 @@ export function ToolsUtilitiesModal({
                     /* Custom List Dedupe Result Table */
                     customDupesAnalysis.duplicateItems.length > 0 ? (
                       <table className="w-full text-xs">
-                        <thead className="sticky top-0 bg-slate-100 border-b border-slate-200 font-bold text-slate-700 text-[11px] shadow-2xs">
+                        <thead className="sticky top-0 bg-surface-sunken border-b border-edge font-bold text-ink-muted text-[11px]">
                           <tr>
                             <th className="px-2.5 py-1.5 text-center w-12">{t('colIndex')}</th>
                             <th className="px-3 py-1.5 text-left">UID / Item</th>
@@ -1673,13 +1673,13 @@ export function ToolsUtilitiesModal({
                             <th className="px-3 py-1.5 text-center w-20">Action</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-100 text-[11px]">
+                        <tbody className="divide-y divide-edge text-[11px]">
                           {customDupesAnalysis.duplicateItems.map((item, idx) => (
                             <tr key={idx} className="hover:bg-amber-50/40 transition-colors">
-                              <td className="px-2.5 py-1.5 text-center text-slate-400 font-mono">
+                              <td className="px-2.5 py-1.5 text-center text-ink-muted font-mono">
                                 {idx + 1}
                               </td>
-                              <td className="px-3 py-1.5 font-mono font-bold text-slate-800">
+                              <td className="px-3 py-1.5 font-mono font-bold text-ink">
                                 <div className="flex items-center gap-1.5">
                                   <span className="truncate max-w-[200px]" title={item.item}>
                                     {item.item}
@@ -1690,7 +1690,7 @@ export function ToolsUtilitiesModal({
                                       void navigator.clipboard.writeText(item.item)
                                       showToast('Copied to clipboard!', 2000)
                                     }}
-                                    className="text-slate-400 hover:text-blue-600 transition-colors cursor-pointer shrink-0"
+                                    className="text-ink-muted hover:text-blue-600 transition-colors cursor-pointer shrink-0"
                                     title="Copy"
                                   >
                                     <Copy size={11} />
@@ -1698,18 +1698,18 @@ export function ToolsUtilitiesModal({
                                 </div>
                               </td>
                               <td className="px-3 py-1.5 text-center">
-                                <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800 border border-amber-300">
+                                <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700/40">
                                   {item.occurrences} Occurrences
                                 </span>
                               </td>
                               <td className="px-3 py-1.5 text-center">
                                 {item.inDb ? (
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800 border border-emerald-300">
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 dark:bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700/40">
                                     <CheckCircle2 size={10} />
                                     {t('inDatabase')}
                                   </span>
                                 ) : (
-                                  <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 border border-slate-200">
+                                  <span className="inline-flex items-center rounded-full bg-surface-sunken px-2 py-0.5 text-[10px] font-medium text-ink-muted border border-edge">
                                     {t('notInDatabase')}
                                   </span>
                                 )}
@@ -1731,7 +1731,7 @@ export function ToolsUtilitiesModal({
                         </tbody>
                       </table>
                     ) : (
-                      <div className="flex h-full flex-col items-center justify-center p-6 text-center text-slate-400">
+                      <div className="flex h-full flex-col items-center justify-center p-6 text-center text-ink-muted">
                         <CheckCircle2 size={32} className="text-emerald-400 mb-1.5" />
                         <p className="text-xs">
                           {customDupesAnalysis.totalLines > 0
@@ -1752,8 +1752,8 @@ export function ToolsUtilitiesModal({
         {/* ========================================================================= */}
         {tab === 'getfbid' && (
           <div className="flex flex-col gap-3">
-            <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50/80 p-2 rounded-lg">
-              <p className="text-[11px] text-slate-500">
+            <div className="flex items-center justify-between border-b border-edge bg-surface-sunken p-2 rounded-lg">
+              <p className="text-[11px] text-ink-muted">
                 Paste single or bulk Facebook links to extract target IDs (Posts, Reels, Videos, Groups, Profiles, Share Links).
               </p>
               <div className="flex items-center gap-2">
@@ -1774,7 +1774,7 @@ export function ToolsUtilitiesModal({
                       <span>{t('copyAllExtractedIds')}</span>
                     </button>
                     <button
-                      className="win-btn px-2 py-1 text-xs text-slate-500 hover:text-rose-600"
+                      className="win-btn px-2 py-1 text-xs text-ink-muted hover:text-rose-600"
                       onClick={() => setExtractedFbIds([])}
                     >
                       {t('clearResults')}
@@ -1786,8 +1786,8 @@ export function ToolsUtilitiesModal({
 
             <div className="grid grid-cols-12 gap-3 min-h-[340px] h-[380px]">
               {/* Left Input Area */}
-              <div className="col-span-5 flex flex-col gap-2 rounded-lg border border-slate-200 bg-slate-50/70 p-3 shadow-2xs">
-                <div className="flex items-center justify-between text-xs font-bold text-slate-800 border-b border-slate-200 pb-1.5">
+              <div className="col-span-5 flex flex-col gap-2 rounded-lg border border-edge bg-surface-sunken p-3">
+                <div className="flex items-center justify-between text-xs font-bold text-ink border-b border-edge pb-1.5">
                   <span className="flex items-center gap-1.5">
                     <Link size={14} className="text-blue-600" />
                     <span>Facebook URLs Input</span>
@@ -1797,12 +1797,12 @@ export function ToolsUtilitiesModal({
                   </span>
                 </div>
                 <textarea
-                  className="win-input flex-1 w-full font-mono text-[11px] p-2 bg-white resize-none"
+                  className="win-input flex-1 w-full font-mono text-[11px] p-2 bg-surface resize-none"
                   placeholder={t('fbLinksPlaceholder')}
                   value={fbLinksInput}
                   onChange={(e) => setFbLinksInput(e.target.value)}
                 />
-                <div className="flex justify-between items-center text-[10px] text-slate-400">
+                <div className="flex justify-between items-center text-[10px] text-ink-muted">
                   <span>Supports: Posts, Reels, Groups, Shares, Profiles</span>
                   <button
                     type="button"
@@ -1815,8 +1815,8 @@ export function ToolsUtilitiesModal({
               </div>
 
               {/* Right Result Table */}
-              <div className="col-span-7 flex flex-col rounded-lg border border-slate-200 bg-white shadow-2xs overflow-hidden">
-                <div className="flex items-center justify-between border-b border-slate-200 bg-slate-100 px-3 py-2 text-xs font-bold text-slate-800">
+              <div className="col-span-7 flex flex-col rounded-lg border border-edge bg-surface overflow-hidden">
+                <div className="flex items-center justify-between border-b border-edge bg-surface-sunken px-3 py-2 text-xs font-bold text-ink">
                   <div className="flex items-center gap-1.5">
                     <Activity size={14} className="text-blue-600" />
                     <span>Extracted IDs ({extractedFbIds.length})</span>
@@ -1831,7 +1831,7 @@ export function ToolsUtilitiesModal({
                 <div className="flex-1 overflow-y-auto">
                   {extractedFbIds.length > 0 ? (
                     <table className="w-full text-xs">
-                      <thead className="sticky top-0 bg-slate-100 border-b border-slate-200 font-bold text-slate-700 text-[11px] shadow-2xs">
+                      <thead className="sticky top-0 bg-surface-sunken border-b border-edge font-bold text-ink-muted text-[11px]">
                         <tr>
                           <th className="px-2.5 py-1.5 text-center w-10">{t('colIndex')}</th>
                           <th className="px-3 py-1.5 text-left">{t('colOriginalLink')}</th>
@@ -1840,22 +1840,22 @@ export function ToolsUtilitiesModal({
                           <th className="px-2.5 py-1.5 text-center w-16">Action</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-100 text-[11px]">
+                      <tbody className="divide-y divide-edge text-[11px]">
                         {extractedFbIds.map((item, idx) => (
                           <tr key={idx} className="hover:bg-blue-50/40 transition-colors">
-                            <td className="px-2.5 py-1.5 text-center text-slate-400 font-mono">
+                            <td className="px-2.5 py-1.5 text-center text-ink-muted font-mono">
                               {idx + 1}
                             </td>
-                            <td className="px-3 py-1.5 font-mono text-[10px] text-slate-600 truncate max-w-[170px]" title={item.link}>
+                            <td className="px-3 py-1.5 font-mono text-[10px] text-ink-muted truncate max-w-[170px]" title={item.link}>
                               {item.link}
                             </td>
-                            <td className="px-3 py-1.5 font-mono font-bold text-slate-800">
+                            <td className="px-3 py-1.5 font-mono font-bold text-ink">
                               <span className={item.id === 'Not Found' ? 'text-rose-600' : 'text-blue-700'}>
                                 {item.id}
                               </span>
                             </td>
                             <td className="px-2.5 py-1.5 text-center">
-                              <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700 border border-slate-200">
+                              <span className="inline-flex items-center rounded-full bg-surface-sunken px-2 py-0.5 text-[10px] font-semibold text-ink-muted border border-edge">
                                 {item.type}
                               </span>
                             </td>
@@ -1867,7 +1867,7 @@ export function ToolsUtilitiesModal({
                                     void navigator.clipboard.writeText(item.id)
                                     showToast('ID copied to clipboard!', 2000)
                                   }}
-                                  className="text-slate-500 hover:text-blue-600 transition-colors cursor-pointer"
+                                  className="text-ink-muted hover:text-blue-600 transition-colors cursor-pointer"
                                   title="Copy ID"
                                 >
                                   <Copy size={12} />
@@ -1879,8 +1879,8 @@ export function ToolsUtilitiesModal({
                       </tbody>
                     </table>
                   ) : (
-                    <div className="flex h-full flex-col items-center justify-center p-6 text-center text-slate-400">
-                      <Link size={32} className="text-slate-300 mb-1.5" />
+                    <div className="flex h-full flex-col items-center justify-center p-6 text-center text-ink-muted">
+                      <Link size={32} className="text-ink-muted mb-1.5" />
                       <p className="text-xs">Paste links on the left and click "{t('extractAllIds')}"</p>
                     </div>
                   )}
@@ -1895,8 +1895,8 @@ export function ToolsUtilitiesModal({
         {/* ========================================================================= */}
         {tab === 'googlelink' && (
           <div className="flex flex-col gap-3">
-            <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50/80 p-2 rounded-lg">
-              <p className="text-[11px] text-slate-500">
+            <div className="flex items-center justify-between border-b border-edge bg-surface-sunken p-2 rounded-lg">
+              <p className="text-[11px] text-ink-muted">
                 Converts regular website URLs into authentic Google Search / Referrer Redirect URLs for safe Facebook posting without domain flags.
               </p>
               <div className="flex items-center gap-2">
@@ -1910,7 +1910,7 @@ export function ToolsUtilitiesModal({
                 </button>
                 {convertedGoogleUrls.length > 0 && (
                   <button
-                    className="win-btn px-2.5 py-1 text-xs flex items-center gap-1 font-semibold text-blue-700 hover:bg-blue-50"
+                    className="win-btn px-2.5 py-1 text-xs flex items-center gap-1 font-semibold text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-500/15"
                     onClick={() => {
                       if (convertedGoogleUrls[0]) {
                         window.open(convertedGoogleUrls[0], '_blank')
@@ -1927,8 +1927,8 @@ export function ToolsUtilitiesModal({
 
             <div className="grid grid-cols-12 gap-3 min-h-[340px] h-[380px]">
               {/* Left Input Area */}
-              <div className="col-span-6 flex flex-col gap-2 rounded-lg border border-slate-200 bg-slate-50/70 p-3 shadow-2xs">
-                <div className="flex items-center justify-between text-xs font-bold text-slate-800 border-b border-slate-200 pb-1.5">
+              <div className="col-span-6 flex flex-col gap-2 rounded-lg border border-edge bg-surface-sunken p-3">
+                <div className="flex items-center justify-between text-xs font-bold text-ink border-b border-edge pb-1.5">
                   <span className="flex items-center gap-1.5">
                     <Share2 size={14} className="text-blue-600" />
                     <span>Target URLs (1 per line)</span>
@@ -1940,7 +1940,7 @@ export function ToolsUtilitiesModal({
 
                 {/* Direct Google Redirect Engine Options */}
                 <div className="flex flex-wrap items-center gap-3.5 py-1 text-xs">
-                  <label className="flex items-center gap-1.5 cursor-pointer font-semibold text-slate-800 select-none">
+                  <label className="flex items-center gap-1.5 cursor-pointer font-semibold text-ink select-none">
                     <input
                       type="radio"
                       name="googleEngine"
@@ -1950,7 +1950,7 @@ export function ToolsUtilitiesModal({
                     />
                     <span>{t('redirectTypeSearch')}</span>
                   </label>
-                  <label className="flex items-center gap-1.5 cursor-pointer font-semibold text-slate-800 select-none">
+                  <label className="flex items-center gap-1.5 cursor-pointer font-semibold text-ink select-none">
                     <input
                       type="radio"
                       name="googleEngine"
@@ -1960,7 +1960,7 @@ export function ToolsUtilitiesModal({
                     />
                     <span>{t('redirectTypeImages')}</span>
                   </label>
-                  <label className="flex items-center gap-1.5 cursor-pointer font-semibold text-slate-800 select-none">
+                  <label className="flex items-center gap-1.5 cursor-pointer font-semibold text-ink select-none">
                     <input
                       type="radio"
                       name="googleEngine"
@@ -1973,7 +1973,7 @@ export function ToolsUtilitiesModal({
                 </div>
 
                 <textarea
-                  className="win-input flex-1 w-full font-mono text-[11px] p-2 bg-white resize-none"
+                  className="win-input flex-1 w-full font-mono text-[11px] p-2 bg-surface resize-none"
                   placeholder={t('googleUrlPlaceholder')}
                   value={googleUrlsInput}
                   onChange={(e) => setGoogleUrlsInput(e.target.value)}
@@ -1981,8 +1981,8 @@ export function ToolsUtilitiesModal({
               </div>
 
               {/* Right Output Area */}
-              <div className="col-span-6 flex flex-col rounded-lg border border-slate-200 bg-white shadow-2xs overflow-hidden">
-                <div className="flex items-center justify-between border-b border-slate-200 bg-slate-100 px-3 py-2 text-xs font-bold text-slate-800">
+              <div className="col-span-6 flex flex-col rounded-lg border border-edge bg-surface overflow-hidden">
+                <div className="flex items-center justify-between border-b border-edge bg-surface-sunken px-3 py-2 text-xs font-bold text-ink">
                   <div className="flex items-center gap-1.5">
                     <ExternalLink size={14} className="text-blue-600" />
                     <span>Converted Google Links ({convertedGoogleUrls.length})</span>
@@ -1997,15 +1997,15 @@ export function ToolsUtilitiesModal({
                   )}
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-2 bg-slate-50/50">
+                <div className="flex-1 overflow-y-auto p-2 bg-surface-sunken/50">
                   {convertedGoogleUrls.length > 0 ? (
                     <div className="flex flex-col gap-1.5">
                       {convertedGoogleUrls.map((gUrl, idx) => (
                         <div
                           key={idx}
-                          className="flex items-center justify-between gap-2 rounded border border-slate-200 bg-white p-2 text-[11px] font-mono shadow-2xs hover:border-blue-300 transition-colors"
+                          className="flex items-center justify-between gap-2 rounded-lg border border-edge bg-surface p-2 text-[11px] font-mono hover:border-blue-300 transition-colors"
                         >
-                          <span className="truncate flex-1 text-slate-800 select-all" title={gUrl}>
+                          <span className="truncate flex-1 text-ink select-all" title={gUrl}>
                             {gUrl}
                           </span>
                           <div className="flex items-center gap-1 shrink-0">
@@ -2015,7 +2015,7 @@ export function ToolsUtilitiesModal({
                                 void navigator.clipboard.writeText(gUrl)
                                 showToast('Link copied!', 1500)
                               }}
-                              className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-blue-600 transition-colors cursor-pointer"
+                              className="rounded-lg p-1 text-ink-muted hover:bg-surface-sunken hover:text-blue-600 transition-colors cursor-pointer"
                               title="Copy Google link"
                             >
                               <Copy size={12} />
@@ -2023,7 +2023,7 @@ export function ToolsUtilitiesModal({
                             <button
                               type="button"
                               onClick={() => window.open(gUrl, '_blank')}
-                              className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-emerald-600 transition-colors cursor-pointer"
+                              className="rounded-lg p-1 text-ink-muted hover:bg-surface-sunken hover:text-emerald-600 transition-colors cursor-pointer"
                               title="Open link in browser"
                             >
                               <ExternalLink size={12} />
@@ -2033,8 +2033,8 @@ export function ToolsUtilitiesModal({
                       ))}
                     </div>
                   ) : (
-                    <div className="flex h-full flex-col items-center justify-center p-6 text-center text-slate-400">
-                      <Share2 size={32} className="text-slate-300 mb-1.5" />
+                    <div className="flex h-full flex-col items-center justify-center p-6 text-center text-ink-muted">
+                      <Share2 size={32} className="text-ink-muted mb-1.5" />
                       <p className="text-xs">Paste links on the left to generate safe Google Share links in real time.</p>
                     </div>
                   )}
@@ -2047,19 +2047,19 @@ export function ToolsUtilitiesModal({
         {tab === 'backup' && (
           <div className="flex flex-col gap-5 py-1">
             {/* 1. Export Section */}
-            <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50/50 p-4 shadow-2xs">
+            <div className="flex flex-col gap-3 rounded-xl border border-edge bg-surface-sunken p-4">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-[13px] font-bold text-slate-800">
-                  <PackagePlus size={16} className="text-[#0067c0]" />
+                <div className="flex items-center gap-2 text-[13px] font-bold text-ink">
+                  <PackagePlus size={16} className="text-accent" />
                   <span>{t('backupTitle')}</span>
                 </div>
-                <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-[11px] font-semibold text-blue-700 border border-blue-200">
+                <span className="rounded-full bg-blue-50 dark:bg-blue-500/15 px-2.5 py-0.5 text-[11px] font-semibold text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-700/40">
                   {selectedIds().length > 0
                     ? `${selectedIds().length} selected account(s)`
                     : `All ${accounts.length} account(s)`}
                 </span>
               </div>
-              <p className="text-[11px] leading-relaxed text-slate-600">
+              <p className="text-[11px] leading-relaxed text-ink-muted">
                 {t('backupDesc')}
               </p>
               <div>
@@ -2074,12 +2074,12 @@ export function ToolsUtilitiesModal({
             </div>
 
             {/* 2. Import & Restore Section with Dedicated Drag & Drop Zone */}
-            <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-2xs">
-              <div className="flex items-center gap-2 text-[13px] font-bold text-slate-800">
+            <div className="flex flex-col gap-3 rounded-xl border border-edge bg-surface p-4">
+              <div className="flex items-center gap-2 text-[13px] font-bold text-ink">
                 <FolderArchive size={16} className="text-emerald-600" />
                 <span>{t('restoreTitle')}</span>
               </div>
-              <p className="text-[11px] leading-relaxed text-slate-600">
+              <p className="text-[11px] leading-relaxed text-ink-muted">
                 {t('restoreDesc')}
               </p>
 
@@ -2091,21 +2091,21 @@ export function ToolsUtilitiesModal({
                 onClick={() => void runImport()}
                 className={`group relative flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed p-8 text-center transition-all duration-200 ${
                   isDragOver
-                    ? 'border-blue-500 bg-blue-50/90 scale-[1.01] shadow-lg ring-4 ring-blue-500/15'
-                    : 'border-slate-300 bg-slate-50/70 hover:border-blue-400 hover:bg-blue-50/40 hover:shadow-xs'
+                    ? 'border-blue-500 bg-blue-50/90 dark:bg-blue-500/15 scale-[1.01] ring-4 ring-blue-500/15'
+                    : 'border-edge bg-surface-sunken hover:border-blue-400 hover:bg-blue-50/40 dark:hover:bg-blue-500/10'
                 }`}
               >
                 <div
                   className={`mb-3 flex h-14 w-14 items-center justify-center rounded-2xl transition-all duration-200 group-hover:scale-110 shadow-2xs ${
                     isDragOver
                       ? 'bg-blue-600 text-white shadow-blue-500/30 shadow-md'
-                      : 'bg-emerald-100 text-emerald-700 group-hover:bg-blue-100 group-hover:text-blue-600'
+                      : 'bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 group-hover:bg-blue-100 dark:group-hover:bg-blue-500/15 group-hover:text-blue-600 dark:group-hover:text-blue-400'
                   }`}
                 >
                   <UploadCloud size={28} className={importing ? 'animate-bounce' : ''} />
                 </div>
 
-                <div className="text-sm font-bold text-slate-800">
+                <div className="text-sm font-bold text-ink">
                   {importing ? (
                     <span className="flex items-center gap-2 text-blue-600">
                       <RefreshCw size={15} className="animate-spin" />
@@ -2118,21 +2118,21 @@ export function ToolsUtilitiesModal({
                   )}
                 </div>
 
-                <p className="mt-1 text-[11px] text-slate-500">
+                <p className="mt-1 text-[11px] text-ink-muted">
                   {t('dragDropSub')}
                 </p>
 
                 <div className="mt-3.5 flex items-center gap-2">
                   <button
                     type="button"
-                    className="win-btn px-4 py-1.5 font-medium shadow-xs hover:bg-slate-100 flex items-center gap-1.5"
+                    className="win-btn px-4 py-1.5 font-medium hover:bg-surface-sunken flex items-center gap-1.5"
                     disabled={importing}
                     onClick={(e) => {
                       e.stopPropagation()
                       void runImport()
                     }}
                   >
-                    <FileArchive size={14} className="text-[#0067c0]" />
+                    <FileArchive size={14} className="text-accent" />
                     <span>{t('importBtn')}</span>
                   </button>
                 </div>
@@ -2143,19 +2143,19 @@ export function ToolsUtilitiesModal({
 
         {tab === 'cloudsync' && (
           <div className="flex flex-col gap-4">
-            <p className="text-[11px] text-slate-500">
+            <p className="text-[11px] text-ink-muted">
               Transfers accounts and their Chrome profile folders (sessions) between two PCs via
               Firebase, addressed by each PC's Machine ID. The cloud copy is deleted automatically
               the moment a pull finishes successfully — it never lingers, and it is never removed
               if anything goes wrong.
             </p>
 
-            <div className="flex flex-col gap-2 rounded border border-slate-300 bg-white p-3">
-              <div className="flex items-center gap-2 text-[12px] font-semibold text-slate-800">
-                <CloudCog size={14} className="text-[#0067c0]" />
+            <div className="flex flex-col gap-2 rounded-lg border border-edge bg-surface p-3">
+              <div className="flex items-center gap-2 text-[12px] font-semibold text-ink">
+                <CloudCog size={14} className="text-accent" />
                 ⬆️ Push to Another PC
               </div>
-              <p className="text-[11px] text-slate-500">
+              <p className="text-[11px] text-ink-muted">
                 Bundles the selected accounts' database records and Chrome profile folders and
                 uploads them to Firebase under the target PC's Machine ID.
               </p>
@@ -2170,7 +2170,7 @@ export function ToolsUtilitiesModal({
                 <button className="win-btn-accent" onClick={() => void runCloudPush()} disabled={pushing}>
                   {pushing ? 'Pushing…' : 'Push to Machine ID'}
                 </button>
-                <span className="text-[11px] text-slate-500">
+                <span className="text-[11px] text-ink-muted">
                   {selectedIds().length > 0
                     ? `${selectedIds().length} selected account(s)`
                     : `All ${accounts.length} account(s)`}
@@ -2178,18 +2178,18 @@ export function ToolsUtilitiesModal({
               </div>
             </div>
 
-            <div className="flex flex-col gap-2 rounded border border-slate-300 bg-white p-3">
-              <div className="flex items-center gap-2 text-[12px] font-semibold text-slate-800">
-                <CloudCog size={14} className="text-[#0067c0]" />
+            <div className="flex flex-col gap-2 rounded-lg border border-edge bg-surface p-3">
+              <div className="flex items-center gap-2 text-[12px] font-semibold text-ink">
+                <CloudCog size={14} className="text-accent" />
                 ⬇️ Pull to This PC
               </div>
-              <p className="text-[11px] text-slate-500">
+              <p className="text-[11px] text-ink-muted">
                 Downloads whatever payload is waiting under this PC's own Machine ID and restores
                 the accounts and profile folders into a folder named <strong>Receive Account</strong>
                 , created automatically if it doesn't already exist.
               </p>
               <div className="flex items-center gap-2">
-                <span className="text-[11px] text-slate-600">
+                <span className="text-[11px] text-ink-muted">
                   This PC's Machine ID:{' '}
                   <b className="font-mono">{myMachineId ?? '…'}</b>
                 </span>
