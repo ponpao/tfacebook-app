@@ -9,7 +9,9 @@
 import { app, screen } from 'electron'
 import { join, resolve } from 'path'
 import { mkdirSync, existsSync, writeFileSync, readFileSync, readdirSync } from 'fs'
-import { chromium, devices, type BrowserContext, type Cookie } from 'playwright'
+import { spawn, execFile, type ChildProcess } from 'child_process'
+import { createServer } from 'net'
+import { chromium, devices, type Browser, type BrowserContext, type Cookie, type Page } from 'playwright'
 import type { Account } from '../../types/account'
 import { getAppSettings } from '../db/settingsRepo'
 import { buildStealthScript } from './stealthEngine'
@@ -129,26 +131,31 @@ async function injectSavedCookies(context: BrowserContext, account: Account): Pr
   }
 }
 
-// Every newly-launched headed window starts life tiled into the same 5x2
-// grid the "Arrange Windows" toolbar dropdown offers (see windowArranger.ts's
-// gridBounds — same cols/rows/wrap math, kept in sync deliberately so a
-// freshly-opened batch of windows lands exactly where "Arrange > 5x2" would
-// put them, with no extra step needed). Strict modulo wrap: once all 10
-// slots (5 cols x 2 rows) are filled, slotIndex 10 (the 11th window) lands
-// back on slot 0's exact bounds, slotIndex 20 also lands on slot 0, etc.
-const TILE_GRID_COLS = 5
-const TILE_GRID_ROWS = 2
+// Headed Browser View launch tiles: 8×3 (24 slots). Headed App View uses a
+// separate 6×2 (12 slots) so chrome-less phone windows pack tightly.
+// Arrange Windows "8x3" remains for Browser View; App View restore uses 6×2.
+const BROWSER_TILE_COLS = 8
+const BROWSER_TILE_ROWS = 3
+const APP_TILE_COLS = 6
+const APP_TILE_ROWS = 2
 
-/** Compute the (x, y, width, height) for a window at `slotIndex` in the 5x2 grid that fits the primary display's work area (taskbar-safe). */
-function tilePosition(slotIndex: number): { x: number; y: number; width: number; height: number } {
+/**
+ * Tight work-area grid: no inter-cell padding. Remainder pixels from
+ * floor(width/cols) sit on the far right/bottom edge of the screen, never
+ * between windows. Slot wrap is modulo (slot 12 lands on slot 0 for 6×2).
+ */
+function tilePosition(
+  slotIndex: number,
+  cols: number,
+  rows: number
+): { x: number; y: number; width: number; height: number } {
   const { x: areaX, y: areaY, width: screenW, height: screenH } = screen.getPrimaryDisplay().workArea
-  const totalSlots = TILE_GRID_COLS * TILE_GRID_ROWS
+  const totalSlots = cols * rows
   const slot = slotIndex % totalSlots
-  const col = slot % TILE_GRID_COLS
-  const row = Math.floor(slot / TILE_GRID_COLS)
-
-  const winW = Math.floor(screenW / TILE_GRID_COLS)
-  const winH = Math.floor(screenH / TILE_GRID_ROWS)
+  const col = slot % cols
+  const row = Math.floor(slot / cols)
+  const winW = Math.floor(screenW / cols)
+  const winH = Math.floor(screenH / rows)
 
   return {
     x: areaX + col * winW,
@@ -156,6 +163,13 @@ function tilePosition(slotIndex: number): { x: number; y: number; width: number;
     width: winW,
     height: winH
   }
+}
+
+/** Launch/restore grid for a live headed window — App View is 6×2, Browser View stays 8×3. */
+export function headedWindowTileGrid(context: BrowserContext): { cols: number; rows: number } {
+  return headedAppRuntimes.has(context)
+    ? { cols: APP_TILE_COLS, rows: APP_TILE_ROWS }
+    : { cols: BROWSER_TILE_COLS, rows: BROWSER_TILE_ROWS }
 }
 
 const VIEWPORTS = [
@@ -549,6 +563,10 @@ export const UNNAMED_ACCOUNT_TITLE = 'មិនទាន់ទាញ'
 /**
  * Builds the Chrome window title for an account: `{rowNumber} - {name}` when a real
  * name exists, or `{rowNumber} - មិនទាន់ទាញ` when not yet scraped.
+ *
+ * Browser View only. Headed App View uses buildAppWindowTitle() so the OS
+ * window reads as a Facebook app (`Facebook - {uid}`) rather than a numbered
+ * Chrome profile.
  */
 export function buildWindowTitle(account: Account, rowNumber?: number): string {
   const raw = account.name?.trim()
@@ -558,6 +576,269 @@ export function buildWindowTitle(account: Account, rowNumber?: number): string {
       : UNNAMED_ACCOUNT_TITLE
 
   return rowNumber != null ? `${rowNumber} - ${cleanName}` : cleanName
+}
+
+/**
+ * Headed App View OS title. Kept separate from buildWindowTitle() so Browser
+ * View's `{rowNumber} - {name}` chrome is never rewritten.
+ */
+export function buildAppWindowTitle(account: Account): string {
+  const id = account.uid?.trim() || String(account.id)
+  return `Facebook - ${id}`
+}
+
+/**
+ * Chromium `--app=` value for Headed + App View only.
+ *
+ * MUST stay a data: document — `--app=https://m.facebook.com` would start
+ * fetching Facebook before injectSavedCookies() runs. Unique per UID so
+ * Windows AppUserModelIDs don't collapse every account into one taskbar
+ * group. Keep this URL short: a huge data: payload (e.g. inlined .ico) can
+ * make Chromium ignore --app and fall back to a normal browser window.
+ */
+function headedAppModeSwitch(account: Account): string {
+  const title = buildAppWindowTitle(account)
+  return `--app=data:text/html,${encodeURIComponent(`<!doctype html><title>${title}</title>`)}`
+}
+
+interface HeadedAppRuntime {
+  browser: Browser
+  proc: ChildProcess
+  port: number
+}
+
+/** Spawned Chromium processes for Headed + App View (connectOverCDP). */
+const headedAppRuntimes = new Map<BrowserContext, HeadedAppRuntime>()
+
+function getFreePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const srv = createServer()
+    srv.once('error', reject)
+    srv.listen(0, '127.0.0.1', () => {
+      const addr = srv.address()
+      if (!addr || typeof addr === 'string') {
+        srv.close()
+        reject(new Error('Could not allocate a debugging port'))
+        return
+      }
+      const port = addr.port
+      srv.close((err) => (err ? reject(err) : resolve(port)))
+    })
+  })
+}
+
+function waitForProcessExit(proc: ChildProcess, timeoutMs: number): Promise<boolean> {
+  if (proc.exitCode != null || proc.killed) return Promise.resolve(true)
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(false), timeoutMs)
+    proc.once('exit', () => {
+      clearTimeout(timer)
+      resolve(true)
+    })
+  })
+}
+
+function killChromiumTree(proc: ChildProcess): void {
+  if (!proc.pid) return
+  if (process.platform === 'win32') {
+    execFile('taskkill', ['/pid', String(proc.pid), '/T', '/F'], { windowsHide: true }, () => {
+      try {
+        proc.kill()
+      } catch {
+        /* already gone */
+      }
+    })
+  } else {
+    try {
+      proc.kill('SIGKILL')
+    } catch {
+      /* already gone */
+    }
+  }
+}
+
+async function waitForCDP(port: number, proc: ChildProcess, timeoutMs: number): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  let exitCode: number | null = null
+  const onExit = (code: number | null): void => {
+    exitCode = code ?? 0
+  }
+  proc.once('exit', onExit)
+  try {
+    while (Date.now() < deadline) {
+      if (exitCode !== null) {
+        throw new Error(`Chromium exited before CDP was ready (code ${exitCode})`)
+      }
+      try {
+        const res = await fetch(`http://127.0.0.1:${port}/json/version`)
+        if (res.ok) return
+      } catch {
+        /* not listening yet */
+      }
+      await new Promise((r) => setTimeout(r, 120))
+    }
+    throw new Error(`Timed out waiting for Chromium CDP on port ${port}`)
+  } finally {
+    proc.off('exit', onExit)
+  }
+}
+
+interface CdpTargetInfo {
+  id: string
+  type: string
+  url: string
+  title: string
+}
+
+async function listCdpTargets(port: number): Promise<CdpTargetInfo[]> {
+  const res = await fetch(`http://127.0.0.1:${port}/json/list`)
+  if (!res.ok) return []
+  return (await res.json()) as CdpTargetInfo[]
+}
+
+async function waitForAppPageTarget(port: number, timeoutMs: number): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const targets = await listCdpTargets(port).catch(() => [])
+    if (targets.some((t) => t.type === 'page')) return
+    await new Promise((r) => setTimeout(r, 120))
+  }
+  throw new Error('Chromium --app window never registered a page target')
+}
+
+function isBlankAppUrl(url: string): boolean {
+  const u = (url || '').trim()
+  if (!u) return true
+  return (
+    u === 'about:blank' ||
+    u.startsWith('about:blank') ||
+    u.startsWith('data:') ||
+    u.startsWith('chrome://') ||
+    u.startsWith('chrome-error://') ||
+    u.startsWith('chrome-untrusted://')
+  )
+}
+
+function isFacebookUrl(url: string): boolean {
+  return /facebook\.com/i.test(url || '') && !isBlankAppUrl(url)
+}
+
+/** Prefer an existing Facebook page; otherwise the first page. */
+export function pickContextPage(context: BrowserContext): Page | undefined {
+  const pages = context.pages()
+  return pages.find((p) => isFacebookUrl(p.url())) ?? pages[0]
+}
+
+/** Stop the profile restoring a previous tabbed Chrome session over the --app window. */
+function disableSessionRestore(dir: string): void {
+  const prefsPath = join(dir, 'Default', 'Preferences')
+  try {
+    mkdirSync(join(dir, 'Default'), { recursive: true })
+    let prefs: Record<string, unknown> = {}
+    try {
+      prefs = JSON.parse(readFileSync(prefsPath, 'utf8')) as Record<string, unknown>
+    } catch {
+      prefs = {}
+    }
+    const session = (prefs.session && typeof prefs.session === 'object' ? prefs.session : {}) as Record<
+      string,
+      unknown
+    >
+    // 0 = default (New Tab), not 1 (restore last session) — a restored
+    // tabbed window is what made Headed App View still look like Chrome.
+    session.restore_on_startup = 0
+    prefs.session = session
+    writeFileSync(prefsPath, JSON.stringify(prefs), 'utf8')
+  } catch {
+    /* best-effort */
+  }
+}
+
+async function applyHeadedAppEmulation(
+  page: Page,
+  opts: {
+    viewport: { width: number; height: number }
+    userAgent: string
+    deviceScaleFactor: number
+    timezoneId: string
+    locale: string
+    geolocation?: { latitude: number; longitude: number; accuracy: number }
+  }
+): Promise<void> {
+  const session = await page.context().newCDPSession(page)
+  await session
+    .send('Emulation.setUserAgentOverride', {
+      userAgent: opts.userAgent,
+      acceptLanguage: opts.locale
+    })
+    .catch(() => void 0)
+  await session
+    .send('Emulation.setDeviceMetricsOverride', {
+      width: opts.viewport.width,
+      height: opts.viewport.height,
+      deviceScaleFactor: opts.deviceScaleFactor,
+      mobile: true,
+      screenWidth: opts.viewport.width,
+      screenHeight: opts.viewport.height
+    })
+    .catch(() => void 0)
+  await session.send('Emulation.setTouchEmulationEnabled', { enabled: true }).catch(() => void 0)
+  await session.send('Emulation.setTimezoneOverride', { timezoneId: opts.timezoneId }).catch(() => void 0)
+  await session.send('Emulation.setLocaleOverride', { locale: opts.locale }).catch(() => void 0)
+  if (opts.geolocation) {
+    await session
+      .send('Emulation.setGeolocationOverride', {
+        latitude: opts.geolocation.latitude,
+        longitude: opts.geolocation.longitude,
+        accuracy: opts.geolocation.accuracy
+      })
+      .catch(() => void 0)
+  }
+  await page.setViewportSize(opts.viewport).catch(() => void 0)
+}
+
+async function applyOsWindowBounds(
+  page: Page,
+  tile: { x: number; y: number; width: number; height: number }
+): Promise<void> {
+  try {
+    const cdp = await page.context().newCDPSession(page)
+    const { targetInfo } = await cdp.send('Target.getTargetInfo')
+    const { windowId } = await cdp.send('Browser.getWindowForTarget', {
+      targetId: targetInfo.targetId
+    })
+    await cdp.send('Browser.setWindowBounds', {
+      windowId,
+      bounds: { windowState: 'normal' }
+    })
+    await new Promise((r) => setTimeout(r, 60))
+    const outer = {
+      left: tile.x,
+      top: tile.y,
+      width: tile.width,
+      height: tile.height,
+      windowState: 'normal' as const
+    }
+    // Outer OS bounds = exact grid cell so adjacent App View windows touch.
+    // --window-size is inner content; without this CDP pass, the title bar
+    // makes each window larger than its cell and they overlap / leave gaps.
+    await cdp.send('Browser.setWindowBounds', { windowId, bounds: outer })
+    await new Promise((r) => setTimeout(r, 40))
+    const check = await cdp.send('Browser.getWindowBounds', { windowId })
+    const b = check.bounds
+    if (
+      b &&
+      (Math.abs((b.left ?? tile.x) - tile.x) > 2 ||
+        Math.abs((b.top ?? tile.y) - tile.y) > 2 ||
+        Math.abs((b.width ?? tile.width) - tile.width) > 2 ||
+        Math.abs((b.height ?? tile.height) - tile.height) > 2)
+    ) {
+      await cdp.send('Browser.setWindowBounds', { windowId, bounds: outer })
+    }
+    await cdp.detach().catch(() => void 0)
+  } catch {
+    /* windowArranger can still place it after launch */
+  }
 }
 
 /**
@@ -698,6 +979,235 @@ export async function settingsDelay(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, Math.round(seconds * 1000)))
 }
 
+/**
+ * Cookie inject + stealth + title + media block + active-set tracking.
+ * Shared by launchPersistentContext (Browser View / headless) and the
+ * Headed App View connectOverCDP path so session behavior stays identical.
+ */
+async function configureLaunchedContext(
+  context: BrowserContext,
+  opts: {
+    account: Account
+    resetProfileBeforeCookieInject?: boolean
+    isMobile: boolean
+    userAgent: string
+    locale: string
+    resolvedHeadless: boolean
+    rowNumber?: number
+    blockMedia: boolean
+  }
+): Promise<void> {
+  if (opts.resetProfileBeforeCookieInject) {
+    await context.clearCookies().catch(() => void 0)
+  }
+
+  const existingCookies = await context.cookies().catch(() => [])
+  const hasExistingSession = existingCookies.some((c) => c.name === 'c_user')
+  if (!hasExistingSession || opts.resetProfileBeforeCookieInject) {
+    await injectSavedCookies(context, opts.account)
+  }
+
+  const isMac = !opts.isMobile && opts.userAgent.includes('Macintosh')
+  await context.addInitScript(
+    buildStealthScript({
+      languages: [opts.locale, opts.locale.split('-')[0]],
+      profileSeed: opts.account.uid ?? undefined,
+      isMobile: opts.isMobile,
+      ...(isMac
+        ? { gpuVendor: 'Google Inc. (Apple)', gpuRenderer: 'ANGLE (Apple, Apple M1, OpenGL 4.1)' }
+        : {})
+    })
+  )
+
+  if (!opts.resolvedHeadless) {
+    const title = opts.isMobile
+      ? buildAppWindowTitle(opts.account)
+      : buildWindowTitle(opts.account, opts.rowNumber)
+    await applyWindowTitle(context, title)
+  }
+
+  if (opts.blockMedia) {
+    await context.route('**/*', (route) => {
+      const type = route.request().resourceType()
+      const url = route.request().url()
+      if (['image', 'media', 'font'].includes(type) && !url.includes('checkpoint')) {
+        return route.abort()
+      }
+      return route.continue()
+    })
+  }
+
+  allActiveContexts.add(context)
+  context.on('close', () => {
+    allActiveContexts.delete(context)
+    headedAppRuntimes.delete(context)
+  })
+}
+
+/**
+ * Headed + App View ONLY.
+ *
+ * Playwright's launchPersistentContext always appends a positional
+ * `about:blank` (see playwright-core defaultArgs). Chromium then opens a
+ * normal tabbed browser window and that is the page Playwright controls —
+ * `--app` never becomes the automation target. Confirmed by the previous
+ * attempt: tab bar + omnibox still visible.
+ *
+ * Spawn Chromium ourselves with `--app` + `--user-data-dir` (same UID
+ * profile) + a unique `--remote-debugging-port`, then connectOverCDP so
+ * the Playwright-controlled page IS the chrome-less app window.
+ */
+async function launchHeadedAppViewContext(params: {
+  account: Account
+  dir: string
+  tile: { x: number; y: number; width: number; height: number }
+  viewport: { width: number; height: number }
+  userAgent: string
+  proxy: ReturnType<typeof parseProxy>
+  timezoneId: string
+  geolocation?: { latitude: number; longitude: number; accuracy: number }
+  locale: string
+  mobileDevice: { name: string; descriptor: (typeof devices)[string] }
+  hardwareMode: 'cpu' | 'gpu' | 'auto'
+  executablePath: string
+  resetProfileBeforeCookieInject?: boolean
+  rowNumber?: number
+  blockMedia: boolean
+}): Promise<BrowserContext> {
+  disableSessionRestore(params.dir)
+
+  const port = await getFreePort()
+  const args = [
+    headedAppModeSwitch(params.account),
+    `--user-data-dir=${params.dir}`,
+    `--remote-debugging-port=${port}`,
+    '--remote-debugging-address=127.0.0.1',
+    `--window-size=${params.tile.width},${params.tile.height}`,
+    `--window-position=${params.tile.x},${params.tile.y}`,
+    `--user-agent=${params.userAgent}`,
+    '--test-type=',
+    '--disable-blink-features=AutomationControlled',
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
+    '--disable-infobars',
+    '--disable-notifications',
+    '--disable-dev-shm-usage',
+    '--disable-save-password-bubble',
+    '--disable-session-crashed-bubble',
+    '--hide-crash-restore-bubble',
+    '--disable-component-update',
+    '--disable-background-networking',
+    '--no-first-run',
+    '--no-default-browser-check',
+    '--disable-extensions',
+    '--disable-popup-blocking',
+    '--disable-hang-monitor',
+    '--disable-ipc-flooding-protection',
+    '--disable-prompt-on-repost',
+    '--disable-sync',
+    '--disable-features=PasswordManager,PasswordManagerUI,OptimizationGuideModelDownloading,Translate',
+    '--metrics-recording-only',
+    '--password-store=basic'
+  ]
+
+  if (params.hardwareMode === 'cpu') {
+    args.push('--disable-gpu', '--disable-software-rasterizer')
+  } else if (params.hardwareMode === 'gpu') {
+    args.push('--ignore-gpu-blocklist', '--enable-gpu-rasterization', '--enable-webgl')
+  }
+
+  if (params.proxy) {
+    args.push(`--proxy-server=${params.proxy.server}`)
+  }
+
+  const proc = spawn(params.executablePath, args, {
+    stdio: 'ignore',
+    windowsHide: false
+  })
+
+  let context: BrowserContext | undefined
+  try {
+    await waitForCDP(port, proc, 30000)
+    await waitForAppPageTarget(port, 15000)
+    // Do NOT close https pages here. --app starts as data:text/html; a
+    // restored Facebook session lives on that same window as https. Closing
+    // https targets left a blank data:/about:blank window on reopen.
+    const browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`, { timeout: 60000 })
+    context = browser.contexts()[0]
+    if (!context) {
+      throw new Error('CDP connected but Chromium has no default context')
+    }
+
+    let page = pickContextPage(context)
+    if (!page) {
+      page = await Promise.race([
+        context.waitForEvent('page'),
+        new Promise<Page>((_, reject) =>
+          setTimeout(() => reject(new Error('Chromium --app window never produced a page')), 15000)
+        )
+      ])
+    }
+
+    const deviceScaleFactor = Math.min(2, params.mobileDevice.descriptor.deviceScaleFactor)
+    const emulation = {
+      viewport: params.viewport,
+      userAgent: params.userAgent,
+      deviceScaleFactor,
+      timezoneId: params.timezoneId,
+      locale: params.locale,
+      geolocation: params.geolocation
+    }
+    await applyHeadedAppEmulation(page, emulation)
+    context.on('page', (p) => {
+      void applyHeadedAppEmulation(p, emulation)
+    })
+    await applyOsWindowBounds(page, params.tile)
+
+    if (params.geolocation) {
+      await context.grantPermissions(['geolocation']).catch(() => void 0)
+    }
+
+    headedAppRuntimes.set(context, { browser, proc, port })
+    const appContext = context
+    browser.on('disconnected', () => {
+      headedAppRuntimes.delete(appContext)
+      // Browser.close() already asked Chromium to exit; only force-kill a
+      // zombie after a short grace so the Cookies SQLite can flush.
+      setTimeout(() => {
+        if (proc.exitCode == null) killChromiumTree(proc)
+      }, 4000)
+    })
+
+    await configureLaunchedContext(context, {
+      account: params.account,
+      resetProfileBeforeCookieInject: params.resetProfileBeforeCookieInject,
+      isMobile: true,
+      userAgent: params.userAgent,
+      locale: params.locale,
+      resolvedHeadless: false,
+      rowNumber: params.rowNumber,
+      blockMedia: params.blockMedia
+    })
+
+    // Cookies are in the jar now. If CDP attached to the --app data: document
+    // (or about:blank after a closed restore), navigate to Facebook so the
+    // visible window is never left white. Callers may goto again; that's fine.
+    page = pickContextPage(context) ?? page
+    if (isBlankAppUrl(page.url()) || !isFacebookUrl(page.url())) {
+      const dest = 'https://m.facebook.com/'
+      await page.goto(dest, { timeout: 45000, waitUntil: 'domcontentloaded' }).catch(() => void 0)
+    }
+    await applyHeadedAppEmulation(page, emulation)
+    await applyOsWindowBounds(page, params.tile)
+
+    return context
+  } catch (err) {
+    if (context) headedAppRuntimes.delete(context)
+    killChromiumTree(proc)
+    throw err
+  }
+}
+
 /** Launch a stealth-configured persistent context for an account. */
 export async function launchContext({
   headless,
@@ -722,7 +1232,7 @@ export async function launchContext({
   // Useragent) always wins over either pool, since that's an explicit
   // per-account override.
   const mobileDevice = isAppView ? pickMobileDevice() : null
-  const viewport = mobileDevice ? mobileDevice.descriptor.viewport : pick(VIEWPORTS)
+  let viewport = mobileDevice ? mobileDevice.descriptor.viewport : pick(VIEWPORTS)
   const userAgent = account.user_agent?.trim() || mobileDevice?.descriptor.userAgent || pick(USER_AGENTS)
   const proxy = parseProxy(account.proxy)
   const resolvedHeadless = headless ?? settings.browserMode === 'headless'
@@ -749,6 +1259,33 @@ export async function launchContext({
   const profileKey = account.uid?.trim() || `acc_${account.id}`
   const dir = profileDir(profileKey)
   disablePasswordManagerPrefs(dir)
+
+  // Headed + App View cannot use launchPersistentContext: Playwright always
+  // appends a positional `about:blank`, which opens a normal tabbed Chrome
+  // window that becomes pages()[0]. Spawn + connectOverCDP instead so the
+  // controlled page is the --app window. Browser View and Headless App View
+  // keep the persistent-context path below, unchanged.
+  if (!resolvedHeadless && isAppView && mobileDevice) {
+    const tile = tilePosition(slotIndex ?? 0, APP_TILE_COLS, APP_TILE_ROWS)
+    viewport = { width: tile.width, height: tile.height }
+    return launchHeadedAppViewContext({
+      account,
+      dir,
+      tile,
+      viewport,
+      userAgent,
+      proxy,
+      timezoneId,
+      geolocation,
+      locale,
+      mobileDevice,
+      hardwareMode: settings.hardwareMode,
+      executablePath: executablePath ?? chromium.executablePath(),
+      resetProfileBeforeCookieInject,
+      rowNumber,
+      blockMedia: settings.blockMedia
+    })
+  }
 
   const args = [
     '--disable-blink-features=AutomationControlled',
@@ -791,17 +1328,13 @@ export async function launchContext({
   // of, so a normal-looking 1280x800 is worth setting even with nothing
   // to visually show.
   //
-  // App View headed windows still get tiled via tilePosition() for their
-  // on-screen (x, y) — same grid slot layout as desktop — but sized to the
-  // picked device's own viewport instead of the fixed grid slot size, so
-  // the window genuinely looks like that phone/tablet rather than a normal
-  // desktop-sized Chrome window with a mobile UA inside it.
+  // Headed Browser View tiles into the 8×3 work-area grid (App View uses
+  // 6×2 in the branch above). Strict modulo wrap.
   if (!resolvedHeadless) {
-    const { x, y, width, height } = tilePosition(slotIndex ?? 0)
+    const { x, y, width, height } = tilePosition(slotIndex ?? 0, BROWSER_TILE_COLS, BROWSER_TILE_ROWS)
+    args.push(`--window-size=${width},${height}`, `--window-position=${x},${y}`)
     if (mobileDevice) {
-      args.push(`--window-size=${viewport.width},${viewport.height}`, `--window-position=${x},${y}`)
-    } else {
-      args.push(`--window-size=${width},${height}`, `--window-position=${x},${y}`)
+      viewport = { width, height }
     }
   } else {
     args.push(mobileDevice ? `--window-size=${viewport.width},${viewport.height}` : '--window-size=1280,800')
@@ -811,10 +1344,8 @@ export async function launchContext({
     headless: resolvedHeadless,
     // Playwright derives the initial window size from viewport when headed;
     // null lets --window-size (above) take effect without Playwright forcing
-    // its own dimensions. App View is the exception: its viewport must drive
-    // the actual page layout (a phone-sized CSS viewport, not a desktop one
-    // merely displayed in a small window), so it's passed through even when
-    // headed.
+    // its own dimensions. Headed App View uses the 8x3 cell as its viewport
+    // so the m-site fills the tiled window.
     viewport: resolvedHeadless || mobileDevice ? viewport : null,
     userAgent,
     proxy,
@@ -822,7 +1353,12 @@ export async function launchContext({
     args,
     ...(mobileDevice
       ? {
-          deviceScaleFactor: mobileDevice.descriptor.deviceScaleFactor,
+          // Headed 6×2 cells are still small vs a real phone — a 3.5x DPR
+          // makes the m-site unreadably huge. Cap headed DPR; headless
+          // screencast keeps the real device scale.
+          deviceScaleFactor: resolvedHeadless
+            ? mobileDevice.descriptor.deviceScaleFactor
+            : Math.min(2, mobileDevice.descriptor.deviceScaleFactor),
           isMobile: mobileDevice.descriptor.isMobile,
           hasTouch: mobileDevice.descriptor.hasTouch
         }
@@ -847,77 +1383,15 @@ export async function launchContext({
     ...(geolocation ? { geolocation, permissions } : {})
   })
 
-  // Login with Cookie only — see resetProfileBeforeCookieInject's doc
-  // comment on LaunchOpts. Must happen BEFORE injectSavedCookies() below,
-  // not after: clearing afterward would wipe the very cookie just injected.
-  if (resetProfileBeforeCookieInject) {
-    await context.clearCookies().catch(() => void 0)
-  }
-
-  // Restore the saved session cookie before any navigation happens in the
-  // caller. If the profile already has a valid session cookie in its on-disk
-  // store (e.g. user manually logged in), do not overwrite it with a potentially
-  // stale database cookie.
-  const existingCookies = await context.cookies().catch(() => [])
-  const hasExistingSession = existingCookies.some((c) => c.name === 'c_user')
-  if (!hasExistingSession || resetProfileBeforeCookieInject) {
-    await injectSavedCookies(context, account)
-  }
-
-  // Anti-detect init script — runs before any page script on every document
-  // (including iframes) in this context, patching the JS-visible automation
-  // signals Facebook's bot-detection checks (navigator.webdriver, missing
-  // window.chrome, plugin/language fingerprint, WebGL vendor, permissions
-  // API, canvas/audio fingerprint noise, WebRTC IP leak). A macOS UA never
-  // pairs with a Direct3D/ANGLE renderer string (that API doesn't exist on
-  // macOS Chrome), so the GPU pool is chosen to match — same reasoning for
-  // App View's Android UAs, which get a mobile (Adreno/Mali) GPU pool and an
-  // empty plugin list instead (see stealthEngine.ts's isMobile option). The
-  // mac and mobile branches are mutually exclusive: a launch is either
-  // Browser View (desktop, mac-or-not) or App View (mobile), never both.
-  // profileSeed is the account's UID so its canvas/audio noise is stable
-  // across sessions (looks like one consistent device) but differs from
-  // every other account.
-  const isMac = !mobileDevice && userAgent.includes('Macintosh')
-  await context.addInitScript(
-    buildStealthScript({
-      // Matches the context's own `locale` option above — a browser whose
-      // reported navigator.languages disagrees with its Accept-Language
-      // header (locale) and its geolocation/timezone is a mismatch a
-      // fingerprinting script can flag just as easily as a wrong timezone.
-      languages: [locale, locale.split('-')[0]],
-      profileSeed: account.uid ?? undefined,
-      isMobile: Boolean(mobileDevice),
-      ...(isMac
-        ? { gpuVendor: 'Google Inc. (Apple)', gpuRenderer: 'ANGLE (Apple, Apple M1, OpenGL 4.1)' }
-        : {})
-    })
-  )
-
-  // Window title: "{rowNumber} - {name}" so a screen full of tiled browser
-  // windows is identifiable at a glance from the taskbar/title bar. Only
-  // meaningful for a headed launch — a headless context has no window.
-  if (!resolvedHeadless) {
-    await applyWindowTitle(context, buildWindowTitle(account, rowNumber))
-  }
-
-  // RAM & Media Optimizer — abort image/media/font requests when enabled in
-  // General Settings, except while on a checkpoint page (a captcha image
-  // must still render fully so it can be solved/read).
-  if (settings.blockMedia) {
-    await context.route('**/*', (route) => {
-      const type = route.request().resourceType()
-      const url = route.request().url()
-      if (['image', 'media', 'font'].includes(type) && !url.includes('checkpoint')) {
-        return route.abort()
-      }
-      return route.continue()
-    })
-  }
-
-  allActiveContexts.add(context)
-  context.on('close', () => {
-    allActiveContexts.delete(context)
+  await configureLaunchedContext(context, {
+    account,
+    resetProfileBeforeCookieInject,
+    isMobile: Boolean(mobileDevice),
+    userAgent,
+    locale,
+    resolvedHeadless,
+    rowNumber,
+    blockMedia: settings.blockMedia
   })
 
   return context
@@ -1040,15 +1514,39 @@ export function listTrackedWindows(): TrackedWindowInfo[] {
  * to read a locked file, silently dropping session state from the bundle.
  * Closing first lets Chromium flush and release everything cleanly.
  */
-export async function closeTrackedContext(key: string): Promise<boolean> {
-  const ctx = trackedContexts.get(key)
-  if (!ctx) return false
-  trackedContexts.delete(key)
+async function disposeContext(ctx: BrowserContext): Promise<void> {
+  const runtime = headedAppRuntimes.get(ctx)
+  headedAppRuntimes.delete(ctx)
   allActiveContexts.delete(ctx)
+  if (runtime) {
+    // Browser.close() sends CDP Browser.close so Chromium can flush the
+    // profile Cookies DB. taskkill /F here used to drop a just-logged-in
+    // session on disk even when c_user+xs were already in memory.
+    await Promise.race([
+      runtime.browser.close().catch(() => void 0),
+      new Promise((resolve) => setTimeout(resolve, 8000))
+    ])
+    const exited = await waitForProcessExit(runtime.proc, 5000)
+    if (!exited) killChromiumTree(runtime.proc)
+    return
+  }
   for (const page of ctx.pages()) {
     await page.close({ runBeforeUnload: false }).catch(() => void 0)
   }
   await ctx.close().catch(() => void 0)
+}
+
+/** Close a launched context, including Headed App View's spawned Chromium. */
+export async function closeLaunchedContext(ctx: BrowserContext | null | undefined): Promise<void> {
+  if (!ctx) return
+  await disposeContext(ctx)
+}
+
+export async function closeTrackedContext(key: string): Promise<boolean> {
+  const ctx = trackedContexts.get(key)
+  if (!ctx) return false
+  trackedContexts.delete(key)
+  await disposeContext(ctx)
   return true
 }
 
@@ -1060,10 +1558,7 @@ export async function closeAllTrackedContexts(): Promise<number> {
   let n = 0
   for (const ctx of contexts) {
     try {
-      for (const page of ctx.pages()) {
-        await page.close({ runBeforeUnload: false }).catch(() => void 0)
-      }
-      await ctx.close().catch(() => void 0)
+      await disposeContext(ctx)
       n += 1
     } catch {
       /* best-effort close */

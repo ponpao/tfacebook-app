@@ -128,13 +128,8 @@ export const ROW_NUMBER_COLUMN: GridColumn = {
   render: (_a, i) => i + 1
 }
 
-// Column order below matches the spec's numbered sequence exactly (UID,
-// Password, 2FA, Mail, Pass Mail, Name, Friends, Proxy, Primary Location,
-// Cookie, Created Date, Status, Activity Status). `key` values are this
-// app's real `accounts` table column names (e.g. `two_fa`, `email_pass`,
-// `location`, `created_date`, `live_status`) — the spec's ids
-// (twoFactorSecret, mailPassword, primaryLocation, createdAt,
-// activityStatus) are descriptive labels, not actual schema fields.
+// Column order: UID, Password, 2FA, Mail, Pass Mail, Name, Note, Friends,
+// Groups, Followers, Pages, … `key` values are `accounts` table columns.
 export const GRID_COLUMNS: GridColumn[] = [
   {
     key: 'avatar',
@@ -166,6 +161,13 @@ export const GRID_COLUMNS: GridColumn[] = [
       }
       return n
     }
+  },
+  {
+    key: 'notes',
+    header: 'Note',
+    width: 160,
+    render: (a) => (a.notes ?? '').trim(),
+    title: (a) => (a.notes ?? '').trim()
   },
   {
     key: 'friends_count',

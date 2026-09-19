@@ -8,7 +8,14 @@
 // ---------------------------------------------------------------------------
 import type { BrowserContext, Page } from 'playwright'
 import type { Account, ManagedPage } from '../../types/account'
-import { launchContext, trackContext, untrackContext, hasRequiredSessionCookies } from './browserContext'
+import {
+  launchContext,
+  trackContext,
+  untrackContext,
+  closeLaunchedContext,
+  hasRequiredSessionCookies,
+  pickContextPage
+} from './browserContext'
 import { fetchFacebookOtp } from './imapWorker'
 import { generateTOTP } from './totp'
 import { getAppSettings } from '../db/settingsRepo'
@@ -91,7 +98,15 @@ const FACEBOOK_URLS = {
   // there directly avoids one redirect hop and matches the DOM this module's
   // selectors were captured against.
   full: 'https://web.facebook.com/',
-  mobile: 'https://m.facebook.com/login',
+  // Explicit desktop login form. Used when we already know credentials must
+  // be typed (new account / dead cookie) so we don't land on a logged-out
+  // splash that only has a "Log in" CTA and no email/password fields.
+  fullLogin: 'https://www.facebook.com/login.php',
+  // App View uses a real Android device profile; Facebook then serves the
+  // m-site. Landing on `/` (not `/login`) lets a warm session open the feed
+  // and a dead session still render the mobile login form.
+  mobile: 'https://m.facebook.com/',
+  mobileLogin: 'https://m.facebook.com/login',
   mbasic: 'https://mbasic.facebook.com/login'
 }
 
@@ -111,7 +126,10 @@ const CONSENT_SELECTORS = [
   'button:has-text("Accept All")',
   'button:has-text("Chấp nhận tất cả")',
   'button:has-text("Only essential")',
-  'button:has-text("Only allow essential cookies")'
+  'button:has-text("Only allow essential cookies")',
+  'button:has-text("Not Now")',
+  'button:has-text("Not now")',
+  '[aria-label="Close"]'
 ]
 
 // Semantic/attribute selectors are tried first — they're stable across page
@@ -122,16 +140,20 @@ const CONSENT_SELECTORS = [
 // every semantic selector has already failed, on the off chance a given
 // build happens to reuse the same id.
 const EMAIL_SELECTORS = [
+  'input#m_login_email',
   'input#email',
   'input[name="email"]',
-  'input[name="login"]',
   'input[type="text"][autocomplete="username"]',
   'input[data-testid="royal_email"]',
+  // Some older forms use name="login" for the identifier — but name="login"
+  // is ALSO the submit button on the classic desktop form, so exclude those.
+  'input[name="login"]:not([type="submit"]):not([type="button"])',
   'input[type="text"]:visible',
   'xpath=//*[@id="_r_2_"]'
 ]
 
 const PASSWORD_SELECTORS = [
+  'input#m_login_password',
   'input#pass',
   'input[name="pass"]',
   'input[type="password"]',
@@ -139,13 +161,50 @@ const PASSWORD_SELECTORS = [
   'xpath=//*[@id="_r_5_"]'
 ]
 
-const LOGIN_BUTTON_SELECTORS = [
+/** Native <form> submit controls — desktop + mbasic + older m.facebook.com. */
+const NATIVE_LOGIN_SUBMIT_SELECTORS = [
   'button[name="login"]',
-  'button[type="submit"]',
-  'button:has-text("Log In")',
-  'button:has-text("Đăng nhập")',
+  'input[name="login"][type="submit"]',
+  'input[name="login"][type="button"]',
   '#loginbutton',
-  'xpath=//*[@id="login_form"]//span[1]/span[1]'
+  'form button[type="submit"]',
+  'form input[type="submit"]',
+  'button[type="submit"]',
+  'input[type="submit"]'
+]
+
+/**
+ * Semantic "Log in" controls. These MUST be filtered to sit below the
+ * password field — Facebook's login chrome also has a header/tab "Log in"
+ * `role=button` that is already the current page. Clicking that is a no-op
+ * (typed UID/pass, then wait, then close).
+ */
+const SEMANTIC_LOGIN_SUBMIT_SELECTORS = [
+  '[role="button"][aria-label="Log in"]',
+  '[role="button"][aria-label="Log In"]',
+  '[role="button"][aria-label="ចូល"]',
+  '[aria-label="Log in"]',
+  '[aria-label="Log In"]',
+  '[role="button"]:has-text("Log in")',
+  '[role="button"]:has-text("Log In")',
+  '[role="button"]:has-text("Đăng nhập")',
+  '[role="button"]:has-text("ចូល")',
+  'button:has-text("Log In")',
+  'button:has-text("Log in")',
+  'button:has-text("Đăng nhập")',
+  'button:has-text("ចូល")'
+]
+
+/** Identifier-first login: email/phone on one screen, password on the next. */
+const IDENTIFIER_CONTINUE_SELECTORS = [
+  'button[type="submit"]',
+  'button[name="login"]',
+  '[role="button"][aria-label="Continue"]',
+  '[role="button"]:has-text("Continue")',
+  'button:has-text("Continue")',
+  '[role="button"]:has-text("Next")',
+  'button:has-text("Next")',
+  '[aria-label="Continue"]'
 ]
 
 // ---------------------------------------------------------------------------
@@ -169,17 +228,42 @@ const LOGIN_BUTTON_SELECTORS = [
 const CODE_INPUT_SELECTORS = [
   'input[name="approvals_code"]',
   'input#approvals_code',
+  'input#send_code',
+  'input[name="code"]',
   'input[autocomplete="one-time-code"]',
   'input[type="tel"]',
   'input[placeholder*="Code" i]',
   'input[aria-label*="Code" i]',
+  'input[aria-label*="digit" i]',
   'input[inputmode="numeric"][maxlength="6"]',
   'input[inputmode="numeric"][maxlength="8"]',
+  'input[inputmode="numeric"]',
+  'input[type="number"]',
   // Last-resort: React useId() ids observed on some builds. Not stable across
   // loads — kept only as a final fallback after every semantic match fails.
   'xpath=//*[@id="_r_3_"]',
   'xpath=//*[@id="_r_a_"]'
 ]
+
+/** Visible copy that means the 2FA / authenticator-code screen is showing. */
+const TWO_FACTOR_HEADING_PATTERNS = [
+  'go to your authentication app',
+  'check your notifications on another device',
+  'enter the 6-digit code',
+  "choose a way to confirm it's you",
+  'enter the code',
+  'enter login code',
+  'confirmation code',
+  'authentication code',
+  '6-digit code',
+  'two-factor',
+  'two-step verification',
+  'លេខកូដ'
+]
+
+function bodyLooksLike2FA(body: string): boolean {
+  return TWO_FACTOR_HEADING_PATTERNS.some((p) => body.includes(p))
+}
 
 /**
  * A text input that is definitively NOT a login field — used as a
@@ -199,24 +283,35 @@ async function findCodeInput(
   page: Page,
   timeoutMs = 4000
 ): Promise<ReturnType<Page['locator']> | null> {
-  // CODE_INPUT_SELECTORS has 10 entries — findFirstVisible's per-selector
-  // timeout would let this burn up to 10x `timeoutMs` in the worst case
-  // (none match) or a large multiple of it (a late-list selector matches
-  // only after every earlier one times out first). Bounded to `timeoutMs`
-  // TOTAL instead, since this runs inside the 2FA state machine's fixed 45s
-  // budget — the same multiplicative-timeout bug confirmed live in
-  // actWaitingApproval's TRY_ANOTHER_WAY_SELECTORS probe.
-  const strict = await findFirstVisibleBounded(page, CODE_INPUT_SELECTORS, timeoutMs)
-  if (strict) return strict
-  // Only fall back to the bare text input when the login form is gone — this
-  // is the exact guard that prevents typing the code into #email.
-  if (await isLoginPage(page)) return null
-  const bare = page.locator(BARE_TEXT_INPUT_SELECTOR).first()
-  const visible = await bare
-    .waitFor({ state: 'visible', timeout: 1500 })
-    .then(() => true)
-    .catch(() => false)
-  return visible ? bare : null
+  // App View 6x2 cells are still short — the code box is often below the fold.
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight)).catch(() => void 0)
+
+  const per = Math.max(250, Math.floor(timeoutMs / Math.max(1, CODE_INPUT_SELECTORS.length)))
+  for (const sel of CODE_INPUT_SELECTORS) {
+    const loc = page.locator(sel).first()
+    await loc.scrollIntoViewIfNeeded({ timeout: per }).catch(() => void 0)
+    if (await loc.isVisible().catch(() => false)) return loc
+  }
+  const body = await visibleText(page)
+  if ((await isLoginPage(page)) && !bodyLooksLike2FA(body)) return null
+  for (const sel of [BARE_TEXT_INPUT_SELECTOR, 'input[inputmode="numeric"]:not([type="password"])', 'input[type="tel"]:not([name="email"])']) {
+    const loc = page.locator(sel).first()
+    await loc.scrollIntoViewIfNeeded({ timeout: 800 }).catch(() => void 0)
+    if (await loc.isVisible().catch(() => false)) return loc
+  }
+  return null
+}
+
+/** Six separate 1-digit OTP boxes used on some m.facebook.com 2FA screens. */
+async function otpDigitBoxCount(page: Page): Promise<number> {
+  const loc = page.locator('input[maxlength="1"]:not([type="hidden"]):not([type="password"])')
+  const n = await loc.count().catch(() => 0)
+  if (n < 4) return 0
+  let visible = 0
+  for (let i = 0; i < n; i++) {
+    if (await loc.nth(i).isVisible().catch(() => false)) visible += 1
+  }
+  return visible >= 4 ? visible : 0
 }
 
 /**
@@ -224,7 +319,14 @@ async function findCodeInput(
  * present/visible we must never run 2FA logic — the classic failure was
  * typing a TOTP into `input#email`.
  */
-const LOGIN_FORM_SELECTORS = ['input#email', 'input#pass', 'input[name="email"]', 'input[name="pass"]']
+const LOGIN_FORM_SELECTORS = [
+  'input#m_login_email',
+  'input#m_login_password',
+  'input#email',
+  'input#pass',
+  'input[name="email"]',
+  'input[name="pass"]'
+]
 
 const CODE_SUBMIT_SELECTORS = [
   'button[type="submit"]',
@@ -232,7 +334,9 @@ const CODE_SUBMIT_SELECTORS = [
   'button[name="submit[Continue]"]',
   'button:has-text("Continue")',
   '[role="button"]:has-text("Continue")',
+  '[aria-label="Continue"]',
   'button:has-text("Submit")',
+  '[role="button"]:has-text("Submit")',
   'button:has-text("Tiếp tục")',
   'xpath=//*[contains(@id, "mount_0_0_")]//div[3]//span[1]/span[1]'
 ]
@@ -268,7 +372,7 @@ const DIALOG_CONTINUE_SELECTORS = [
   'xpath=//*[contains(@id, "mount_0_0_")]//div[role="dialog"]//button[contains(., "Continue")]'
 ]
 
-/** "Save browser?" prompt shown after a successful 2FA — prefer "Don't save" to avoid trusting this device. */
+/** Fallback on the older checkbox "Save browser?" UI only — never used on Save login info. */
 const DONT_SAVE_BROWSER_SELECTORS = [
   'label:has-text("Don\'t save")',
   'label:has-text("Don\'t Save")',
@@ -286,12 +390,30 @@ const SAVE_BROWSER_SELECTORS = [
   'label:has-text("Lưu")',
   'button:has-text("Lưu trình duyệt")'
 ]
+/** m.facebook.com / App View post-2FA "Save login info" / "Save Info" — click Save, not Not now. */
+const SAVE_LOGIN_INFO_SELECTORS = [
+  '[role="button"][aria-label="Save login info"]',
+  '[role="button"][aria-label="Save Info"]',
+  '[role="button"][aria-label="Save"]',
+  '[role="button"]:has-text("Save login info")',
+  '[role="button"]:has-text("Save Login Info")',
+  '[role="button"]:has-text("Save Info")',
+  'button:has-text("Save login info")',
+  'button:has-text("Save Info")',
+  '[role="button"]:has-text("Lưu thông tin đăng nhập")',
+  '[role="button"]:has-text("Lưu thông tin")',
+  '[role="button"]:has-text("រក្សាទុកព័ត៌មានចូល")',
+  '[role="button"]:has-text("រក្សាទុក")',
+  '[role="button"]:has-text("Save")',
+  'button:has-text("Save")'
+]
 const SAVE_BROWSER_SUBMIT_SELECTORS = [
   'button:has-text("Continue")',
   '[role="button"]:has-text("Continue")',
   'button:has-text("Submit")',
   '[role="button"]:has-text("Submit")',
-  'button:has-text("Tiếp tục")'
+  'button:has-text("Tiếp tục")',
+  '[role="button"]:has-text("បន្ត")'
 ]
 
 /**
@@ -305,16 +427,22 @@ const SAVE_BROWSER_SUBMIT_SELECTORS = [
 const TRUST_DEVICE_SELECTORS = [
   'button:has-text("Trust this device")',
   '[role="button"]:has-text("Trust this device")',
+  '[aria-label="Trust this device"]',
+  'label:has-text("Trust this device")',
+  'label:has-text("Trust this browser")',
   'div[aria-label="Trust this device"]',
   'xpath=//div[@role="button" or self::button][.//text()[contains(., "Trust this device")]]'
 ]
 
-/** Fallback buttons on the same screen if "Trust this device" itself can't be found/clicked. */
+/** Continue / other actions on the same screen — the checkbox-style prompt
+ *  does not dismiss until Continue is clicked. */
 const TRUST_DEVICE_FALLBACK_SELECTORS = [
   'button:has-text("Always confirm it\'s me")',
   '[role="button"]:has-text("Always confirm it\'s me")',
   'button:has-text("Continue")',
-  '[role="button"]:has-text("Continue")'
+  '[role="button"]:has-text("Continue")',
+  'button:has-text("OK")',
+  '[role="button"]:has-text("OK")'
 ]
 
 /**
@@ -576,6 +704,104 @@ async function typeHumanOn(
   }
 }
 
+/**
+ * Pick the real Log in *submit* control — not the header/tab that also says
+ * "Log in". Native form submit first (desktop). For Bloks/m.facebook.com,
+ * take the visible "Log in" role=button that sits *below* the password field.
+ */
+async function findLoginSubmitButton(page: Page): Promise<ReturnType<Page['locator']> | null> {
+  for (const sel of NATIVE_LOGIN_SUBMIT_SELECTORS) {
+    const loc = page.locator(sel).first()
+    if (await loc.isVisible().catch(() => false)) return loc
+  }
+
+  const pass = page.locator('#m_login_password, #pass, input[name="pass"], input[type="password"]').first()
+  const passBox = await pass.boundingBox().catch(() => null)
+
+  for (const sel of SEMANTIC_LOGIN_SUBMIT_SELECTORS) {
+    const loc = page.locator(sel)
+    const count = await loc.count().catch(() => 0)
+    let best: ReturnType<Page['locator']> | null = null
+    let bestY = -Infinity
+    for (let i = 0; i < count; i++) {
+      const item = loc.nth(i)
+      if (!(await item.isVisible().catch(() => false))) continue
+      const box = await item.boundingBox().catch(() => null)
+      if (!box) continue
+      // Header / already-selected "Log in" tab sits above the password box.
+      if (passBox && box.y + 8 < passBox.y) continue
+      if (box.y >= bestY) {
+        bestY = box.y
+        best = item
+      }
+    }
+    if (best) return best
+  }
+
+  const byRole = page.getByRole('button', { name: /^(log\s*in|đăng nhập|ចូល)$/i })
+  const roleCount = await byRole.count().catch(() => 0)
+  for (let i = roleCount - 1; i >= 0; i--) {
+    const item = byRole.nth(i)
+    if (!(await item.isVisible().catch(() => false))) continue
+    const box = await item.boundingBox().catch(() => null)
+    if (passBox && box && box.y + 8 < passBox.y) continue
+    return item
+  }
+  return null
+}
+
+/**
+ * Click the real Log in control with Playwright's locator click (sends touch
+ * events on App View's hasTouch device). Do NOT use mouse-coordinate jitter
+ * here: Bloks buttons ignore mouse events, and a header "Log in" tab is a
+ * no-op. Enter-on-password is a desktop fallback only — m.facebook.com does
+ * not submit on Enter.
+ */
+async function submitLoginForm(
+  page: Page,
+  passField: ReturnType<Page['locator']>,
+  signal?: AbortSignal
+): Promise<void> {
+  const loginBtn = await findLoginSubmitButton(page)
+  if (loginBtn) {
+    await raceAbort(loginBtn.scrollIntoViewIfNeeded({ timeout: 3000 }).catch(() => void 0), signal)
+    const clicked = await loginBtn
+      .click({ timeout: 5000 })
+      .then(() => true)
+      .catch(() => false)
+    if (!clicked) {
+      await raceAbort(loginBtn.click({ timeout: 5000, force: true }).catch(() => void 0), signal)
+    }
+    return
+  }
+  await raceAbort(passField.press('Enter').catch(() => void 0), signal)
+  await raceAbort(
+    page
+      .locator('form')
+      .first()
+      .evaluate((form: HTMLFormElement) => {
+        if (typeof form.requestSubmit === 'function') form.requestSubmit()
+        else form.submit()
+      })
+      .catch(() => void 0),
+    signal
+  )
+}
+
+/**
+ * Identifier-first login: after typing the UID/email, Facebook may still be
+ * hiding the password field behind a Continue/Next step. Only click through
+ * when the password box is genuinely absent.
+ */
+async function advanceToPasswordIfNeeded(page: Page, signal?: AbortSignal): Promise<void> {
+  const passVisible = await findFirstVisibleBounded(page, PASSWORD_SELECTORS, 2000)
+  if (passVisible) return
+  const continueBtn = await findFirstVisibleBounded(page, IDENTIFIER_CONTINUE_SELECTORS, 2500)
+  if (!continueBtn) return
+  await raceAbort(continueBtn.click({ timeout: 5000, force: true }).catch(() => void 0), signal)
+  await raceAbort(page.waitForTimeout(1500), signal)
+}
+
 /** Wrong-password error text, exactly as shown under the password field. */
 const WRONG_PASSWORD_PATTERNS = [
   'the password you entered is incorrect',
@@ -655,6 +881,16 @@ export async function classifyPage(page: Page): Promise<{ status: LoginStatus; d
     return { status: 'Die', detail: 'Account Disabled / Suspended' }
   }
 
+  // 2FA can be served on /checkpoint/ — check it before treating that URL
+  // as a hard lock, otherwise a new-account login that just submitted
+  // credentials is marked Checkpoint and Chrome closes before TOTP.
+  if (await is2FAScreen(page)) {
+    return { status: 'Unknown', detail: 'Two-factor authentication required' }
+  }
+  if (await isTrustDeviceScreen(page)) {
+    return { status: 'Unknown', detail: 'Trust this device prompt not yet resolved' }
+  }
+
   // ---- Real checkpoint: the /checkpoint/ URL PATH ITSELF is the unconditional signal ----
   if (url.includes('/checkpoint/')) {
     if (is282LockText(body)) {
@@ -662,33 +898,33 @@ export async function classifyPage(page: Page): Promise<{ status: LoginStatus; d
     }
     const lockCodeMatch = body.match(/\b(956|282)\b/)
     const lockedText = ACCOUNT_LOCKED_PATTERNS.some((p) => lowerBody.includes(p.toLowerCase()))
-    return {
-      status: 'Checkpoint',
-      detail: lockCodeMatch
-        ? `Checkpoint ${lockCodeMatch[1]}`
-        : lockedText
-          ? 'Checkpoint (locked)'
-          : 'Checkpoint'
+    const cookies = await page.context().cookies().catch(() => [])
+    // 2FA just succeeded: Facebook often lingers on /checkpoint/ for a
+    // moment with a valid c_user+xs pair. Don't overwrite that with a hard
+    // Checkpoint — fall through to the live-nav check below.
+    if (lockedText || !hasRequiredSessionCookies(cookies)) {
+      return {
+        status: 'Checkpoint',
+        detail: lockCodeMatch
+          ? `Checkpoint ${lockCodeMatch[1]}`
+          : lockedText
+            ? 'Checkpoint (locked)'
+            : 'Checkpoint'
+      }
     }
-  }
-
-  // ---- Trust-device interstitial ----
-  if (await isTrustDeviceScreen(page)) {
-    return { status: 'Unknown', detail: 'Trust this device prompt not yet resolved' }
   }
 
   // ---- Logged Out / Profile Chooser ("Continue as...") / Session Expired / Login Page ----
   const hasLoginForm = await page
-    .locator('input#email, input#pass, input[name="email"], input[name="pass"], button[name="login"], #loginbutton, input[type="password"]')
+    .locator(
+      'input#m_login_email, input#m_login_password, input#email, input#pass, input[name="email"], input[name="pass"], button[name="login"], #loginbutton, input[type="password"]'
+    )
     .first()
     .isVisible()
     .catch(() => false)
 
   const isLoggedOut =
-    url.includes('facebook.com/login') ||
-    url.endsWith('/login') ||
     url.includes('/recover') ||
-    url.includes('/login.php') ||
     url.includes('/login/reauth.php') ||
     lowerBody.includes('log in to facebook') ||
     lowerBody.includes('log into facebook') ||
@@ -709,9 +945,27 @@ export async function classifyPage(page: Page): Promise<{ status: LoginStatus; d
   }
 
   // ---- Check for genuine LIVE navigation / feed / profile elements ----
+  // Desktop web.facebook.com uses the first group. App View launches with a
+  // real Android device profile, so Facebook redirects to m.facebook.com whose
+  // chrome has no desktop nav/feed roles — the logged-in shell is the
+  // hamburger ("Facebook Menu") plus m-site `data-mcomponent` nodes. Without
+  // those, a valid mobile session is misreported as "Page still loading...".
   const hasLiveNav = await page
     .locator(
-      'div[role="navigation"], div[aria-label="Your profile"], svg[aria-label="Your profile"], a[href*="/me"], a[href*="/profile.php"], div[role="feed"], div[role="main"], div[aria-label="Account controls and settings"], div[aria-label="Facebook"]'
+      [
+        'div[role="navigation"]',
+        'div[aria-label="Your profile"]',
+        'svg[aria-label="Your profile"]',
+        'a[href*="/me"]',
+        'a[href*="/profile.php"]',
+        'div[role="feed"]',
+        'div[role="main"]',
+        'div[aria-label="Account controls and settings"]',
+        'div[aria-label="Facebook"]',
+        '[aria-label="Facebook Menu"]',
+        '[aria-label="Notifications"]',
+        'div[data-mcomponent]'
+      ].join(', ')
     )
     .first()
     .isVisible()
@@ -731,10 +985,16 @@ export async function classifyPage(page: Page): Promise<{ status: LoginStatus; d
  * completely skipped (see strict isolation in requirement 1).
  */
 async function isLoginPage(page: Page): Promise<boolean> {
-  const url = page.url()
-  if (url.includes('facebook.com/login') || url.endsWith('/login') || url.includes('/login/')) {
-    return true
+  // Form visibility only — do NOT treat the URL path `/login` as "still on
+  // the login page". After a successful submit, Facebook often keeps
+  // m.facebook.com/login (or login.php) in the address bar while the 2FA
+  // screen hydrates. A URL-based check then skipped 2FA entirely.
+  if (page.url().includes('/two_step_verification/') || page.url().includes('/checkpoint/')) {
+    return false
   }
+  // App View: leftover #m_login_email can stay "visible" behind the code
+  // screen. If the 2FA heading is on screen, this is not the login form.
+  if (bodyLooksLike2FA(await visibleText(page))) return false
   for (const sel of LOGIN_FORM_SELECTORS) {
     const present = await page
       .locator(sel)
@@ -763,14 +1023,12 @@ async function countAnyMatch(page: Page, selectors: string[]): Promise<number> {
 
 /** True if the page shows a 2FA / approvals-code input (STRICT — never the login form). */
 async function has2FAField(page: Page): Promise<boolean> {
-  // Guard: if the login form is on screen, any "code-like" match would be a
-  // false positive on an email/username box — bail out.
   if (await isLoginPage(page)) return false
+  if ((await otpDigitBoxCount(page)) >= 4) return true
   const strictCount = await countAnyMatch(page, CODE_INPUT_SELECTORS)
   if (strictCount > 0) return true
-  // Fallback: the modern bare-text-input code box, but only on the 2FA URL so
-  // an unrelated text field elsewhere can't be mistaken for a code box.
-  if (!page.url().includes('/two_step_verification/')) return false
+  const body = await visibleText(page)
+  if (!page.url().includes('/two_step_verification/') && !bodyLooksLike2FA(body)) return false
   return page
     .locator(BARE_TEXT_INPUT_SELECTOR)
     .count()
@@ -796,8 +1054,6 @@ async function isWaitingForApprovalScreen(page: Page): Promise<boolean> {
  * the login page (e.g. a marketing footer) must never trigger 2FA.
  */
 async function is2FAScreen(page: Page): Promise<boolean> {
-  if (await isLoginPage(page)) return false
-
   // The /two_step_verification/ path is exclusively Facebook's 2FA flow — no
   // other content is ever served there. Trusting the URL alone (rather than
   // requiring a heading/field match too) matters because page.url() updates
@@ -805,19 +1061,15 @@ async function is2FAScreen(page: Page): Promise<boolean> {
   // poll tick landing in that gap would see the new URL but the PREVIOUS
   // page's stale DOM, so a heading/field check could transiently miss a real
   // 2FA screen and fall through to a false "live" classification.
+  // Checked BEFORE isLoginPage(): after submit the previous login form can
+  // still be "visible" for a tick while the URL has already moved.
   if (page.url().includes('/two_step_verification/')) return true
 
-  const url = page.url()
-  if (!url.includes('/checkpoint/')) return false
+  if (await isLoginPage(page)) return false
 
   const body = await visibleText(page)
-  const hasHeading =
-    body.includes('go to your authentication app') ||
-    body.includes('check your notifications on another device') ||
-    body.includes('enter the 6-digit code') ||
-    body.includes("choose a way to confirm it's you") ||
-    body.includes('enter the code')
-  return hasHeading || (await has2FAField(page))
+  if (bodyLooksLike2FA(body) || (await has2FAField(page))) return true
+  return false
 }
 
 // ---------------------------------------------------------------------------
@@ -867,12 +1119,48 @@ async function isMethodDialogOpen(page: Page): Promise<boolean> {
  * 2FA screen from the very first one and hijacks classify2FAState into this
  * branch permanently.
  */
+async function isSaveLoginInfoScreen(page: Page): Promise<boolean> {
+  if (await isLoginPage(page)) return false
+  const body = await visibleText(page)
+  if (
+    body.includes('enter the 6-digit') ||
+    body.includes('go to your authentication app') ||
+    body.includes('check your notifications on another device') ||
+    body.includes("choose a way to confirm it's you") ||
+    body.includes('enter the code')
+  ) {
+    return false
+  }
+  return (
+    body.includes('save your login info') ||
+    body.includes('save login info') ||
+    body.includes('save login information') ||
+    body.includes("won't need to enter it next time") ||
+    body.includes('lưu thông tin đăng nhập') ||
+    body.includes('រក្សាទុកព័ត៌មានចូល') ||
+    (body.includes('save info') && (body.includes('next time') || body.includes('logged in')))
+  )
+}
+
 async function isSaveBrowserPrompt(page: Page): Promise<boolean> {
   const body = await visibleText(page)
+  // The 2FA code / "waiting for approval" screens also contain a
+  // "Trust this device and skip this step from now on" checkbox. That is
+  // NOT this prompt — matching it here skipped TOTP entirely (live: TEST
+  // account 337 App View typed UID/pass, then looped Trust this device).
+  if (
+    body.includes('enter the 6-digit') ||
+    body.includes('go to your authentication app') ||
+    body.includes('check your notifications on another device') ||
+    body.includes("choose a way to confirm it's you")
+  ) {
+    return false
+  }
+  if (await isSaveLoginInfoScreen(page)) return true
   return (
     body.includes('save browser') ||
-    body.includes('trust this device') ||
-    body.includes('remember browser')
+    body.includes('remember browser') ||
+    (body.includes("you're logged in") && body.includes('trust this device'))
   )
 }
 
@@ -894,12 +1182,13 @@ async function classify2FAState(page: Page): Promise<TwoFAState> {
   const body = await visibleText(page)
   const onTwoStepUrl = url.includes('/two_step_verification/')
 
-  if (await isSaveBrowserPrompt(page)) return 'save-browser'
-
   const looksLikeCodeScreen =
     body.includes('go to your authentication app') ||
     body.includes('enter the 6-digit code') ||
-    body.includes('enter the code')
+    body.includes('enter the code') ||
+    body.includes('enter login code') ||
+    body.includes('confirmation code') ||
+    body.includes('លេខកូដ')
   const hasCodeField = await has2FAField(page)
   if (hasCodeField || looksLikeCodeScreen) return 'code-input'
 
@@ -909,6 +1198,8 @@ async function classify2FAState(page: Page): Promise<TwoFAState> {
   ) {
     return 'waiting-approval'
   }
+
+  if (await isSaveBrowserPrompt(page)) return 'save-browser'
 
   // Genuinely off the 2FA flow: no dialog, no code field, no known 2FA text,
   // and the URL no longer points at the two-step-verification screen.
@@ -962,9 +1253,9 @@ async function actCodeInput(
   progress: ProgressFn,
   signal?: AbortSignal
 ): Promise<string | null> {
-  // Absolute safety net: never type a code while the login form is present.
-  // The state machine already guards against this, but re-check right at the
-  // point of typing since this is the exact bug we're fixing.
+  // Absolute safety net: never type a code while the login form is present
+  // UNLESS the 2FA heading is also showing (App View often leaves
+  // #m_login_email in the DOM behind the code screen).
   if (await isLoginPage(page)) {
     return 'Refused to enter 2FA code — still on the login page (would type into email/password field)'
   }
@@ -987,42 +1278,53 @@ async function actCodeInput(
     return 'Code input shown but account has no 2FA secret or mailbox credentials on file'
   }
 
-  const codeInput = await findCodeInput(page, 4000)
-  if (!codeInput) return 'Failed to find Code input'
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight)).catch(() => void 0)
+  await raceAbort(page.waitForTimeout(300), signal)
 
-  const focused = await codeInput
-    .click({ timeout: 5000 })
-    .then(() => true)
-    .catch(() => false)
-  if (!focused) return 'Failed to focus Code input'
+  const otpBoxes = await otpDigitBoxCount(page)
+  if (otpBoxes >= 4) {
+    progress('Entering 2FA...', 'Typing 2FA TOTP Code...')
+    const boxes = page.locator('input[maxlength="1"]:not([type="hidden"]):not([type="password"])')
+    let typed = 0
+    const n = await boxes.count()
+    for (let i = 0; i < n && typed < code.length; i++) {
+      checkAborted(signal)
+      const box = boxes.nth(i)
+      if (!(await box.isVisible().catch(() => false))) continue
+      await raceAbort(box.click({ timeout: 3000, force: true }).catch(() => void 0), signal)
+      await raceAbort(box.fill('').catch(() => void 0), signal)
+      await raceAbort(box.type(code[typed], { delay: 40 }).catch(() => void 0), signal)
+      typed += 1
+    }
+    if (typed < code.length) return 'Failed to type 2FA code into digit boxes'
+  } else {
+    const codeInput = await findCodeInput(page, 5000)
+    if (!codeInput) return 'Failed to find Code input'
 
-  const filled = await codeInput
-    .fill(code)
-    .then(() => true)
-    .catch(() => false)
-  if (!filled) {
-    // Some Facebook variants render a non-standard editable div that rejects
-    // .fill() — fall back to human-paced typing on the same locator.
-    await typeHumanOn(page, codeInput, code, signal).catch(() => void 0)
+    await raceAbort(codeInput.click({ timeout: 5000, force: true }).catch(() => void 0), signal)
+    const filled = await codeInput
+      .fill(code)
+      .then(() => true)
+      .catch(() => false)
+    if (!filled) {
+      await typeHumanOn(page, codeInput, code, signal).catch(() => void 0)
+    }
+    await raceAbort(codeInput.press('Enter').catch(() => void 0), signal)
   }
 
   progress('Entering 2FA...', 'Submitting code')
+  await raceAbort(page.waitForTimeout(800), signal)
 
-  // Submission Method 1: press Enter directly on the input (most reliable —
-  // works even when the Continue button is a non-standard div).
-  await raceAbort(codeInput.press('Enter').catch(() => void 0), signal)
-  await raceAbort(page.waitForTimeout(1200), signal)
-
-  // Submission Method 2: if a code screen is still showing, click the
-  // explicit Continue / Submit button.
   if (await has2FAField(page)) {
-    const submitBtn = await findFirstVisibleBounded(page, CODE_SUBMIT_SELECTORS, 3000)
+    const submitBtn =
+      (await findFirstVisibleBounded(page, CODE_SUBMIT_SELECTORS, 3000)) ??
+      page.getByRole('button', { name: /^(continue|submit|ok|tiếp tục)$/i }).last()
     if (submitBtn) {
-      await raceAbort(submitBtn.click({ timeout: 10000 }).catch(() => void 0), signal)
+      await raceAbort(submitBtn.click({ timeout: 8000, force: true }).catch(() => void 0), signal)
     }
   }
 
-  await raceAbort(page.waitForTimeout(2000), signal)
+  await raceAbort(page.waitForTimeout(1500), signal)
   return null
 }
 
@@ -1048,19 +1350,23 @@ async function actWaitingApproval(page: Page, signal?: AbortSignal): Promise<str
  * data" must check this first or it'll silently scrape a blank interstitial.
  */
 async function isTrustDeviceScreen(page: Page): Promise<boolean> {
-  const url = page.url()
-  if (url.includes('/two_factor/') || url.includes('two_step_verification')) {
-    const body = await visibleText(page)
-    if (
-      body.includes("trust this device") ||
-      body.includes("you're logged in") ||
-      body.includes('chrome on windows')
-    ) {
-      return true
-    }
-  }
   const body = await visibleText(page)
-  return body.includes('trust this device') || body.includes("you're logged in. trust this device")
+  // Do not treat the 2FA page's "Trust this device" checkbox as this
+  // interstitial — that skipped authenticator-code entry on App View.
+  if (
+    body.includes('enter the 6-digit') ||
+    body.includes('go to your authentication app') ||
+    body.includes('check your notifications on another device') ||
+    body.includes("choose a way to confirm it's you") ||
+    body.includes('enter the code')
+  ) {
+    return false
+  }
+  return (
+    (body.includes("you're logged in") && body.includes('trust this device')) ||
+    body.includes("you're logged in. trust this device") ||
+    (body.includes('trust this device') && body.includes('chrome on windows'))
+  )
 }
 
 /**
@@ -1070,6 +1376,20 @@ async function isTrustDeviceScreen(page: Page): Promise<boolean> {
  * then wait for the real post-click state — either the c_user cookie appears
  * or the URL leaves the two-factor/verification flow entirely.
  */
+async function clickLocator(
+  locator: ReturnType<Page['locator']>,
+  signal?: AbortSignal
+): Promise<boolean> {
+  await raceAbort(locator.scrollIntoViewIfNeeded({ timeout: 3000 }).catch(() => void 0), signal)
+  const ok = await locator
+    .click({ timeout: 4000 })
+    .then(() => true)
+    .catch(() => false)
+  if (ok) return true
+  await raceAbort(locator.click({ timeout: 4000, force: true }).catch(() => void 0), signal)
+  return true
+}
+
 async function resolveTrustDeviceScreen(
   page: Page,
   context: BrowserContext,
@@ -1086,59 +1406,66 @@ async function resolveTrustDeviceScreen(
   )
   await raceAbort(page.waitForTimeout(300), signal)
 
-  let target = await findFirstVisibleBounded(page, TRUST_DEVICE_SELECTORS, 2500)
-  if (!target) {
-    target = await findFirstVisibleBounded(page, TRUST_DEVICE_FALLBACK_SELECTORS, 2000)
-  }
-  if (!target) return 'Failed to find "Trust this device" button'
+  // Checkbox-style prompt: pick "Trust this device", THEN Continue.
+  // Standalone-button prompt: the first click itself dismisses. Trying
+  // Continue afterward is a no-op if the screen already left.
+  const trust =
+    (await findFirstVisibleBounded(page, TRUST_DEVICE_SELECTORS, 2500)) ??
+    (await findFirstVisibleBounded(page, SAVE_BROWSER_SELECTORS, 1500)) ??
+    page.getByRole('button', { name: /trust this device/i }).last()
+  const trustVisible = trust
+    ? await trust
+        .waitFor({ state: 'visible', timeout: 800 })
+        .then(() => true)
+        .catch(() => false)
+    : false
+  if (trustVisible && trust) await clickLocator(trust, signal)
+  await raceAbort(page.waitForTimeout(500), signal)
 
-  await raceAbort(target.scrollIntoViewIfNeeded({ timeout: 3000 }).catch(() => void 0), signal)
-  await raceAbort(page.mouse.wheel(0, 400).catch(() => void 0), signal)
-  await raceAbort(page.waitForTimeout(300), signal)
+  const continueBtn =
+    (await findFirstVisibleBounded(
+      page,
+      [...TRUST_DEVICE_FALLBACK_SELECTORS, ...SAVE_BROWSER_SUBMIT_SELECTORS],
+      2500
+    )) ?? page.getByRole('button', { name: /^(continue|ok|save)$/i }).last()
+  const continueVisible = continueBtn
+    ? await continueBtn
+        .waitFor({ state: 'visible', timeout: 800 })
+        .then(() => true)
+        .catch(() => false)
+    : false
+  if (continueVisible && continueBtn) await clickLocator(continueBtn, signal)
 
-  const clicked = await target
-    .click({ timeout: 5000, force: true })
-    .then(() => true)
-    .catch(() => false)
-  if (!clicked) return 'Failed to click "Trust this device" button'
-
-  // Wait up to 10s for the interstitial to actually resolve — either c_user
-  // materializes (first login through this screen) or the URL leaves the
-  // two-factor flow (already-logged-in case, cookie was set before this
-  // screen ever rendered).
   const start = Date.now()
   let resolved = false
   for (;;) {
     checkAborted(signal)
-    const cookies = await context.cookies().catch(() => [])
-    const hasCookie = cookies.some((c) => c.name === 'c_user' && c.value)
     const stillOnScreen = await isTrustDeviceScreen(page).catch(() => false)
-    if (hasCookie && !stillOnScreen) {
+    if (!stillOnScreen) {
       resolved = true
       break
     }
-    if (Date.now() - start >= 10000) break
+    if (Date.now() - start >= 12000) break
     await raceAbort(page.waitForTimeout(500), signal)
   }
   if (!resolved) return null
 
-  // Chrome/Facebook may follow up with its own "Save your login info?" /
-  // "Remember Password" prompt — dismiss it (Not Now / OK / Close) rather
-  // than let it sit on top of the feed and confuse the extraction steps
-  // that run right after this.
-  const dismissBtn = await findFirstVisibleBounded(page, REMEMBER_PASSWORD_DISMISS_SELECTORS, 2000)
-  if (dismissBtn) {
-    await raceAbort(dismissBtn.click({ timeout: 3000, force: true }).catch(() => void 0), signal)
-    await raceAbort(page.waitForTimeout(500), signal)
+  // Facebook's "Save login info" is NOT Chrome's password-manager bubble.
+  // Clicking Not now here is what left App View sessions unremembered.
+  if (await isSaveLoginInfoScreen(page)) {
+    await actSaveBrowser(page, context, progress, signal)
+  } else {
+    const dismissBtn = await findFirstVisibleBounded(page, REMEMBER_PASSWORD_DISMISS_SELECTORS, 2000)
+    if (dismissBtn) {
+      await raceAbort(dismissBtn.click({ timeout: 3000, force: true }).catch(() => void 0), signal)
+      await raceAbort(page.waitForTimeout(500), signal)
+    }
   }
 
-  // Force a clean landing on the feed — strips any leftover
-  // ?checkpoint_src=... / two_factor query params so every extraction step
-  // that follows starts from a known-good URL instead of a stale one.
+  const home =
+    getAppSettings().viewMode === 'app' ? FACEBOOK_URLS.mobile : FACEBOOK_URLS.full
   await raceAbort(
-    page
-      .goto('https://web.facebook.com/', { waitUntil: 'domcontentloaded', timeout: 15000 })
-      .catch(() => void 0),
+    page.goto(home, { waitUntil: 'domcontentloaded', timeout: 15000 }).catch(() => void 0),
     signal
   )
 
@@ -1167,11 +1494,26 @@ async function actSaveBrowser(
     return resolveTrustDeviceScreen(page, context, progress, signal)
   }
 
-  const save = await findFirstVisibleBounded(page, SAVE_BROWSER_SELECTORS, 2500)
-  const chosen = save ?? (await findFirstVisibleBounded(page, DONT_SAVE_BROWSER_SELECTORS, 1500))
-  if (chosen) {
-    await raceAbort(chosen.click({ timeout: 5000 }).catch(() => void 0), signal)
+  const saveLoginInfo = await isSaveLoginInfoScreen(page)
+  progress(
+    'Verifying...',
+    saveLoginInfo ? 'Saving login info...' : 'Resolving "Save browser?" prompt'
+  )
+
+  const saveSelectors = saveLoginInfo
+    ? [...SAVE_LOGIN_INFO_SELECTORS, ...SAVE_BROWSER_SELECTORS]
+    : SAVE_BROWSER_SELECTORS
+  const save = await findFirstVisibleBounded(page, saveSelectors, 2500)
+  if (save) {
+    await raceAbort(save.scrollIntoViewIfNeeded({ timeout: 3000 }).catch(() => void 0), signal)
+    await raceAbort(save.click({ timeout: 5000 }).catch(() => void 0), signal)
     await raceAbort(page.waitForTimeout(600), signal)
+  } else if (!saveLoginInfo) {
+    const dontSave = await findFirstVisibleBounded(page, DONT_SAVE_BROWSER_SELECTORS, 1500)
+    if (dontSave) {
+      await raceAbort(dontSave.click({ timeout: 5000 }).catch(() => void 0), signal)
+      await raceAbort(page.waitForTimeout(600), signal)
+    }
   }
 
   const submitBtn = await findFirstVisibleBounded(page, SAVE_BROWSER_SUBMIT_SELECTORS, 3000)
@@ -1289,32 +1631,47 @@ async function detectPostSubmitState(page: Page): Promise<PostSubmitState> {
     return { kind: 'wrongPassword' }
   }
 
-  // State 4: checkpoint / suspended — the /checkpoint/ URL path alone is
-  // the unconditional signal here too (see classifyPage's matching comment
-  // for why body-text confirmation must never gate this) — a suspension
-  // screen whose copy doesn't match any hardcoded pattern must still be
-  // reported as checkpoint, not silently fall through toward 'live'.
-  if (url.includes('/checkpoint/')) {
-    return { kind: 'checkpoint' }
-  }
-
-  // State 5: "You're logged in. Trust this device?" — c_user is already set
-  // here, so this must be checked before the generic "live" fallback below
-  // or the interstitial gets misclassified as a successful landing on the
-  // feed and every extraction step afterward scrapes a blank screen.
+  // 2FA and "Trust this device" MUST be checked before treating /checkpoint/
+  // as a hard lock. Facebook serves the authenticator / approvals flow on
+  // /checkpoint/ for many new-account logins. Returning checkpoint here used
+  // to skip 2FA: UID/pass typed, wait, Chrome closed, account marked
+  // Checkpoint without ever entering the code.
+  if (await is2FAScreen(page)) return { kind: 'twoFactor' }
   if (await isTrustDeviceScreen(page)) return { kind: 'trustDevice' }
 
-  // State 1: 2FA required.
-  if (await is2FAScreen(page)) return { kind: 'twoFactor' }
-
-  // State 2: login success — home feed, nav bar, or c_user cookie. Checked by
-  // DOM presence of the login form (isLoginPage), not a URL substring:
-  // web.facebook.com stays at the bare "/" path even when a failed/rejected
-  // submit re-renders the login form, so a URL-only check would misclassify
-  // "still on login form" as Live.
-  if (!url.includes('/checkpoint/') && !(await isLoginPage(page))) {
-    return { kind: 'live' }
+  if (url.includes('/checkpoint/')) {
+    if (is282LockText(body) || ACCOUNT_LOCKED_PATTERNS.some((p) => body.includes(p))) {
+      return { kind: 'checkpoint' }
+    }
+    // URL is /checkpoint/ but the body hasn't identified as 2FA or a lock
+    // yet (still hydrating). Keep polling instead of closing the browser.
+    return { kind: 'pending' }
   }
+
+  // State 2: login success. Do NOT treat "login form disappeared" as Live —
+  // that also happens during the spinner before 2FA renders. Returning live
+  // here skipped 2FA on new accounts: UID/pass typed, brief wait, Chrome
+  // closed, never entered the authenticator code.
+  if (await isLoginPage(page)) return { kind: 'pending' }
+
+  const cookies = await page.context().cookies().catch(() => [])
+  if (hasRequiredSessionCookies(cookies)) return { kind: 'live' }
+
+  const hasFeedChrome = await page
+    .locator(
+      [
+        'div[role="navigation"]',
+        'div[aria-label="Your profile"]',
+        'svg[aria-label="Your profile"]',
+        'div[role="feed"]',
+        '[aria-label="Facebook Menu"]',
+        '[aria-label="Notifications"]'
+      ].join(', ')
+    )
+    .first()
+    .isVisible()
+    .catch(() => false)
+  if (hasFeedChrome) return { kind: 'live' }
 
   return { kind: 'pending' }
 }
@@ -1335,9 +1692,11 @@ async function waitForPostSubmitState(
   context: BrowserContext,
   progress: ProgressFn,
   signal?: AbortSignal,
-  timeoutMs = 40000
+  timeoutMs = 40000,
+  onStillOnLogin?: () => Promise<void>
 ): Promise<PostSubmitState> {
   const start = Date.now()
+  let resubmits = 0
   for (;;) {
     checkAborted(signal)
     const state = await detectPostSubmitState(page)
@@ -1347,7 +1706,22 @@ async function waitForPostSubmitState(
     } else if (state.kind !== 'pending') {
       return state
     }
-    if (Date.now() - start >= timeoutMs) return { kind: 'pending' }
+
+    const elapsed = Date.now() - start
+    // Click didn't take — still sitting on the login form. Retry a couple of
+    // times rather than burning the whole timeout then closing Chrome.
+    if (
+      onStillOnLogin &&
+      resubmits < 2 &&
+      elapsed >= 4000 + resubmits * 6000 &&
+      (await isLoginPage(page))
+    ) {
+      resubmits += 1
+      progress('Logging in...', `Retrying Log in click (${resubmits})`)
+      await onStillOnLogin()
+    }
+
+    if (elapsed >= timeoutMs) return { kind: 'pending' }
     await raceAbort(page.waitForTimeout(1000), signal)
   }
 }
@@ -1390,19 +1764,36 @@ export async function extractCookiesAndToken(
  * extractProfileName) isn't available. NOTE: `[aria-label="Your profile"]`
  * is NOT included here — its aria-label is the literal string "Your
  * profile", not the account's name, and was previously misread as one.
+ * `h1` is also excluded — on App View / m.facebook.com it is often the
+ * "This browser isn't supported" warning, which was saved as Name.
  */
 const PROFILE_NAME_SELECTORS = [
   'div[role="banner"] a[href*="/me"] span',
-  'h1',
-  // Least specific — "any span right after an icon" also matches nav icon
-  // labels like Home/Watch/Marketplace, filtered by NON_NAME_HINTS above.
-  'div[role="navigation"] svg + span'
+  'div[role="banner"] a[href*="profile.php"] span',
+  'a[href*="/me"][aria-label]',
+  'div[data-mcomponent] a[href*="profile.php"]'
 ]
 
-/** Words that indicate a title/heading/label is an interstitial or generic UI text, not the profile name. */
+/** Phrases that mean the string is UI/error chrome, not a person's name. */
 const NON_NAME_HINTS = [
   'facebook',
   'log in',
+  'log into',
+  'sign up',
+  'this browser',
+  "isn't",
+  'isnt ',
+  'isn’t',
+  'not supported',
+  'something went wrong',
+  'try again',
+  'try deleting',
+  'create new account',
+  'better on the app',
+  'get app',
+  'not now',
+  'save login',
+  'save info',
   'review',
   'help us',
   'confirm',
@@ -1412,9 +1803,8 @@ const NON_NAME_HINTS = [
   'authentication',
   'your profile',
   'notifications',
-  // Top-nav icon labels — `div[role="navigation"] svg + span` (a generic
-  // "span right after an icon" selector, not name-specific) can match these
-  // instead of the account name, e.g. the Home icon's own adjacent label.
+  'update your browser',
+  'compatibility',
   'home',
   'watch',
   'marketplace',
@@ -1430,11 +1820,115 @@ const NON_NAME_HINTS = [
 
 function looksLikeRealName(s: string | null | undefined): s is string {
   if (!s) return false
-  const name = s.trim()
+  const name = s.replace(/\s+/g, ' ').trim()
   if (name.length < 2 || name.length > 60) return false
   if (/^\d+\s*[-–—]\s*/.test(name)) return false
+  if (!/[A-Za-z\u1780-\u17FF\u00C0-\u024F]/.test(name)) return false
   const lower = name.toLowerCase()
   return !NON_NAME_HINTS.some((h) => lower.includes(h))
+}
+
+/**
+ * Headed App View: m.facebook.com "Facebook is better on the app" sheet.
+ * Click Not now only — never Get app. Safe no-op if the sheet isn't showing
+ * (must not click Save-login-info's "Not now").
+ */
+export async function dismissFacebookAppPromotion(page: Page): Promise<boolean> {
+  try {
+    const body = await visibleText(page)
+    const promoVisible =
+      body.includes('facebook is better on the app') ||
+      body.includes('better on the app') ||
+      (body.includes('get app') && body.includes('not now'))
+    if (!promoVisible) {
+      const heading = page.getByText(/facebook is better on the app/i).first()
+      if (!(await heading.isVisible().catch(() => false))) return false
+    }
+
+    const scoped = page
+      .locator('div[role="dialog"], [role="alertdialog"], div[data-mcomponent]')
+      .filter({ hasText: /better on the app/i })
+    const candidates = [
+      scoped.getByRole('button', { name: /^not now$/i }),
+      page.getByRole('button', { name: /^not now$/i }),
+      scoped.locator('[role="button"]:has-text("Not now")'),
+      page.locator('[role="button"][aria-label="Not now"]'),
+      page.locator('[role="button"]:has-text("Not now")'),
+      page.locator('button:has-text("Not now")'),
+      page.locator('[role="button"]:has-text("មិនមែនឥឡូវ")'),
+      page.locator('[role="button"]:has-text("Không phải bây giờ")')
+    ]
+    for (const loc of candidates) {
+      const btn = loc.first()
+      if (!(await btn.isVisible().catch(() => false))) continue
+      await btn.scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => void 0)
+      const clicked = await btn
+        .click({ timeout: 3000 })
+        .then(() => true)
+        .catch(() => false)
+      if (clicked) {
+        await page.waitForTimeout(400)
+        return true
+      }
+    }
+  } catch {
+    /* best-effort */
+  }
+  return false
+}
+
+async function waitForAuthenticatedFeedShell(page: Page, timeoutMs = 8000): Promise<boolean> {
+  const loc = page
+    .locator(
+      [
+        '[aria-label="Facebook Menu"]',
+        '[aria-label="Notifications"]',
+        'div[data-mcomponent]',
+        'div[role="feed"]',
+        '[aria-label="News Feed"]',
+        'div[role="navigation"]'
+      ].join(', ')
+    )
+    .first()
+  return loc
+    .waitFor({ state: 'visible', timeout: timeoutMs })
+    .then(() => true)
+    .catch(() => false)
+}
+
+/**
+ * After CDP attach, the App View window may still be data:/about:blank.
+ * Navigate to the existing App View destination, dismiss the app-promo
+ * sheet, and wait for authenticated chrome when a session cookie exists.
+ */
+export async function ensureFacebookPageReady(
+  page: Page,
+  account: Account,
+  destination?: string
+): Promise<void> {
+  const settings = getAppSettings()
+  const dest =
+    destination?.trim() ||
+    account.target_url?.trim() ||
+    (settings.viewMode === 'app' ? FACEBOOK_URLS.mobile : FACEBOOK_URLS.full)
+  const url = page.url()
+  const blank =
+    !url ||
+    url === 'about:blank' ||
+    url.startsWith('about:blank') ||
+    url.startsWith('data:') ||
+    url.startsWith('chrome://') ||
+    url.startsWith('chrome-error://')
+  if (blank || (settings.viewMode === 'app' && !/facebook\.com/i.test(url))) {
+    await page.goto(dest, { timeout: 45000, waitUntil: 'domcontentloaded' }).catch(() => void 0)
+  }
+  await page.waitForLoadState('domcontentloaded').catch(() => void 0)
+  await dismissFacebookAppPromotion(page)
+  const cookies = await page.context().cookies().catch(() => [])
+  if (hasRequiredSessionCookies(cookies)) {
+    await waitForAuthenticatedFeedShell(page)
+    await dismissFacebookAppPromotion(page)
+  }
 }
 
 /**
@@ -1459,11 +1953,26 @@ export async function dismissFacebookDialogs(page: Page): Promise<void> {
 /**
  * Best-effort extraction of the account's display name.
  *
- * 1. Checks feed composer text (e.g. "What's on your mind, Instalaciones?")
- * 2. Nav bar's link to the account's OWN profile — `a[href*="profile.php?id={uid}"]`
- * 3. Generic semantic selectors
+ * Only runs against an authenticated session. Order:
+ *   1. Feed composer greeting ("What's on your mind, Name?")
+ *   2. Own profile link scoped to UID (desktop + m.facebook.com)
+ *   3. Mobile /me and data-mcomponent profile identity
+ *   4. Narrow banner selectors — never a generic h1 / body.innerText
  */
 export async function extractProfileName(page: Page, uid?: string | null): Promise<string | undefined> {
+  const cookies = await page.context().cookies().catch(() => [])
+  if (!hasRequiredSessionCookies(cookies)) return undefined
+  if (await isLoginPage(page).catch(() => true)) return undefined
+  if (await is2FAScreen(page).catch(() => false)) return undefined
+  if (await isSaveLoginInfoScreen(page).catch(() => false)) return undefined
+  await dismissFacebookAppPromotion(page)
+  await waitForAuthenticatedFeedShell(page, 5000)
+
+  const accept = (raw: string | null | undefined): string | undefined => {
+    const v = raw?.replace(/\s+/g, ' ').trim()
+    return looksLikeRealName(v) ? v : undefined
+  }
+
   // 1. From composer greeting on the home feed
   try {
     const composer = page
@@ -1476,27 +1985,61 @@ export async function extractProfileName(page: Page, uid?: string | null): Promi
       const m = composerText.match(
         /(?:What's on your mind|Bạn đang nghĩ gì|តើអ្នកកំពុងគិតអ្វី)[,\s]+([^?]+)\?/i
       )
-      if (m && looksLikeRealName(m[1])) return m[1].trim()
+      const fromComposer = accept(m?.[1])
+      if (fromComposer) return fromComposer
     }
   } catch {
     /* ignore */
   }
 
-  // 2. From UID-scoped profile link
+  // 2. From UID-scoped profile link (web + m.facebook.com)
   if (uid) {
     const ownProfileLink = page.locator(`a[href*="profile.php?id=${uid}"]`).first()
-    const raw = await ownProfileLink.textContent({ timeout: 1500 }).catch(() => null)
-    if (looksLikeRealName(raw)) return raw.trim()
+    const fromUid = accept(await ownProfileLink.textContent({ timeout: 1500 }).catch(() => null))
+    if (fromUid) return fromUid
+    const fromUidAria = accept(
+      await ownProfileLink.getAttribute('aria-label', { timeout: 800 }).catch(() => null)
+    )
+    if (fromUidAria) return fromUidAria
   }
 
-  // 3. Fallback semantic selectors
+  // 3. Mobile Facebook identity: /me link or mcomponent profile, not body text
+  try {
+    const fromMobile = await page.evaluate((ownUid: string | null) => {
+      const texts: string[] = []
+      const push = (el: Element | null): void => {
+        if (!el) return
+        const aria = (el.getAttribute('aria-label') || '').trim()
+        const text = ((el as HTMLElement).innerText || el.textContent || '').replace(/\s+/g, ' ').trim()
+        if (aria) texts.push(aria)
+        if (text && text !== aria) texts.push(text)
+      }
+      for (const a of Array.from(document.querySelectorAll('a[href]'))) {
+        const href = a.getAttribute('href') || ''
+        const own =
+          (ownUid && href.includes(`profile.php?id=${ownUid}`)) ||
+          /(?:^|\/)me(?:\/|$|\?)/.test(href)
+        if (own) push(a)
+      }
+      return texts
+    }, uid ?? null)
+    for (const t of fromMobile) {
+      const ok = accept(t)
+      if (ok) return ok
+    }
+  } catch {
+    /* ignore */
+  }
+
+  // 4. Narrow fallback selectors — never h1 / document.body
   for (const sel of PROFILE_NAME_SELECTORS) {
     const loc = page.locator(sel).first()
     const raw = await loc
-      .getAttribute('aria-label', { timeout: 1000 })
+      .getAttribute('aria-label', { timeout: 800 })
       .catch(() => null)
-      .then((v) => v ?? loc.textContent({ timeout: 1000 }).catch(() => null))
-    if (looksLikeRealName(raw)) return raw.trim()
+      .then((v) => v ?? loc.textContent({ timeout: 800 }).catch(() => null))
+    const ok = accept(raw)
+    if (ok) return ok
   }
   return undefined
 }
@@ -1560,7 +2103,13 @@ export async function extractFromInlineScripts(
           }
           if (!name) {
             const m = content.match(/"NAME":"([^"]+)"/) || content.match(/"user":\{"name":"([^"]+)"/)
-            if (m) name = m[1]
+            if (m) {
+              try {
+                name = JSON.parse(`"${m[1]}"`) as string
+              } catch {
+                name = m[1]
+              }
+            }
           }
         }
         if (!dtsg) {
@@ -2021,6 +2570,10 @@ export async function extractAllMetadata(
   signal?: AbortSignal,
   onStepUpdate?: (data: Partial<Account>) => void | Promise<void>
 ): Promise<ScrapedProfileData> {
+  await dismissFacebookAppPromotion(page)
+  await waitForAuthenticatedFeedShell(page)
+  await dismissFacebookAppPromotion(page)
+
   // Step 1: Base script + cookie parse on current page
   const { cookie, token } = await extractCookiesAndToken(context)
   const scriptData = await extractFromInlineScripts(page)
@@ -2029,9 +2582,12 @@ export async function extractAllMetadata(
     : undefined
   const resolvedUid = uid?.trim() ? uid : (scriptData.userId ?? cUser)
   const dtsgToken = scriptData.dtsg
-  const name = looksLikeRealName(scriptData.name)
-    ? scriptData.name.trim()
-    : await extractProfileName(page, resolvedUid)
+  const sessionOk = hasRequiredSessionCookies(await context.cookies().catch(() => []))
+  const name = sessionOk
+    ? looksLikeRealName(scriptData.name)
+      ? scriptData.name.trim()
+      : await extractProfileName(page, resolvedUid)
+    : undefined
 
   const result: ScrapedProfileData = {
     cookie,
@@ -2136,15 +2692,20 @@ async function waitForLoggedIn(
   for (;;) {
     checkAborted(signal)
 
-    // c_user is already set on the "Trust this device?" interstitial (it
-    // reads "You're logged in") — a bare cookie check here would report
-    // success while the page is still stuck on that screen, and every
-    // extraction step afterward would silently scrape a blank interstitial
-    // instead of the feed. Resolve it inline before trusting the cookie.
+    // c_user is already set on the "Trust this device?" / "Save login info"
+    // interstitials — a bare cookie check here would report success while
+    // the page is still stuck, skip Save, and leave the session unremembered.
     if (await isTrustDeviceScreen(page).catch(() => false)) {
       await resolveTrustDeviceScreen(page, context, progress, signal)
       checkAborted(signal)
+      continue
     }
+    if ((await isSaveLoginInfoScreen(page).catch(() => false)) || (await isSaveBrowserPrompt(page).catch(() => false))) {
+      await actSaveBrowser(page, context, progress, signal)
+      checkAborted(signal)
+      continue
+    }
+    await dismissFacebookAppPromotion(page)
 
     const cookies = await context.cookies().catch(() => [])
     if (cookies.some((c) => c.name === 'c_user' && c.value)) return true
@@ -2154,7 +2715,10 @@ async function waitForLoggedIn(
       return true
     }
 
-    if (Date.now() - start >= timeoutMs) return false
+    if (Date.now() - start >= timeoutMs) {
+      const lateCookies = await context.cookies().catch(() => [])
+      return lateCookies.some((c) => c.name === 'c_user' && c.value)
+    }
     await raceAbort(page.waitForTimeout(1000), signal)
   }
 }
@@ -2168,7 +2732,8 @@ export async function runAutoLogin(
   account: Account,
   options: AutoLoginOptions = {}
 ): Promise<AutoLoginResult> {
-  const { headless = true, slotIndex, signal, onProgress, useMbasic = false } = options
+  const { slotIndex, signal, onProgress, useMbasic = false } = options
+  const headless = options.headless ?? getAppSettings().browserMode === 'headless'
   const progress: ProgressFn = (stage, detail) => onProgress?.(stage, detail)
 
   // General Settings -> Default Login Mode. 'cookie_only' skips the
@@ -2204,19 +2769,27 @@ export async function runAutoLogin(
       viewMode: getAppSettings().viewMode
     })
 
-    const page = context.pages()[0] ?? (await context.newPage())
-    const loginUrl = useMbasic ? FACEBOOK_URLS.mbasic : FACEBOOK_URLS.full
+    const page = pickContextPage(context) ?? context.pages()[0] ?? (await context.newPage())
+    const isAppView = getAppSettings().viewMode === 'app'
+    const loginUrl = useMbasic
+      ? FACEBOOK_URLS.mbasic
+      : isAppView
+        ? FACEBOOK_URLS.mobile
+        : FACEBOOK_URLS.full
+    const credentialLoginUrl = useMbasic
+      ? FACEBOOK_URLS.mbasic
+      : isAppView
+        ? FACEBOOK_URLS.mobileLogin
+        : FACEBOOK_URLS.fullLogin
 
     checkAborted(signal)
     progress('Checking session...')
-    await raceAbort(
-      page.goto(loginUrl, { timeout: 45000, waitUntil: 'domcontentloaded' }),
-      signal
-    )
+    await raceAbort(ensureFacebookPageReady(page, account, loginUrl), signal)
 
     // Dismiss any cookie-consent / language / bottom-sheet overlay that would
     // otherwise sit on top of the login form and swallow clicks.
     await dismissConsentOverlays(page, signal)
+    await dismissFacebookAppPromotion(page)
 
     // Account Chooser interstitial (avatar + name, "Continue" / "Use
     // another profile" / "Create new account") — a saved profile dir can
@@ -2287,6 +2860,9 @@ export async function runAutoLogin(
       if (res.status !== 'Session Expired') {
         let metadata: ScrapedProfileData = {}
         if (res.status === 'Live') {
+          await dismissFacebookAppPromotion(page)
+          await waitForAuthenticatedFeedShell(page)
+          await dismissFacebookAppPromotion(page)
           metadata = await extractAllMetadata(page, context, account.uid, signal)
           checkAborted(signal)
           // Direct Warm-up (General Settings, default on): this is the
@@ -2338,7 +2914,7 @@ export async function runAutoLogin(
       // the real login URL to guarantee the fields are there.
       progress('Checking session...', 'Cookie expired — falling back to credential login')
       await raceAbort(
-        page.goto(loginUrl, { timeout: 45000, waitUntil: 'domcontentloaded' }).catch(() => void 0),
+        page.goto(credentialLoginUrl, { timeout: 45000, waitUntil: 'domcontentloaded' }).catch(() => void 0),
         signal
       )
       await dismissConsentOverlays(page, signal)
@@ -2348,7 +2924,18 @@ export async function runAutoLogin(
     checkAborted(signal)
     progress('Logging in...')
 
-    const emailField = await findFirstVisible(page, EMAIL_SELECTORS)
+    let emailField = await findFirstVisibleBounded(page, EMAIL_SELECTORS, 4000)
+    if (!emailField) {
+      // Logged-out home can be a splash with only a Log in CTA — open the
+      // explicit login form so the identifier/password fields actually exist.
+      progress('Logging in...', 'Opening login form...')
+      await raceAbort(
+        page.goto(credentialLoginUrl, { timeout: 45000, waitUntil: 'domcontentloaded' }).catch(() => void 0),
+        signal
+      )
+      await dismissConsentOverlays(page, signal)
+      emailField = await findFirstVisibleBounded(page, EMAIL_SELECTORS, 6000)
+    }
     if (!emailField) {
       progress('Error', 'Email/username field not found (page layout changed?)')
       return {
@@ -2360,7 +2947,9 @@ export async function runAutoLogin(
     await typeHumanOn(page, emailField, account.uid || account.email || '', signal)
 
     checkAborted(signal)
-    const passField = await findFirstVisible(page, PASSWORD_SELECTORS)
+    await advanceToPasswordIfNeeded(page, signal)
+
+    const passField = await findFirstVisibleBounded(page, PASSWORD_SELECTORS, 6000)
     if (!passField) {
       progress('Error', 'Password field not found (page layout changed?)')
       return {
@@ -2379,26 +2968,33 @@ export async function runAutoLogin(
       return { success: false, status: 'Unknown', detail: 'No password set' }
     }
     await typeHumanOn(page, passField, account.password, signal)
+    // Let React enable the submit control after the last keystroke.
+    await raceAbort(page.waitForTimeout(400), signal)
 
     progress('Logging in...', 'Submitting Credentials...')
-    const loginBtn = await findFirstVisible(page, LOGIN_BUTTON_SELECTORS)
-    if (loginBtn) {
-      await clickWithJitter(page, loginBtn, signal)
-    } else {
-      // Last resort: submit via Enter on the password field.
-      await raceAbort(passField.press('Enter').catch(() => void 0), signal)
-    }
+    await submitLoginForm(page, passField, signal)
 
     // ---- Fix for premature closure: the login button shows a brief
     // spinner/loading state before Facebook redirects. Evaluating the page
     // immediately after the click risks catching that transient state and
     // misclassifying (or worse, closing the browser) before the real outcome
     // — 2FA / Live / wrong password / checkpoint — has actually rendered. So
-    // instead of one fixed wait, poll every ~1s for up to 35s until one of
-    // the four definitive states appears. ----
+    // instead of one fixed wait, poll every ~1s for up to 45s until one of
+    // the four definitive states appears. If the form is still up after a
+    // few seconds the first click missed — retry instead of just closing. ----
     progress('Verifying...', 'Waiting for page transition...')
-    const postSubmit = await waitForPostSubmitState(page, context, progress, signal, 35000)
+    let postSubmit = await waitForPostSubmitState(
+      page,
+      context,
+      progress,
+      signal,
+      45000,
+      () => submitLoginForm(page, passField, signal)
+    )
     checkAborted(signal)
+    if (postSubmit.kind === 'pending' && (await is2FAScreen(page))) {
+      postSubmit = { kind: 'twoFactor' }
+    }
 
     // ---- Requirement 1: check WRONG PASSWORD first, before any 2FA logic.
     // A bad-credentials response must stop the flow dead — never fall through
@@ -2443,7 +3039,7 @@ export async function runAutoLogin(
     // "Try another way"). See resolve2FAStateMachine() for the full state
     // table; this call site only needs to know whether it succeeded. ----
     if (postSubmit.kind === 'twoFactor') {
-      const resolution = await resolve2FAStateMachine(page, context, account, progress, signal, 45000)
+      const resolution = await resolve2FAStateMachine(page, context, account, progress, signal, 60000)
       checkAborted(signal)
 
       if (!resolution.resolved) {
@@ -2480,7 +3076,36 @@ export async function runAutoLogin(
     }
 
     progress('Verifying...')
-    const result = await classifyPage(page)
+    if ((await isSaveLoginInfoScreen(page)) || (await isSaveBrowserPrompt(page))) {
+      await actSaveBrowser(page, context, progress, signal)
+      checkAborted(signal)
+    }
+    let result = await classifyPage(page)
+    if (result.status === 'Unknown' && (await isTrustDeviceScreen(page))) {
+      await resolveTrustDeviceScreen(page, context, progress, signal)
+      checkAborted(signal)
+      result = await classifyPage(page)
+    }
+    if (
+      (result.status === 'Unknown' || result.status === 'Session Expired') &&
+      ((await isSaveLoginInfoScreen(page)) || (await isSaveBrowserPrompt(page)))
+    ) {
+      await actSaveBrowser(page, context, progress, signal)
+      checkAborted(signal)
+      result = await classifyPage(page)
+    }
+    // Save-login-info / spinner pages often have no Live chrome. If 2FA
+    // already produced c_user+xs, still persist the session.
+    if (
+      (result.status === 'Unknown' || result.status === 'Session Expired') &&
+      !(await isLoginPage(page)) &&
+      !(await is2FAScreen(page))
+    ) {
+      const sessionCookies = await context.cookies().catch(() => [])
+      if (hasRequiredSessionCookies(sessionCookies)) {
+        result = { status: 'Live', detail: 'Session active' }
+      }
+    }
     progress(result.status, result.detail)
 
     let metadata: ScrapedProfileData = {}
@@ -2490,6 +3115,9 @@ export async function runAutoLogin(
       // BEFORE the browser is allowed to close, so the context is guaranteed
       // to still be open while extraction happens. ----
       progress('Verifying...', 'Extracting Profile & Primary Location...')
+      await dismissFacebookAppPromotion(page)
+      await waitForAuthenticatedFeedShell(page)
+      await dismissFacebookAppPromotion(page)
       metadata = await extractAllMetadata(page, context, account.uid, signal)
       checkAborted(signal)
 
@@ -2557,6 +3185,6 @@ export async function runAutoLogin(
     // is nothing left for the browser window to show — leaving it open
     // would just clutter the screen once the task is done.
     untrackContext(trackKey)
-    await context?.close().catch(() => void 0)
+    await closeLaunchedContext(context)
   }
 }

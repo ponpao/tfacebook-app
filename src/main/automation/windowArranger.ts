@@ -12,9 +12,13 @@
 // hence going through CDP directly here).
 // ---------------------------------------------------------------------------
 import { screen } from 'electron'
-import { getAllTrackedContexts } from './browserContext'
+import { getAllTrackedContexts, headedWindowTileGrid } from './browserContext'
+import type { BrowserContext } from 'playwright'
 
 export type ArrangeLayout =
+  | 'grid8x3'
+  | 'grid7x3'
+  | 'grid6x2'
   | 'grid5x2'
   | 'grid4x2'
   | 'leftHalf'
@@ -64,6 +68,18 @@ function computeBoundsForLayout(layout: ArrangeLayout, index: number): Bounds {
   const { x: screenX, y: screenY } = screen.getPrimaryDisplay().workArea
 
   switch (layout) {
+    case 'grid8x3': {
+      const b = gridBounds(index, 8, 3, 0, screenW, screenH)
+      return { ...b, left: b.left + screenX, top: b.top + screenY }
+    }
+    case 'grid7x3': {
+      const b = gridBounds(index, 7, 3, 0, screenW, screenH)
+      return { ...b, left: b.left + screenX, top: b.top + screenY }
+    }
+    case 'grid6x2': {
+      const b = gridBounds(index, 6, 2, 0, screenW, screenH)
+      return { ...b, left: b.left + screenX, top: b.top + screenY }
+    }
     case 'grid5x2': {
       const b = gridBounds(index, 5, 2, 0, screenW, screenH)
       return { ...b, left: b.left + screenX, top: b.top + screenY }
@@ -89,14 +105,18 @@ function computeBoundsForLayout(layout: ArrangeLayout, index: number): Bounds {
       return { left: screenX, top: screenY, width: screenW, height: screenH }
     }
     case 'restore': {
-      // "Original Size" is the same 5x2 grid every headed window launches
-      // into by default (see browserContext.ts's tilePosition) — restoring
-      // just puts windows back into that default instead of a bespoke
-      // single fixed size, so this is identical to the grid5x2 case.
-      const b = gridBounds(index, 5, 2, 0, screenW, screenH)
+      // Fallback when the caller does not pass a context — Browser View 8×3.
+      const b = gridBounds(index, 8, 3, 0, screenW, screenH)
       return { ...b, left: b.left + screenX, top: b.top + screenY }
     }
   }
+}
+
+function restoreBoundsForContext(context: BrowserContext, index: number): Bounds {
+  const { width: screenW, height: screenH, x: screenX, y: screenY } = screen.getPrimaryDisplay().workArea
+  const { cols, rows } = headedWindowTileGrid(context)
+  const b = gridBounds(index, cols, rows, 0, screenW, screenH)
+  return { ...b, left: b.left + screenX, top: b.top + screenY }
 }
 
 /**
@@ -117,7 +137,8 @@ export async function arrangeBrowserWindows(
     if (!page) continue
 
     try {
-      const bounds = computeBoundsForLayout(layout, i)
+      const bounds =
+        layout === 'restore' ? restoreBoundsForContext(context, i) : computeBoundsForLayout(layout, i)
       const cdp = await context.newCDPSession(page)
       // Explicit targetId — omitting it asks for "the window of whatever
       // target this client is currently attached to", which is normally

@@ -7,12 +7,13 @@
 // via browserContext.ts.
 // ---------------------------------------------------------------------------
 import type { Account } from '../../types/account'
-import { launchContext, trackContext, closeAllTrackedContexts } from './browserContext'
+import { launchContext, trackContext, closeAllTrackedContexts, pickContextPage } from './browserContext'
 import { getAppSettings } from '../db/settingsRepo'
 import {
   runAutoLogin,
   classifyPage,
   extractCookiesAndToken,
+  ensureFacebookPageReady,
   type AutoLoginResult,
   type LoginStatus
 } from './autoLogin'
@@ -31,14 +32,10 @@ export type { AutoLoginResult }
 
 /**
  * openProfile — launch the account's persistent profile and leave it open.
- * Headed (a real, visible window) unless General Settings' Browsing View is
- * App Mode, in which case it launches headless and is only ever visible/
- * interactive as a tile in the Browser Windows panel — see the isAppMode
- * branch below. Tracked so closeAllBrowsers() can shut it down. `slotIndex`
- * positions a HEADED window in the tiling grid (see browserContext.ts's
- * tilePosition()) — pass an incrementing index when opening several profiles
- * in a batch so their windows don't stack on top of each other at the same
- * default position; meaningless for a headless/App Mode launch.
+ * Headed vs headless follows General Settings Browser Mode. App View only
+ * changes the device fingerprint (phone-sized window when headed, screencast
+ * tile when headless). Tracked so closeAllBrowsers() can shut it down.
+ * `slotIndex` tiles headed windows; ignored when headless.
  */
 export async function openProfile(
   account: Account,
@@ -48,13 +45,16 @@ export async function openProfile(
   targetUrl?: string
 ): Promise<{ ok: boolean; detail: string }> {
   const key = `profile:${account.uid ?? account.id}`
-  // App Mode accounts launch headless — no OS window at all, so they only
-  // ever appear as an interactive tile in the Browser Windows panel (CDP
-  // screencast + input injection, see screencast.ts), never on the desktop
-  // or taskbar. Browser View keeps the real headed window this always was.
+  // Headless (Browser Mode) hides the OS window — App View then only appears
+  // as a Browser Windows screencast tile. Headed + App View must still open
+  // a real phone-sized window; View Mode only picks the device fingerprint.
   const settings = getAppSettings()
-  const isAppMode = settings.viewMode === 'app'
-  const context = await launchContext({ headless: isAppMode, account, slotIndex, rowNumber })
+  const context = await launchContext({
+    headless: settings.browserMode === 'headless',
+    account,
+    slotIndex,
+    rowNumber
+  })
   trackContext(key, context, {
     accountName: account.name?.trim() || account.uid || 'Unknown',
     rowNumber,
@@ -93,17 +93,18 @@ export async function openProfile(
     void syncCookiesIfLoggedIn()
   })
 
-  const page = context.pages()[0] ?? (await context.newPage())
+  const page = pickContextPage(context) ?? context.pages()[0] ?? (await context.newPage())
   page.on('load', () => void syncCookiesIfLoggedIn())
   context.on('page', (p) => p.on('load', () => void syncCookiesIfLoggedIn()))
 
   // Explicit targetUrl param wins; otherwise fall back to the account's own
   // saved target_url (set via the row context menu's "Assign Target URL"),
   // and only default to the plain Facebook feed if neither is set.
-  const destination = (targetUrl?.trim() || account.target_url?.trim() || 'https://web.facebook.com')
-  await page
-    .goto(destination, { timeout: 45000, waitUntil: 'domcontentloaded' })
-    .catch(() => void 0)
+  const destination =
+    targetUrl?.trim() ||
+    account.target_url?.trim() ||
+    (settings.viewMode === 'app' ? 'https://m.facebook.com' : 'https://web.facebook.com')
+  await ensureFacebookPageReady(page, account, destination)
 
   return { ok: true, detail: 'Browser Active' }
 }
@@ -167,16 +168,15 @@ export async function checkLiveDie(account: Account): Promise<LiveDieResult> {
 
 /**
  * Single-account auto-login (the row context menu's "Run Auto Login").
- * Headed by default (kept open for the user to see) UNLESS App Mode is
- * active, in which case it always launches headless regardless of the
- * caller's default — same rule as every other launch site. An explicit
- * `headless` argument from the caller still wins over both.
+ * Follows General Settings Browser Mode (headed vs headless). View Mode
+ * only changes the device fingerprint — App View + Headed is a visible
+ * phone-sized window. An explicit `headless` argument still wins.
  */
 export async function autoLogin(
   account: Account,
   { headless }: { headless?: boolean } = {}
 ): Promise<AutoLoginResult> {
-  const resolvedHeadless = headless ?? getAppSettings().viewMode === 'app'
+  const resolvedHeadless = headless ?? getAppSettings().browserMode === 'headless'
   return runAutoLogin(account, { headless: resolvedHeadless })
 }
 

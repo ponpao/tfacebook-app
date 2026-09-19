@@ -102,8 +102,11 @@ const ACTION_KEYS: Record<string, string> = {
 
 // "Arrange Browsers" dropdown — tiles/splits every currently-open headed
 // browser window via windowArranger.ts (main process, CDP-driven). Grid
-// 5x2 is the recommended default per spec (10 windows/screen).
+// 8x3 is Browser View default (24/screen); 6x2 is Headed App View default.
 const ARRANGE_OPTIONS: { layout: ArrangeLayout; label: string }[] = [
+  { layout: 'grid8x3', label: '8x3' },
+  { layout: 'grid6x2', label: '6x2' },
+  { layout: 'grid7x3', label: '7x3' },
   { layout: 'grid5x2', label: '5x2' },
   { layout: 'grid4x2', label: '4x2' },
   { layout: 'leftHalf', label: 'Left Half PC' },
@@ -645,10 +648,10 @@ export function RibbonToolbar({
                   key={opt.layout}
                   className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-ink hover:bg-surface-sunken"
                   onClick={() => void arrangeWindows(opt.layout)}
-                  title={opt.layout === 'grid5x2' ? `${opt.label} (Recommended)` : opt.label}
+                  title={opt.layout === 'grid8x3' ? `${opt.label} (Recommended)` : opt.label}
                 >
                   <span className="whitespace-nowrap">{opt.label}</span>
-                  {opt.layout === 'grid5x2' && (
+                  {opt.layout === 'grid8x3' && (
                     <span className="ml-auto shrink-0 text-[10px] font-semibold text-[#1e7d34]">★</span>
                   )}
                 </button>

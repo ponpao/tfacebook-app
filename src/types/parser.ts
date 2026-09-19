@@ -18,6 +18,7 @@ export const IMPORT_TOKENS = [
   'COOKIE',
   'TOKEN',
   'PROXY',
+  'NOTES',
   'IGNORE' // skip this column
 ] as const
 
@@ -37,7 +38,8 @@ export const TOKEN_TO_FIELD: Record<Exclude<ImportToken, 'IGNORE'>, keyof NewAcc
   GENDER: 'gender',
   COOKIE: 'cookie',
   TOKEN: 'token',
-  PROXY: 'proxy'
+  PROXY: 'proxy',
+  NOTES: 'notes'
 }
 
 /** A saved / active import format definition. */

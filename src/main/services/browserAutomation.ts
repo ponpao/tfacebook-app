@@ -33,6 +33,7 @@ import {
   untrackContext,
   validateCookieString,
   applyWindowTitle,
+  buildAppWindowTitle,
   buildWindowTitle
 } from '../automation/browserContext'
 import {
@@ -77,12 +78,27 @@ function broadcast(event: CookieLoginEvent): void {
 }
 
 /** Words that indicate extracted text is interstitial/generic UI chrome, not a real display name. */
-const NON_NAME_HINTS = ['facebook', 'log in', 'sign up', 'notification', 'home', 'watch', 'marketplace']
+const NON_NAME_HINTS = [
+  'facebook',
+  'log in',
+  'sign up',
+  'this browser',
+  "isn't",
+  'isnt ',
+  'not supported',
+  'something went wrong',
+  'try again',
+  'notification',
+  'home',
+  'watch',
+  'marketplace'
+]
 
 function looksLikeRealName(s: string | null | undefined): s is string {
   if (!s) return false
-  const name = s.trim()
+  const name = s.replace(/\s+/g, ' ').trim()
   if (name.length < 2 || name.length > 60) return false
+  if (!/[A-Za-z\u1780-\u17FF\u00C0-\u024F]/.test(name)) return false
   const lower = name.toLowerCase()
   return !NON_NAME_HINTS.some((h) => lower.includes(h))
 }
@@ -169,10 +185,7 @@ export async function loginWithCookieBatch(
       }
 
       const settings = getAppSettings()
-      // App Mode always launches headless (no OS window — see
-      // playwrightManager.ts's openProfile for the same rule), independent
-      // of the separate headless/headed Browser Mode setting.
-      const isHeadless = settings.browserMode === 'headless' || settings.viewMode === 'app'
+      const isHeadless = settings.browserMode === 'headless'
 
       context = await launchContext({
         headless: isHeadless,
@@ -269,9 +282,12 @@ export async function loginWithCookieBatch(
       })
 
       if (fastName) {
+        const titled = { ...account, name: fastName, uid: resolvedUid }
         await applyWindowTitle(
           context,
-          buildWindowTitle({ ...account, name: fastName, uid: resolvedUid }, rowNumbers?.[account.id])
+          settings.viewMode === 'app' && !isHeadless
+            ? buildAppWindowTitle(titled)
+            : buildWindowTitle(titled, rowNumbers?.[account.id])
         )
       }
 

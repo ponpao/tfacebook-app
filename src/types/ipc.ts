@@ -180,15 +180,25 @@ export interface QueueSummary {
 /**
  * Window arrangement layouts for the "Arrange Browsers" toolbar action —
  * see windowArranger.ts (main process) for the actual bounds math.
- *   grid5x2 / grid4x2 — tile every open headed window across the whole
- *     screen in a 5x2 (10/screen) or 4x2 (8/screen) grid; windows beyond
- *     capacity wrap back onto slot 0, 1, 2… with a small stacked offset.
+ *   grid8x3 / grid7x3 / grid6x2 / grid5x2 / grid4x2 — tile every open headed
+ *     window across the work area in an 8x3 (24/screen, Browser View default),
+ *     7x3, 6x2 (12/screen, App View default), 5x2 (10/screen), or 4x2
+ *     (8/screen) grid; windows beyond capacity wrap back onto slot 0, 1, 2…
  *   leftHalf / rightHalf — same tiling, confined to one half of the screen
  *     (split view), e.g. to leave the other half for another app.
  *   maximized — every window fills the whole work area.
  *   restore — back to each window's normal launch-time tile size/position.
  */
-export type ArrangeLayout = 'grid5x2' | 'grid4x2' | 'leftHalf' | 'rightHalf' | 'maximized' | 'restore'
+export type ArrangeLayout =
+  | 'grid8x3'
+  | 'grid7x3'
+  | 'grid6x2'
+  | 'grid5x2'
+  | 'grid4x2'
+  | 'leftHalf'
+  | 'rightHalf'
+  | 'maximized'
+  | 'restore'
 
 /** One row in the Browser Windows panel — see browserContext.ts's listTrackedWindows(). */
 export interface TrackedWindowInfo {
