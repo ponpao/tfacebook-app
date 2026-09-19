@@ -6,7 +6,7 @@
 // Designed to run standalone (single account, headed) or from queueRunner.ts
 // (headless, concurrent, abortable).
 // ---------------------------------------------------------------------------
-import type { BrowserContext, Page } from 'playwright'
+import type { BrowserContext, Locator, Page } from 'playwright'
 import type { Account, ManagedPage } from '../../types/account'
 import {
   launchContext,
@@ -254,6 +254,8 @@ const TWO_FACTOR_HEADING_PATTERNS = [
   'available confirmation methods',
   'these are your available confirmation methods',
   'get a code from your authentication app',
+  'use an authentication app',
+  'use your authentication app',
   'enter the code',
   'enter login code',
   'confirmation code',
@@ -348,6 +350,9 @@ const CODE_SUBMIT_SELECTORS = [
 const TRY_ANOTHER_WAY_SELECTORS = [
   'button:has-text("Try another way")',
   '[role="button"]:has-text("Try another way")',
+  'a:has-text("Try another way")',
+  '[role="link"]:has-text("Try another way")',
+  '[aria-label="Try another way"]',
   'button:has-text("Thử cách khác")',
   '[role="button"]:has-text("Thử cách khác")',
   'text=/Try another way/i',
@@ -357,14 +362,20 @@ const TRY_ANOTHER_WAY_SELECTORS = [
 /** The "Choose a way to confirm it's you" modal shown by State 1. */
 const METHOD_DIALOG_SELECTOR = 'div[role="dialog"]'
 
-/** Authentication-app option — dialog AND full-page App View chooser. */
+/** Authentication-app option — desktop dialog, list row, AND full-page App View. */
 const AUTH_APP_OPTION_SELECTORS = [
   `${METHOD_DIALOG_SELECTOR} label:has-text("Authentication app")`,
   `${METHOD_DIALOG_SELECTOR} [role="radio"]:has-text("Authentication app")`,
-  `${METHOD_DIALOG_SELECTOR} div:has-text("Authentication app")`,
+  `${METHOD_DIALOG_SELECTOR} [role="listitem"]:has-text("Authentication app")`,
+  `${METHOD_DIALOG_SELECTOR} [role="button"]:has-text("Authentication app")`,
+  `${METHOD_DIALOG_SELECTOR} span:has-text("Authentication app")`,
+  `${METHOD_DIALOG_SELECTOR} label:has-text("Use an authentication app")`,
   `${METHOD_DIALOG_SELECTOR} label:has-text("App xác thực")`,
   'label:has-text("Authentication app")',
+  'label:has-text("Use an authentication app")',
+  'label:has-text("Use your authentication app")',
   '[role="radio"]:has-text("Authentication app")',
+  '[role="listitem"]:has-text("Authentication app")',
   '[aria-label="Authentication app"]',
   'div:has-text("Get a code from your authentication app")',
   'label:has-text("App xác thực")',
@@ -373,12 +384,14 @@ const AUTH_APP_OPTION_SELECTORS = [
 
 /** Continue on the method-chooser — prefer dialog-scoped, then page-level. */
 const DIALOG_CONTINUE_SELECTORS = [
+  `${METHOD_DIALOG_SELECTOR} [aria-label="Continue"]`,
+  `${METHOD_DIALOG_SELECTOR} [role="button"][aria-label="Continue"]`,
   `${METHOD_DIALOG_SELECTOR} button:has-text("Continue")`,
   `${METHOD_DIALOG_SELECTOR} [role="button"]:has-text("Continue")`,
   `${METHOD_DIALOG_SELECTOR} button:has-text("Tiếp tục")`,
+  '[aria-label="Continue"]',
   'button:has-text("Continue")',
   '[role="button"]:has-text("Continue")',
-  '[aria-label="Continue"]',
   'button:has-text("Tiếp tục")'
 ]
 
@@ -1116,7 +1129,8 @@ async function isMethodDialogOpen(page: Page): Promise<boolean> {
   return (
     text.includes("choose a way to confirm it's you") ||
     text.includes('available confirmation methods') ||
-    text.includes('authentication app')
+    text.includes('authentication app') ||
+    text.includes('use an authentication app')
   )
 }
 
@@ -1145,15 +1159,26 @@ async function isMethodChooserScreen(page: Page): Promise<boolean> {
     return true
   }
   const hasAuthApp =
-    body.includes('authentication app') || body.includes('get a code from your authentication')
+    body.includes('authentication app') ||
+    body.includes('get a code from your authentication') ||
+    body.includes('use an authentication app')
   const hasOtherDevice =
     body.includes('notification on another device') ||
-    body.includes('approve the login from another device')
+    body.includes('approve the login from another device') ||
+    body.includes('login approval from another device')
   return hasAuthApp && hasOtherDevice
 }
 
+async function methodChooserRoot(page: Page): Promise<Locator | null> {
+  const dialog = page.locator(METHOD_DIALOG_SELECTOR).filter({
+    hasText: /authentication app|confirmation methods|choose a way to confirm/i
+  })
+  if (await dialog.first().isVisible().catch(() => false)) return dialog.first()
+  return null
+}
+
 async function isAuthAppSelected(page: Page): Promise<boolean> {
-  const match = /authentication app|app xác thực|get a code from your authentication/i
+  const match = /authentication app|app xác thực|get a code from your authentication|use an authentication app/i
   const radios = page.locator('input[type="radio"]')
   const n = await radios.count().catch(() => 0)
   for (let i = 0; i < n; i++) {
@@ -1239,11 +1264,10 @@ async function classify2FAState(page: Page): Promise<TwoFAState> {
   // it errored back to login or never really started). Treat as resolved so
   // the loop stops and the caller re-classifies the page — crucially this
   // prevents any code-typing action from firing against the login form.
-  if (await isLoginPage(page)) return 'resolved'
-
-  // Order: method chooser (dialog OR full-page App View) before code-input
-  // and before waiting-approval — that screen also mentions "another device".
+  // Method chooser (desktop dialog OR App View full page) before isLoginPage:
+  // Browser View can keep the login form in the DOM behind the overlay.
   if (await isMethodChooserScreen(page)) return 'method-dialog'
+  if (await isLoginPage(page)) return 'resolved'
 
   const url = page.url()
   const body = await visibleText(page)
@@ -1261,7 +1285,9 @@ async function classify2FAState(page: Page): Promise<TwoFAState> {
 
   if (
     body.includes('check your notifications on another device') ||
-    body.includes('waiting for approval')
+    body.includes('waiting for approval') ||
+    body.includes('approve from another device') ||
+    body.includes('login approval from another device')
   ) {
     return 'waiting-approval'
   }
@@ -1279,14 +1305,26 @@ async function classify2FAState(page: Page): Promise<TwoFAState> {
 
 /** State 1 action: pick "Authentication app" on the chooser (dialog or full page) and Continue. */
 async function actMethodDialog(page: Page, signal?: AbortSignal): Promise<string | null> {
+  const root = await methodChooserRoot(page)
+  const scope = root ?? page
+
   if (!(await isAuthAppSelected(page))) {
-    const byRole = page.getByRole('radio', { name: /authentication app/i }).first()
+    const byRole = scope.getByRole('radio', { name: /authentication app/i }).first()
     let clicked = false
     if (await byRole.isVisible().catch(() => false)) {
       clicked = await byRole
         .click({ timeout: 5000 })
         .then(() => true)
         .catch(() => false)
+    }
+    if (!clicked) {
+      const byText = scope.getByText(/authentication app/i).first()
+      if (await byText.isVisible().catch(() => false)) {
+        clicked = await byText
+          .click({ timeout: 5000 })
+          .then(() => true)
+          .catch(() => false)
+      }
     }
     if (!clicked) {
       const authAppOption = await findFirstVisibleBounded(page, AUTH_APP_OPTION_SELECTORS, 4000)
@@ -1306,8 +1344,8 @@ async function actMethodDialog(page: Page, signal?: AbortSignal): Promise<string
     }
     await raceAbort(page.waitForTimeout(400), signal)
     if (!(await isAuthAppSelected(page))) {
-      const radioNear = page
-        .locator('label:has-text("Authentication app") input[type="radio"]')
+      const radioNear = scope
+        .locator('label:has-text("Authentication app") input[type="radio"], label:has-text("Use an authentication app") input[type="radio"]')
         .first()
       if (await radioNear.isVisible().catch(() => false)) {
         await raceAbort(radioNear.check({ timeout: 3000 }).catch(() => void 0), signal)
@@ -1320,16 +1358,18 @@ async function actMethodDialog(page: Page, signal?: AbortSignal): Promise<string
     }
   }
 
-  const dialog = page.locator(METHOD_DIALOG_SELECTOR).filter({
-    hasText: /authentication app|confirmation methods/i
-  })
-  const dialogVisible = await dialog
-    .first()
-    .isVisible()
-    .catch(() => false)
-  const continueBtn = dialogVisible
-    ? await findFirstVisibleBounded(page, DIALOG_CONTINUE_SELECTORS.slice(0, 3), 3000)
-    : await findFirstVisibleBounded(page, DIALOG_CONTINUE_SELECTORS, 3000)
+  const continueInRoot = root
+    ? root.getByRole('button', { name: /^continue$/i }).first()
+    : null
+  let continueBtn =
+    continueInRoot && (await continueInRoot.isVisible().catch(() => false)) ? continueInRoot : null
+  if (!continueBtn && root) {
+    continueBtn = root.locator('[aria-label="Continue"], [role="button"]:has-text("Continue")').first()
+    if (!(await continueBtn.isVisible().catch(() => false))) continueBtn = null
+  }
+  if (!continueBtn) {
+    continueBtn = await findFirstVisibleBounded(page, DIALOG_CONTINUE_SELECTORS, 3000)
+  }
   if (!continueBtn) return 'Method-chooser Continue button not found'
   const continued = await continueBtn
     .click({ timeout: 5000 })
@@ -1476,6 +1516,7 @@ async function isTrustDeviceScreen(page: Page): Promise<boolean> {
     body.includes('go to your authentication app') ||
     body.includes('check your notifications on another device') ||
     body.includes("choose a way to confirm it's you") ||
+    body.includes('available confirmation methods') ||
     body.includes('enter the code')
   ) {
     return false

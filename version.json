@@ -1,20 +1,20 @@
 {
-  "version": "1.2.2",
+  "version": "1.2.3",
   "releaseDate": "2026-09-19",
   "changelog": {
     "en": [
-      "Added support for Facebook 2FA confirmation-method selection",
-      "Automatically selects Authentication app when TOTP is available",
-      "Improved 2FA handling for checkpoint/login flows",
-      "Preserved direct OTP/code-entry login flow",
-      "General App View login reliability improvements"
+      "Extended Facebook 2FA confirmation-method selection to Browser View",
+      "Selects Authentication app in the desktop dialog, then Continue, then TOTP",
+      "Detects the method chooser even when the login form remains behind the overlay",
+      "Preserved App View 2FA and direct OTP/code-entry flows",
+      "General 2FA reliability improvements"
     ],
     "km": [
-      "បានបន្ថែមការគាំទ្រ Facebook 2FA ដែលត្រូវជ្រើសរើសវិធីផ្ទៀងផ្ទាត់មុន",
-      "ជ្រើស Authentication app ដោយស្វ័យប្រវត្តិ នៅពេលមាន TOTP",
-      "បានកែលម្អការដោះស្រាយ 2FA ក្នុង checkpoint/login flow",
-      "រក្សាការដំណើរការ OTP ដាក់លេខកូដដោយផ្ទាល់ដដែល",
-      "បានធ្វើឱ្យ App View Login មានស្ថិរភាពប្រសើរឡើង"
+      "បានពង្រីកការជ្រើសវិធី Facebook 2FA ទៅ Browser View ផងដែរ",
+      "ជ្រើស Authentication app ក្នុង Dialog Desktop បន្ទាប់មក Continue និង TOTP",
+      "រកឃើញអេក្រង់ជ្រើសវិធី 2FA ទោះបីទម្រង់ Login នៅក្រោយ Overlay",
+      "រក្សា App View 2FA និងការដាក់លេខកូដ OTP ដោយផ្ទាល់ដដែល",
+      "បានធ្វើឱ្យ 2FA មានស្ថិរភាពប្រសើរឡើង"
     ]
   }
 }
