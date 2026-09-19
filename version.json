@@ -1,26 +1,20 @@
 {
-  "version": "1.2.1",
+  "version": "1.2.2",
   "releaseDate": "2026-09-19",
   "changelog": {
     "en": [
-      "Improved Headed App View with standalone chrome-less Facebook windows",
-      "Added 6x2 App View window arrangement",
-      "Improved persistent Facebook session handling between launches",
-      "Added handling for mobile Facebook post-login/app promotion dialogs",
-      "Fixed blank App View windows when reopening saved sessions",
-      "Improved Facebook account Name extraction",
-      "Restored Note column support",
-      "General App View stability improvements"
+      "Added support for Facebook 2FA confirmation-method selection",
+      "Automatically selects Authentication app when TOTP is available",
+      "Improved 2FA handling for checkpoint/login flows",
+      "Preserved direct OTP/code-entry login flow",
+      "General App View login reliability improvements"
     ],
     "km": [
-      "បានធ្វើឱ្យ App View ប្រសើរឡើង ជាមួយបង្អួច Facebook បែប App ដោយគ្មាន Chrome toolbar",
-      "បានបន្ថែមការរៀបចំបង្អួច App View 6x2",
-      "បានធ្វើឱ្យការរក្សាទុក Session Facebook ប្រសើរឡើងរវាងការបើកម្តងទៀត",
-      "បានដោះស្រាយ Popup បន្ទាប់ពី Login / App Promotion លើ Facebook Mobile",
-      "បានកែបង្អួច App View ទទេនៅពេលបើក Session ដែលបានរក្សាទុក",
-      "បានធ្វើឱ្យការទាញឈ្មោះគណនី Facebook ប្រសើរឡើង",
-      "បានស្ដារជួរ Note នៅក្នុងតារាងគណនី",
-      "បានធ្វើឱ្យ App View មានស្ថិរភាពជាទូទៅ"
+      "បានបន្ថែមការគាំទ្រ Facebook 2FA ដែលត្រូវជ្រើសរើសវិធីផ្ទៀងផ្ទាត់មុន",
+      "ជ្រើស Authentication app ដោយស្វ័យប្រវត្តិ នៅពេលមាន TOTP",
+      "បានកែលម្អការដោះស្រាយ 2FA ក្នុង checkpoint/login flow",
+      "រក្សាការដំណើរការ OTP ដាក់លេខកូដដោយផ្ទាល់ដដែល",
+      "បានធ្វើឱ្យ App View Login មានស្ថិរភាពប្រសើរឡើង"
     ]
   }
 }

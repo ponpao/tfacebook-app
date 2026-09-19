@@ -251,6 +251,9 @@ const TWO_FACTOR_HEADING_PATTERNS = [
   'check your notifications on another device',
   'enter the 6-digit code',
   "choose a way to confirm it's you",
+  'available confirmation methods',
+  'these are your available confirmation methods',
+  'get a code from your authentication app',
   'enter the code',
   'enter login code',
   'confirmation code',
@@ -354,22 +357,29 @@ const TRY_ANOTHER_WAY_SELECTORS = [
 /** The "Choose a way to confirm it's you" modal shown by State 1. */
 const METHOD_DIALOG_SELECTOR = 'div[role="dialog"]'
 
-/** The "Authentication app" option inside the method-chooser dialog. */
+/** Authentication-app option — dialog AND full-page App View chooser. */
 const AUTH_APP_OPTION_SELECTORS = [
-  `${METHOD_DIALOG_SELECTOR} div:has-text("Authentication app")`,
   `${METHOD_DIALOG_SELECTOR} label:has-text("Authentication app")`,
-  `${METHOD_DIALOG_SELECTOR} div:has-text("App xác thực")`,
+  `${METHOD_DIALOG_SELECTOR} [role="radio"]:has-text("Authentication app")`,
+  `${METHOD_DIALOG_SELECTOR} div:has-text("Authentication app")`,
   `${METHOD_DIALOG_SELECTOR} label:has-text("App xác thực")`,
-  `${METHOD_DIALOG_SELECTOR} input[type="radio"]:nth-of-type(1)`,
-  'xpath=//*[contains(@id, "mount_0_0_")]//label[2]//input[1]'
+  'label:has-text("Authentication app")',
+  '[role="radio"]:has-text("Authentication app")',
+  '[aria-label="Authentication app"]',
+  'div:has-text("Get a code from your authentication app")',
+  'label:has-text("App xác thực")',
+  '[role="radio"]:has-text("App xác thực")'
 ]
 
-/** The [Continue] button inside the method-chooser dialog specifically. */
+/** Continue on the method-chooser — prefer dialog-scoped, then page-level. */
 const DIALOG_CONTINUE_SELECTORS = [
   `${METHOD_DIALOG_SELECTOR} button:has-text("Continue")`,
   `${METHOD_DIALOG_SELECTOR} [role="button"]:has-text("Continue")`,
   `${METHOD_DIALOG_SELECTOR} button:has-text("Tiếp tục")`,
-  'xpath=//*[contains(@id, "mount_0_0_")]//div[role="dialog"]//button[contains(., "Continue")]'
+  'button:has-text("Continue")',
+  '[role="button"]:has-text("Continue")',
+  '[aria-label="Continue"]',
+  'button:has-text("Tiếp tục")'
 ]
 
 /** Fallback on the older checkbox "Save browser?" UI only — never used on Save login info. */
@@ -1111,6 +1121,63 @@ async function isMethodDialogOpen(page: Page): Promise<boolean> {
 }
 
 /**
+ * Full-page App View / m.facebook.com method chooser — NOT a role=dialog.
+ * "These are your available confirmation methods." with Authentication app
+ * vs Notification on another device. Distinct from the code-input screen.
+ */
+async function isMethodChooserScreen(page: Page): Promise<boolean> {
+  if (await isMethodDialogOpen(page)) return true
+  const body = await visibleText(page)
+  if (
+    body.includes('enter the 6-digit') ||
+    body.includes('go to your authentication app') ||
+    ((body.includes('enter the code') || body.includes('enter login code')) &&
+      !body.includes('available confirmation methods'))
+  ) {
+    return false
+  }
+  if ((await otpDigitBoxCount(page)) >= 4) return false
+  if (
+    body.includes('available confirmation methods') ||
+    body.includes("choose a way to confirm it's you") ||
+    body.includes('choose a way to confirm')
+  ) {
+    return true
+  }
+  const hasAuthApp =
+    body.includes('authentication app') || body.includes('get a code from your authentication')
+  const hasOtherDevice =
+    body.includes('notification on another device') ||
+    body.includes('approve the login from another device')
+  return hasAuthApp && hasOtherDevice
+}
+
+async function isAuthAppSelected(page: Page): Promise<boolean> {
+  const match = /authentication app|app xác thực|get a code from your authentication/i
+  const radios = page.locator('input[type="radio"]')
+  const n = await radios.count().catch(() => 0)
+  for (let i = 0; i < n; i++) {
+    const radio = radios.nth(i)
+    const checked = await radio.isChecked().catch(() => false)
+    if (!checked) continue
+    const label = await radio
+      .evaluate((el) => {
+        const lab = el.closest('label') ?? el.parentElement
+        return (lab?.textContent ?? '').trim()
+      })
+      .catch(() => '')
+    if (match.test(label)) return true
+  }
+  const aria = page.locator('[aria-checked="true"], [aria-selected="true"]')
+  const ac = await aria.count().catch(() => 0)
+  for (let i = 0; i < ac; i++) {
+    const text = ((await aria.nth(i).innerText().catch(() => '')) || '').trim()
+    if (match.test(text)) return true
+  }
+  return false
+}
+
+/**
  * True if the "Save browser?" / "Remember browser" prompt is showing.
  * MUST check visible text, not page.content(): Facebook's hydration payload
  * ships the "Trust this device and skip this step from now on" checkbox
@@ -1127,6 +1194,7 @@ async function isSaveLoginInfoScreen(page: Page): Promise<boolean> {
     body.includes('go to your authentication app') ||
     body.includes('check your notifications on another device') ||
     body.includes("choose a way to confirm it's you") ||
+    body.includes('available confirmation methods') ||
     body.includes('enter the code')
   ) {
     return false
@@ -1152,7 +1220,8 @@ async function isSaveBrowserPrompt(page: Page): Promise<boolean> {
     body.includes('enter the 6-digit') ||
     body.includes('go to your authentication app') ||
     body.includes('check your notifications on another device') ||
-    body.includes("choose a way to confirm it's you")
+    body.includes("choose a way to confirm it's you") ||
+    body.includes('available confirmation methods')
   ) {
     return false
   }
@@ -1172,11 +1241,9 @@ async function classify2FAState(page: Page): Promise<TwoFAState> {
   // prevents any code-typing action from firing against the login form.
   if (await isLoginPage(page)) return 'resolved'
 
-  // Order matters: a dialog can float on top of a page that would otherwise
-  // match code-input/waiting-approval, so it's checked first. The save-
-  // browser prompt is checked before "resolved" since it can appear on a URL
-  // that's already left /two_step_verification/.
-  if (await isMethodDialogOpen(page)) return 'method-dialog'
+  // Order: method chooser (dialog OR full-page App View) before code-input
+  // and before waiting-approval — that screen also mentions "another device".
+  if (await isMethodChooserScreen(page)) return 'method-dialog'
 
   const url = page.url()
   const body = await visibleText(page)
@@ -1210,34 +1277,85 @@ async function classify2FAState(page: Page): Promise<TwoFAState> {
   return 'unknown'
 }
 
-/** State 1 action: pick "Authentication app" in the method dialog and confirm. */
+/** State 1 action: pick "Authentication app" on the chooser (dialog or full page) and Continue. */
 async function actMethodDialog(page: Page, signal?: AbortSignal): Promise<string | null> {
-  const dialog = page.locator(METHOD_DIALOG_SELECTOR).first()
-  const alreadySelected = await dialog
-    .locator('input[type="radio"]:checked')
-    .first()
-    .evaluate((el) => {
-      const label = el.closest('label')?.textContent ?? el.parentElement?.textContent ?? ''
-      return /authentication app|app xác thực/i.test(label)
-    })
-    .catch(() => false)
-
-  if (!alreadySelected) {
-    const authAppOption = await findFirstVisibleBounded(page, AUTH_APP_OPTION_SELECTORS, 4000)
-    if (!authAppOption) return 'Failed to find "Authentication app" option in method dialog'
-    await raceAbort(authAppOption.click({ timeout: 5000 }).catch(() => void 0), signal)
+  if (!(await isAuthAppSelected(page))) {
+    const byRole = page.getByRole('radio', { name: /authentication app/i }).first()
+    let clicked = false
+    if (await byRole.isVisible().catch(() => false)) {
+      clicked = await byRole
+        .click({ timeout: 5000 })
+        .then(() => true)
+        .catch(() => false)
+    }
+    if (!clicked) {
+      const authAppOption = await findFirstVisibleBounded(page, AUTH_APP_OPTION_SELECTORS, 4000)
+      if (!authAppOption) {
+        return 'Authentication app option not found on confirmation-method screen'
+      }
+      await raceAbort(authAppOption.scrollIntoViewIfNeeded({ timeout: 3000 }).catch(() => void 0), signal)
+      clicked = await authAppOption
+        .click({ timeout: 5000 })
+        .then(() => true)
+        .catch(() => false)
+      if (!clicked) {
+        clicked = await clickLocator(authAppOption, signal)
+          .then(() => true)
+          .catch(() => false)
+      }
+    }
     await raceAbort(page.waitForTimeout(400), signal)
+    if (!(await isAuthAppSelected(page))) {
+      const radioNear = page
+        .locator('label:has-text("Authentication app") input[type="radio"]')
+        .first()
+      if (await radioNear.isVisible().catch(() => false)) {
+        await raceAbort(radioNear.check({ timeout: 3000 }).catch(() => void 0), signal)
+        await raceAbort(page.waitForTimeout(200), signal)
+      }
+    }
+    const radioCount = await page.locator('input[type="radio"]').count().catch(() => 0)
+    if (radioCount > 0 && !(await isAuthAppSelected(page))) {
+      return 'Authentication app was not selected (notification-on-device still active)'
+    }
   }
 
-  const continueBtn = await findFirstVisibleBounded(page, DIALOG_CONTINUE_SELECTORS, 3000)
-  if (!continueBtn) return 'Modal Continue click failed — button not found'
-  const clicked = await continueBtn
+  const dialog = page.locator(METHOD_DIALOG_SELECTOR).filter({
+    hasText: /authentication app|confirmation methods/i
+  })
+  const dialogVisible = await dialog
+    .first()
+    .isVisible()
+    .catch(() => false)
+  const continueBtn = dialogVisible
+    ? await findFirstVisibleBounded(page, DIALOG_CONTINUE_SELECTORS.slice(0, 3), 3000)
+    : await findFirstVisibleBounded(page, DIALOG_CONTINUE_SELECTORS, 3000)
+  if (!continueBtn) return 'Method-chooser Continue button not found'
+  const continued = await continueBtn
     .click({ timeout: 5000 })
     .then(() => true)
     .catch(() => false)
-  if (!clicked) return 'Modal Continue click failed'
+  if (!continued) {
+    const ok = await clickLocator(continueBtn, signal)
+      .then(() => true)
+      .catch(() => false)
+    if (!ok) return 'Method-chooser Continue click failed'
+  }
 
-  await raceAbort(page.waitForTimeout(1500), signal)
+  const deadline = Date.now() + 12000
+  while (Date.now() < deadline) {
+    checkAborted(signal)
+    if (await has2FAField(page)) return null
+    const body = await visibleText(page)
+    if (
+      body.includes('enter the 6-digit') ||
+      body.includes('enter the code') ||
+      body.includes('go to your authentication app')
+    ) {
+      return null
+    }
+    await raceAbort(page.waitForTimeout(400), signal)
+  }
   return null
 }
 
