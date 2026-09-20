@@ -17,8 +17,12 @@ import {
   likeRandomPosts,
   watchReelsOrVideos,
   viewStories,
+  viewPhotoPosts,
+  visitProfile,
   randomDelay,
-  type ScenarioStepContext
+  safeBackToFeed,
+  type ScenarioStepContext,
+  type ScenarioActionResult
 } from './scenarios'
 import * as accountsRepo from '../db/accountsRepo'
 import * as scenariosRepo from '../db/scenariosRepo'
@@ -85,27 +89,34 @@ function randInt(min: number, max: number): number {
  * type maps to its scenarios.ts implementation with min/max params resolved
  * to a single randomized value per run.
  */
-async function runScenarioStep(step: ScenarioStep, ctx: ScenarioStepContext): Promise<void> {
+async function runScenarioStep(step: ScenarioStep, ctx: ScenarioStepContext): Promise<ScenarioActionResult> {
   switch (step.type) {
     case 'scroll_newsfeed':
-      await scrollNewsfeed(ctx, randInt(step.minSeconds, step.maxSeconds))
-      return
+      return scrollNewsfeed(
+        ctx,
+        randInt(step.minSeconds, step.maxSeconds),
+        step.scrollMode ?? 'down_and_up'
+      )
     case 'like_random_posts':
-      await likeRandomPosts(ctx, randInt(step.minCount, step.maxCount))
-      return
+      return likeRandomPosts(ctx, randInt(step.minCount, step.maxCount))
     case 'watch_reels':
-      await watchReelsOrVideos(
+      return watchReelsOrVideos(
         ctx,
         randInt(step.minCount, step.maxCount),
         randInt(step.minDurationSeconds, step.maxDurationSeconds)
       )
-      return
     case 'view_stories':
-      await viewStories(ctx, randInt(step.minCount, step.maxCount))
-      return
+      return viewStories(ctx, randInt(step.minCount, step.maxCount))
+    case 'view_photo_post':
+      return viewPhotoPosts(
+        ctx,
+        randInt(step.minCount, step.maxCount),
+        randInt(step.minDurationSeconds, step.maxDurationSeconds)
+      )
+    case 'visit_profile':
+      return visitProfile(ctx, randInt(step.minSeconds, step.maxSeconds))
     case 'random_delay':
-      await randomDelay(ctx, step.minSeconds, step.maxSeconds)
-      return
+      return randomDelay(ctx, step.minSeconds, step.maxSeconds)
   }
 }
 
@@ -114,9 +125,10 @@ async function runScenario(
   scenario: Scenario,
   page: Page,
   signal: AbortSignal,
-  onProgress: (label: string) => void
+  onProgress: (label: string) => void,
+  uid?: string | null
 ): Promise<void> {
-  const ctx: ScenarioStepContext = { page, signal, onProgress }
+  const ctx: ScenarioStepContext = { page, signal, onProgress, uid: uid ?? undefined }
   let stepsToRun = scenario.steps.filter((s) => s.enabled)
   if (scenario.randomize_order) {
     // Fisher-Yates shuffle steps per account
@@ -130,7 +142,22 @@ async function runScenario(
   }
   for (const step of stepsToRun) {
     if (signal.aborted) throw new AbortedError()
-    await runScenarioStep(step, ctx)
+    try {
+      const result = await runScenarioStep(step, ctx)
+      if (!result.success) {
+        onProgress(`${step.type}: ${result.reason || 'skipped'}`)
+      }
+    } catch (err) {
+      if (err instanceof AbortedError) throw err
+      const message = err instanceof Error ? err.message : String(err)
+      console.warn(`[Scenario][${uid || 'unknown'}] ${step.type} error: ${message}`)
+      onProgress(`${step.type} error — recovering`)
+      try {
+        await safeBackToFeed(page, signal)
+      } catch {
+        /* recovery is best-effort */
+      }
+    }
   }
   onProgress('Warm-up Completed')
 }
@@ -244,8 +271,7 @@ export async function runQueue(
                 if (scenario) {
                   scenarioRan = true
                   await runScenario(scenario, page, controller.signal, (label) =>
-                    emit('Warm-up', label)
-                  )
+                    emit('Warm-up', label), account.uid)
                 }
               }
             : undefined

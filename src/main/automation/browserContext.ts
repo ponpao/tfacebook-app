@@ -8,7 +8,7 @@
 // ---------------------------------------------------------------------------
 import { app, screen } from 'electron'
 import { join, resolve } from 'path'
-import { mkdirSync, existsSync, writeFileSync, readFileSync, readdirSync } from 'fs'
+import { mkdirSync, existsSync, writeFileSync, readFileSync, readdirSync, unlinkSync } from 'fs'
 import { spawn, execFile, type ChildProcess } from 'child_process'
 import { createServer } from 'net'
 import { chromium, devices, type Browser, type BrowserContext, type Cookie, type Page } from 'playwright'
@@ -167,7 +167,7 @@ function tilePosition(
 
 /** Launch/restore grid for a live headed window — App View is 6×2, Browser View stays 8×3. */
 export function headedWindowTileGrid(context: BrowserContext): { cols: number; rows: number } {
-  return headedAppRuntimes.has(context)
+  return headedAppRuntimesByContext.has(context)
     ? { cols: APP_TILE_COLS, rows: APP_TILE_ROWS }
     : { cols: BROWSER_TILE_COLS, rows: BROWSER_TILE_ROWS }
 }
@@ -602,29 +602,123 @@ function headedAppModeSwitch(account: Account): string {
 }
 
 interface HeadedAppRuntime {
-  browser: Browser
+  uid: string
   proc: ChildProcess
   port: number
+  browser: Browser
+  context: BrowserContext
+  profilePath: string
 }
 
-/** Spawned Chromium processes for Headed + App View (connectOverCDP). */
-const headedAppRuntimes = new Map<BrowserContext, HeadedAppRuntime>()
+/**
+ * Spawned Chromium processes for Headed + App View (connectOverCDP).
+ * Dual-keyed so close/dispose of UID A cannot drop UID B, and so
+ * connectOverCDP can refuse an endpoint already owned by another account.
+ */
+const headedAppRuntimesByUid = new Map<string, HeadedAppRuntime>()
+const headedAppRuntimesByContext = new Map<BrowserContext, HeadedAppRuntime>()
 
-function getFreePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
+/** Ports reserved for in-flight or live App View instances. Never reissued until released. */
+const reservedDebugPorts = new Set<number>()
+
+const DEBUG_PORT_MIN = 9222
+const DEBUG_PORT_MAX = 10221
+
+function uidKey(account: Account): string {
+  return account.uid?.trim() || `acc_${account.id}`
+}
+
+function portOwnerUid(port: number, exceptUid?: string): string | undefined {
+  for (const runtime of headedAppRuntimesByUid.values()) {
+    if (exceptUid && runtime.uid === exceptUid) continue
+    if (runtime.port === port) return runtime.uid
+  }
+  return undefined
+}
+
+function releaseDebugPort(port: number): void {
+  reservedDebugPorts.delete(port)
+}
+
+function registerHeadedAppRuntime(runtime: HeadedAppRuntime): void {
+  headedAppRuntimesByContext.set(runtime.context, runtime)
+  headedAppRuntimesByUid.set(runtime.uid, runtime)
+}
+
+function unregisterHeadedAppRuntime(context: BrowserContext): HeadedAppRuntime | undefined {
+  const runtime = headedAppRuntimesByContext.get(context)
+  if (!runtime) return undefined
+  headedAppRuntimesByContext.delete(context)
+  const byUid = headedAppRuntimesByUid.get(runtime.uid)
+  if (byUid && byUid.context === context) {
+    headedAppRuntimesByUid.delete(runtime.uid)
+  }
+  releaseDebugPort(runtime.port)
+  return runtime
+}
+
+function canBindExclusive(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
     const srv = createServer()
-    srv.once('error', reject)
-    srv.listen(0, '127.0.0.1', () => {
-      const addr = srv.address()
-      if (!addr || typeof addr === 'string') {
-        srv.close()
-        reject(new Error('Could not allocate a debugging port'))
-        return
+    let settled = false
+    const finish = (ok: boolean): void => {
+      if (settled) return
+      settled = true
+      try {
+        srv.close(() => resolve(ok))
+      } catch {
+        resolve(ok)
       }
-      const port = addr.port
-      srv.close((err) => (err ? reject(err) : resolve(port)))
-    })
+    }
+    srv.once('error', () => finish(false))
+    srv.listen({ port, host: '127.0.0.1', exclusive: true }, () => finish(true))
   })
+}
+
+/**
+ * Allocate a unique remote-debugging port for one UID.
+ *
+ * The previous listen(0)+close helper was a TOCTOU race: two concurrent
+ * launches could receive the same ephemeral port, Chromium B would fail to
+ * bind CDP, connectOverCDP would attach both workers to Chromium A, and B's
+ * --app window stayed blank. Reservation is synchronous (JS is single-
+ * threaded) so another allocator cannot be issued the same port.
+ */
+async function allocateUniqueDebugPort(): Promise<number> {
+  const span = DEBUG_PORT_MAX - DEBUG_PORT_MIN + 1
+  const offset = Math.floor(Math.random() * span)
+  for (let i = 0; i < span; i++) {
+    const port = DEBUG_PORT_MIN + ((offset + i) % span)
+    if (reservedDebugPorts.has(port)) continue
+    if (portOwnerUid(port)) continue
+    reservedDebugPorts.add(port)
+    const bindable = await canBindExclusive(port)
+    if (bindable) return port
+    reservedDebugPorts.delete(port)
+  }
+  throw new Error('Could not allocate a unique Chromium remote-debugging port')
+}
+
+function removeStaleDevToolsPortFile(dir: string): void {
+  const file = join(dir, 'DevToolsActivePort')
+  try {
+    if (existsSync(file)) unlinkSync(file)
+  } catch {
+    /* previous Chromium may still be flushing — waitForThisInstanceCdp ignores stale files */
+  }
+}
+
+function readDevToolsActivePort(dir: string): number | null {
+  const file = join(dir, 'DevToolsActivePort')
+  try {
+    if (!existsSync(file)) return null
+    const first = readFileSync(file, 'utf8').split(/\r?\n/)[0]?.trim()
+    const port = Number(first)
+    if (!Number.isInteger(port) || port <= 0) return null
+    return port
+  } catch {
+    return null
+  }
 }
 
 function waitForProcessExit(proc: ChildProcess, timeoutMs: number): Promise<boolean> {
@@ -657,29 +751,59 @@ function killChromiumTree(proc: ChildProcess): void {
   }
 }
 
-async function waitForCDP(port: number, proc: ChildProcess, timeoutMs: number): Promise<void> {
-  const deadline = Date.now() + timeoutMs
-  let exitCode: number | null = null
+/**
+ * Wait until THIS UID's Chromium has advertised CDP via its own profile
+ * DevToolsActivePort file, then confirm the HTTP endpoint. Never treat
+ * "something is listening on expectedPort" as success — that is how a
+ * colliding launch used to attach to another account's browser.
+ */
+async function waitForThisInstanceCdp(opts: {
+  uid: string
+  profileDir: string
+  proc: ChildProcess
+  expectedPort: number
+  timeoutMs: number
+}): Promise<number> {
+  const deadline = Date.now() + opts.timeoutMs
+  let exitCode: number | null = opts.proc.exitCode
   const onExit = (code: number | null): void => {
     exitCode = code ?? 0
   }
-  proc.once('exit', onExit)
+  opts.proc.once('exit', onExit)
   try {
     while (Date.now() < deadline) {
       if (exitCode !== null) {
         throw new Error(`Chromium exited before CDP was ready (code ${exitCode})`)
       }
+      // Prefer THIS profile's DevToolsActivePort so we never attach to
+      // another UID that happened to win a colliding bind. If Chromium has
+      // not written the file yet, fall back to the reserved expectedPort
+      // only after a short wait, and only when no other UID owns it.
+      const filePort = readDevToolsActivePort(opts.profileDir)
+      const elapsed = opts.timeoutMs - (deadline - Date.now())
+      const port = filePort ?? (elapsed >= 2500 ? opts.expectedPort : null)
+      if (port == null) {
+        await new Promise((r) => setTimeout(r, 100))
+        continue
+      }
+      const owner = portOwnerUid(port, opts.uid)
+      if (owner) {
+        await new Promise((r) => setTimeout(r, 100))
+        continue
+      }
       try {
         const res = await fetch(`http://127.0.0.1:${port}/json/version`)
-        if (res.ok) return
+        if (res.ok) return port
       } catch {
-        /* not listening yet */
+        /* advertised but not accepting yet */
       }
-      await new Promise((r) => setTimeout(r, 120))
+      await new Promise((r) => setTimeout(r, 100))
     }
-    throw new Error(`Timed out waiting for Chromium CDP on port ${port}`)
+    throw new Error(
+      `Timed out waiting for Chromium CDP for UID ${opts.uid} (expected port ${opts.expectedPort})`
+    )
   } finally {
-    proc.off('exit', onExit)
+    opts.proc.off('exit', onExit)
   }
 }
 
@@ -727,6 +851,27 @@ function isFacebookUrl(url: string): boolean {
 export function pickContextPage(context: BrowserContext): Page | undefined {
   const pages = context.pages()
   return pages.find((p) => isFacebookUrl(p.url())) ?? pages[0]
+}
+
+/**
+ * Resolve the Playwright page that belongs to THIS connected App View
+ * browser only. Never consult another UID's cached page.
+ */
+async function resolveHeadedAppPage(browser: Browser, context: BrowserContext): Promise<Page> {
+  const ownContext =
+    browser.contexts().find((c) => c === context) ?? browser.contexts()[0] ?? context
+  const pages = ownContext.pages()
+  const existing =
+    pages.find((p) => isFacebookUrl(p.url())) ??
+    pages.find((p) => !isBlankAppUrl(p.url())) ??
+    pages[0]
+  if (existing) return existing
+  return Promise.race([
+    ownContext.waitForEvent('page'),
+    new Promise<Page>((_, reject) =>
+      setTimeout(() => reject(new Error('Chromium --app window never produced a page')), 15000)
+    )
+  ])
 }
 
 /** Stop the profile restoring a previous tabbed Chrome session over the --app window. */
@@ -1040,7 +1185,7 @@ async function configureLaunchedContext(
   allActiveContexts.add(context)
   context.on('close', () => {
     allActiveContexts.delete(context)
-    headedAppRuntimes.delete(context)
+    unregisterHeadedAppRuntime(context)
   })
 }
 
@@ -1073,15 +1218,26 @@ async function launchHeadedAppViewContext(params: {
   resetProfileBeforeCookieInject?: boolean
   rowNumber?: number
   blockMedia: boolean
+  slotIndex: number
 }): Promise<BrowserContext> {
+  const uid = uidKey(params.account)
   disableSessionRestore(params.dir)
 
-  const port = await getFreePort()
+  const existing = headedAppRuntimesByUid.get(uid)
+  if (existing) {
+    await disposeContext(existing.context)
+  }
+
+  const allocatedPort = await allocateUniqueDebugPort()
+  removeStaleDevToolsPortFile(params.dir)
+
+  // --user-data-dir MUST be first so Chromium's process singleton keys off
+  // this UID's profile, not a shared default, before --app is processed.
   const args = [
-    headedAppModeSwitch(params.account),
     `--user-data-dir=${params.dir}`,
-    `--remote-debugging-port=${port}`,
+    `--remote-debugging-port=${allocatedPort}`,
     '--remote-debugging-address=127.0.0.1',
+    headedAppModeSwitch(params.account),
     `--window-size=${params.tile.width},${params.tile.height}`,
     `--window-position=${params.tile.x},${params.tile.y}`,
     `--user-agent=${params.userAgent}`,
@@ -1125,28 +1281,60 @@ async function launchHeadedAppViewContext(params: {
     windowsHide: false
   })
 
+  console.log(
+    `[AppView][${uid}] profile=${params.dir} pid=${proc.pid ?? 'none'} port=${allocatedPort} cdp=http://127.0.0.1:${allocatedPort} slot=${params.slotIndex}`
+  )
+
   let context: BrowserContext | undefined
+  let connectedBrowser: Browser | undefined
+  let livePort = allocatedPort
   try {
-    await waitForCDP(port, proc, 30000)
+    const spawnFailed = new Promise<never>((_, reject) => {
+      proc.once('error', (err) => reject(new Error(`Failed to spawn Chromium for UID ${uid}: ${err.message}`)))
+    })
+    const port = await Promise.race([
+      waitForThisInstanceCdp({
+        uid,
+        profileDir: params.dir,
+        proc,
+        expectedPort: allocatedPort,
+        timeoutMs: 30000
+      }),
+      spawnFailed
+    ])
+    livePort = port
+
+    if (port !== allocatedPort) {
+      releaseDebugPort(allocatedPort)
+      reservedDebugPorts.add(port)
+    }
+    const owner = portOwnerUid(port, uid)
+    if (owner) {
+      throw new Error(`[AppView][${uid}] CDP port ${port} is already owned by UID ${owner}`)
+    }
+
     await waitForAppPageTarget(port, 15000)
+
+    const cdpUrl = `http://127.0.0.1:${port}`
+    console.log(`[AppView][${uid}] pid=${proc.pid ?? 'none'} port=${port} cdp=${cdpUrl}`)
+
     // Do NOT close https pages here. --app starts as data:text/html; a
     // restored Facebook session lives on that same window as https. Closing
     // https targets left a blank data:/about:blank window on reopen.
-    const browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`, { timeout: 60000 })
+    const browser = await chromium.connectOverCDP(cdpUrl, { timeout: 60000 })
+    connectedBrowser = browser
     context = browser.contexts()[0]
     if (!context) {
       throw new Error('CDP connected but Chromium has no default context')
     }
 
-    let page = pickContextPage(context)
-    if (!page) {
-      page = await Promise.race([
-        context.waitForEvent('page'),
-        new Promise<Page>((_, reject) =>
-          setTimeout(() => reject(new Error('Chromium --app window never produced a page')), 15000)
-        )
-      ])
+    for (const other of headedAppRuntimesByUid.values()) {
+      if (other.uid !== uid && (other.browser === browser || other.context === context || other.port === port)) {
+        throw new Error(`[AppView][${uid}] connectOverCDP attached to UID ${other.uid}'s browser`)
+      }
     }
+
+    let page = await resolveHeadedAppPage(browser, context)
 
     const deviceScaleFactor = Math.min(2, params.mobileDevice.descriptor.deviceScaleFactor)
     const emulation = {
@@ -1167,10 +1355,18 @@ async function launchHeadedAppViewContext(params: {
       await context.grantPermissions(['geolocation']).catch(() => void 0)
     }
 
-    headedAppRuntimes.set(context, { browser, proc, port })
+    const runtime: HeadedAppRuntime = {
+      uid,
+      proc,
+      port,
+      browser,
+      context,
+      profilePath: params.dir
+    }
+    registerHeadedAppRuntime(runtime)
     const appContext = context
     browser.on('disconnected', () => {
-      headedAppRuntimes.delete(appContext)
+      unregisterHeadedAppRuntime(appContext)
       // Browser.close() already asked Chromium to exit; only force-kill a
       // zombie after a short grace so the Cookies SQLite can flush.
       setTimeout(() => {
@@ -1190,9 +1386,9 @@ async function launchHeadedAppViewContext(params: {
     })
 
     // Cookies are in the jar now. If CDP attached to the --app data: document
-    // (or about:blank after a closed restore), navigate to Facebook so the
-    // visible window is never left white. Callers may goto again; that's fine.
-    page = pickContextPage(context) ?? page
+    // (or about:blank after a closed restore), navigate THAT page to Facebook
+    // so this UID's visible window is never left white.
+    page = await resolveHeadedAppPage(browser, context)
     if (isBlankAppUrl(page.url()) || !isFacebookUrl(page.url())) {
       const dest = 'https://m.facebook.com/'
       await page.goto(dest, { timeout: 45000, waitUntil: 'domcontentloaded' }).catch(() => void 0)
@@ -1202,7 +1398,10 @@ async function launchHeadedAppViewContext(params: {
 
     return context
   } catch (err) {
-    if (context) headedAppRuntimes.delete(context)
+    if (context) unregisterHeadedAppRuntime(context)
+    releaseDebugPort(livePort)
+    if (livePort !== allocatedPort) releaseDebugPort(allocatedPort)
+    if (connectedBrowser) await connectedBrowser.close().catch(() => void 0)
     killChromiumTree(proc)
     throw err
   }
@@ -1283,7 +1482,8 @@ export async function launchContext({
       executablePath: executablePath ?? chromium.executablePath(),
       resetProfileBeforeCookieInject,
       rowNumber,
-      blockMedia: settings.blockMedia
+      blockMedia: settings.blockMedia,
+      slotIndex: slotIndex ?? 0
     })
   }
 
@@ -1515,8 +1715,7 @@ export function listTrackedWindows(): TrackedWindowInfo[] {
  * Closing first lets Chromium flush and release everything cleanly.
  */
 async function disposeContext(ctx: BrowserContext): Promise<void> {
-  const runtime = headedAppRuntimes.get(ctx)
-  headedAppRuntimes.delete(ctx)
+  const runtime = unregisterHeadedAppRuntime(ctx)
   allActiveContexts.delete(ctx)
   if (runtime) {
     // Browser.close() sends CDP Browser.close so Chromium can flush the
@@ -1534,6 +1733,27 @@ async function disposeContext(ctx: BrowserContext): Promise<void> {
     await page.close({ runBeforeUnload: false }).catch(() => void 0)
   }
   await ctx.close().catch(() => void 0)
+}
+
+export interface HeadedAppRuntimeSnapshot {
+  uid: string
+  pid: number | undefined
+  port: number
+  profilePath: string
+  pageUrl: string | undefined
+  cdpUrl: string
+}
+
+/** Live Headed App View instances — one entry per UID. Used by isolation tests. */
+export function listHeadedAppRuntimes(): HeadedAppRuntimeSnapshot[] {
+  return Array.from(headedAppRuntimesByUid.values()).map((runtime) => ({
+    uid: runtime.uid,
+    pid: runtime.proc.pid,
+    port: runtime.port,
+    profilePath: runtime.profilePath,
+    pageUrl: pickContextPage(runtime.context)?.url() ?? runtime.context.pages()[0]?.url(),
+    cdpUrl: `http://127.0.0.1:${runtime.port}`
+  }))
 }
 
 /** Close a launched context, including Headed App View's spawned Chromium. */

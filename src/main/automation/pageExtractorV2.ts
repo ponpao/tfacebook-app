@@ -132,12 +132,35 @@ export async function extractSingleAccountPagesV2(
       }
     })
 
+    const uidTag = account.uid || String(account.id)
     onStepProgress?.('Opening Your Pages…')
     await page.goto('https://web.facebook.com/pages/?category=your_pages', {
       waitUntil: 'domcontentloaded',
       timeout: 45000
     })
-    await page.waitForTimeout(3500)
+    await page.waitForTimeout(1500)
+
+    // Bounded lazy-load: scroll until the managed-pages list stops growing.
+    let lastCount = 0
+    let stagnant = 0
+    for (let attempt = 0; attempt < 23; attempt++) {
+      if (signal?.aborted) return []
+      const n = await page
+        .evaluate(() => {
+          const main = document.querySelector('div[role="main"]') || document.body
+          return main.querySelectorAll('a[href*="facebook.com/"]').length
+        })
+        .catch(() => 0)
+      if (n <= lastCount) {
+        stagnant += 1
+        if (stagnant >= 3) break
+      } else {
+        stagnant = 0
+        lastCount = n
+      }
+      await page.mouse.wheel(0, 900).catch(() => void 0)
+      await page.waitForTimeout(350)
+    }
 
     if (signal?.aborted) return []
 
@@ -181,7 +204,8 @@ export async function extractSingleAccountPagesV2(
         'voting', 'services', 'groups', 'developers', 'uploading', 'settings',
         'notifications', 'messages', 'invites', 'promote', 'followed pages', 'discover',
         'pages', 'create page', 'create post', 'switch into', 'switch profile', 'meta ai',
-        'contact uploading', 'sign up', 'log in', 'forgot password'
+        'contact uploading', 'sign up', 'log in', 'forgot password', 'see all',
+        'professional dashboard', 'settings'
       ]
 
       const SYSTEM_HREFS = [
@@ -227,7 +251,7 @@ export async function extractSingleAccountPagesV2(
           pageId &&
           pageId !== ownUid &&
           !SYSTEM_KEYWORDS.some((kw) => pageId.toLowerCase() === kw) &&
-          !activePages.some((p) => p.pageId === pageId || p.name === text)
+          !activePages.some((p) => p.pageId === pageId || p.url === href.split('&')[0])
         ) {
           activePages.push({
             name: text,
@@ -264,6 +288,13 @@ export async function extractSingleAccountPagesV2(
       return { activePages, deactivatedPages }
     }, account.uid || '')
 
+    console.log(
+      `[PageExtract][${uidTag}] discovered active=${pagesData.activePages.length} deactivated=${pagesData.deactivatedPages.length}`
+    )
+    for (const p of pagesData.activePages) {
+      console.log(`[PageExtract][${uidTag}] Page discovered id=${p.pageId} name=${JSON.stringify(p.name)}`)
+    }
+
     const finalPages: ManagedPage[] = []
     const deactCount = pagesData.deactivatedPages.length
 
@@ -287,10 +318,15 @@ export async function extractSingleAccountPagesV2(
       const item = pagesData.activePages[i]
       onStepProgress?.(`Gathering metrics for: "${item.name}" (${i + 1}/${pagesData.activePages.length})…`)
 
-      let followers = '0'
-      let following = '0'
-      let category = 'Unspecified'
-      let website = ''
+      let followers: string | undefined
+      let following: string | undefined
+      let likes: string | undefined
+      let category: string | undefined
+      let website: string | undefined
+      let bio: string | undefined
+      let profilePhotoUrl: string | undefined
+      let coverPhotoUrl: string | undefined
+      let username: string | undefined
 
       try {
         await page.goto(item.url, { waitUntil: 'domcontentloaded', timeout: 35000 })
@@ -303,9 +339,7 @@ export async function extractSingleAccountPagesV2(
 
           // Support 18K, 1.5M, 24k, 304, 1,234 followers/following
           let followerMatch = text.match(/([\d,.]+\s*[KkMmBb]?)\s*(?:followers?|អ្នកតាមដាន)/i)
-          if (!followerMatch) {
-            followerMatch = text.match(/([\d,.]+\s*[KkMmBb]?)\s*(?:likes?|ចូលចិត្ត)/i)
-          }
+          const likesMatch = text.match(/([\d,.]+\s*[KkMmBb]?)\s*(?:likes?|ចូលចិត្ត)/i)
 
           let followingMatch = text.match(/([\d,.]+\s*[KkMmBb]?)\s*(?:following|កំពុងតាមដាន)/i)
 
@@ -361,18 +395,37 @@ export async function extractSingleAccountPagesV2(
             .map((a) => (a as HTMLAnchorElement).href)
             .find((h) => !h.includes('facebook.com') && h.startsWith('http')) || ''
 
+          const ogTitle = document.querySelector('meta[property="og:title"]')?.getAttribute('content') || ''
+          const ogDesc = document.querySelector('meta[property="og:description"]')?.getAttribute('content') || ''
+          const ogImage = document.querySelector('meta[property="og:image"]')?.getAttribute('content') || ''
+          const cover = document.querySelector('img[data-imgperflogname="profileCoverPhoto"], image') as HTMLImageElement | null
+          const vanity = (location.pathname || '').replace(/^\//, '').split('/')[0]
+          const username =
+            vanity && !/profile\.php|pages|photo|watch|reel/i.test(vanity) ? vanity : ''
+
           return {
-            followers: followerMatch ? followerMatch[1].trim() : '0',
-            following: followingMatch ? followingMatch[1].trim() : '0',
-            category: foundCat,
-            website: webLink
+            followers: followerMatch ? followerMatch[1].trim() : '',
+            following: followingMatch ? followingMatch[1].trim() : '',
+            likes: likesMatch ? likesMatch[1].trim() : '',
+            category: foundCat === 'Unspecified' ? '' : foundCat,
+            website: webLink,
+            bio: ogDesc.slice(0, 280),
+            profilePhotoUrl: ogImage,
+            coverPhotoUrl: cover?.src || '',
+            username,
+            ogTitle
           }
         })
 
-        followers = details.followers
-        following = details.following
-        category = details.category
-        website = details.website
+        followers = details.followers || undefined
+        following = details.following || undefined
+        likes = details.likes || undefined
+        category = details.category || undefined
+        website = details.website || undefined
+        bio = details.bio || undefined
+        profilePhotoUrl = details.profilePhotoUrl || undefined
+        coverPhotoUrl = details.coverPhotoUrl || undefined
+        username = details.username || undefined
       } catch (err) {
         console.warn(`[extractSingleAccountPagesV2] Deep dive error for ${item.name}:`, err)
       }
@@ -382,13 +435,21 @@ export async function extractSingleAccountPagesV2(
         name: item.name,
         assetId: item.assetId || item.pageId,
         url: item.url,
+        username,
         followers,
         following,
+        likes,
         category,
         website,
+        bio,
+        profilePhotoUrl,
+        coverPhotoUrl,
         status: 'Active',
         deactivatedCount: deactCount
       })
+      console.log(
+        `[PageExtract][${uidTag}] details id=${item.pageId} followers=${followers || ''} likes=${likes || ''} category=${category || ''}`
+      )
     }
 
     accountsRepo.updateAccount(account.id, {

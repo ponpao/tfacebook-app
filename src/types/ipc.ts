@@ -47,7 +47,7 @@ export interface AccountsApi {
   remove(ids: number[]): Promise<number>
   moveToFolder(ids: number[], targetFolderId: number): Promise<number>
   bulkAssign(
-    column: 'proxy' | 'user_agent' | 'target_url',
+    column: 'proxy' | 'user_agent' | 'target_url' | 'notes',
     assignments: { id: number; value: string }[]
   ): Promise<number>
   bulkSetField(column: 'notes' | 'live_status' | 'proxy' | 'target_url', ids: number[], value: string): Promise<number>

@@ -22,6 +22,7 @@ import { ToolsUtilitiesModal } from './components/modals/ToolsUtilitiesModal'
 import { EditAccountModal } from './components/modals/EditAccountModal'
 import { HelpAboutModal } from './components/modals/HelpAboutModal'
 import { SetNotesModal } from './components/modals/SetNotesModal'
+import { ImportNoteModal } from './components/modals/ImportNoteModal'
 import { CleanProfileModal } from './components/modals/CleanProfileModal'
 import { AddFriendsModal } from './components/modals/AddFriendsModal'
 import { JoinGroupsModal } from './components/modals/JoinGroupsModal'
@@ -119,6 +120,8 @@ function Dashboard({
   const closeRecycleBin = useAccountStore((s) => s.closeRecycleBin)
   const setNotesTargetIds = useAccountStore((s) => s.setNotesTargetIds)
   const closeSetNotes = useAccountStore((s) => s.closeSetNotes)
+  const importNoteTargetAccounts = useAccountStore((s) => s.importNoteTargetAccounts)
+  const closeImportNote = useAccountStore((s) => s.closeImportNote)
   const cleanProfileTargetIds = useAccountStore((s) => s.cleanProfileTargetIds)
   const closeCleanProfile = useAccountStore((s) => s.closeCleanProfile)
   const addFriendsTargetIds = useAccountStore((s) => s.addFriendsTargetIds)
@@ -244,6 +247,7 @@ function Dashboard({
       />
       <EditAccountModal />
       <SetNotesModal accountIds={setNotesTargetIds} onClose={closeSetNotes} />
+      <ImportNoteModal accounts={importNoteTargetAccounts} onClose={closeImportNote} />
       <CleanProfileModal accountIds={cleanProfileTargetIds} onClose={closeCleanProfile} />
       <AddFriendsModal accountIds={addFriendsTargetIds} onClose={closeAddFriends} />
       <JoinGroupsModal accountIds={joinGroupsTargetIds} onClose={closeJoinGroups} />

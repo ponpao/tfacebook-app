@@ -103,10 +103,15 @@ export interface ManagedPage {
   name: string
   assetId?: string
   url?: string
+  username?: string
   followers?: string
   following?: string
+  likes?: string
   category?: string
   website?: string
+  bio?: string
+  profilePhotoUrl?: string
+  coverPhotoUrl?: string
   status?: 'Active' | 'Deactivated / Deleted' | string
   folderImage?: string
   folderVideo?: string

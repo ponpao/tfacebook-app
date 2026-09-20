@@ -277,7 +277,7 @@ export function updateStatus(ids: number[], status: string, detail?: string): nu
  * shared-per-N assignment is computed by the caller; this just writes it).
  */
 export function bulkAssignField(
-  column: 'proxy' | 'user_agent' | 'target_url',
+  column: 'proxy' | 'user_agent' | 'target_url' | 'notes',
   assignments: { id: number; value: string }[]
 ): number {
   if (assignments.length === 0) return 0

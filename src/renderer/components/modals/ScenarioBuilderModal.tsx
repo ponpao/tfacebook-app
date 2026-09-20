@@ -17,11 +17,13 @@ import {
   ThumbsUp,
   Clapperboard,
   CircleDot,
+  Image,
+  UserRound,
   Timer
 } from 'lucide-react'
 import { useAccountStore } from '../../store/useAccountStore'
 import { useLanguageStore } from '../../store/useLanguageStore'
-import type { Scenario, ScenarioStep, ScenarioStepType } from '../../../types/scenario'
+import type { Scenario, ScenarioStep, ScenarioStepType, ScrollDirectionMode } from '../../../types/scenario'
 import { STEP_LABELS, defaultStep } from '../../../types/scenario'
 
 const STEP_TYPES: ScenarioStepType[] = [
@@ -29,6 +31,8 @@ const STEP_TYPES: ScenarioStepType[] = [
   'like_random_posts',
   'watch_reels',
   'view_stories',
+  'view_photo_post',
+  'visit_profile',
   'random_delay'
 ]
 
@@ -37,6 +41,8 @@ const STEP_ICONS: Record<ScenarioStepType, typeof ScrollText> = {
   like_random_posts: ThumbsUp,
   watch_reels: Clapperboard,
   view_stories: CircleDot,
+  view_photo_post: Image,
+  visit_profile: UserRound,
   random_delay: Timer
 }
 
@@ -95,6 +101,19 @@ function StepParams({
             value={step.maxSeconds}
             onChange={(n) => onChange({ ...step, maxSeconds: n })}
           />
+          <label className="flex items-center gap-1.5 text-[11px] text-ink-muted">
+            <span className="w-[62px] shrink-0 text-right">Direction</span>
+            <select
+              className="win-select py-0.5 text-[11px]"
+              value={step.scrollMode ?? 'down_and_up'}
+              onChange={(e) =>
+                onChange({ ...step, scrollMode: e.target.value as ScrollDirectionMode })
+              }
+            >
+              <option value="down_and_up">Down + Occasional Up</option>
+              <option value="mostly_down">Mostly Down</option>
+            </select>
+          </label>
         </>
       )
     case 'like_random_posts':
@@ -155,6 +174,48 @@ function StepParams({
             value={step.maxCount}
             onChange={(n) => onChange({ ...step, maxCount: n })}
             max={20}
+          />
+        </>
+      )
+    case 'view_photo_post':
+      return (
+        <>
+          <NumberField
+            label="Min count"
+            value={step.minCount}
+            onChange={(n) => onChange({ ...step, minCount: n })}
+            max={20}
+          />
+          <NumberField
+            label="Max count"
+            value={step.maxCount}
+            onChange={(n) => onChange({ ...step, maxCount: n })}
+            max={20}
+          />
+          <NumberField
+            label="Min dur (s)"
+            value={step.minDurationSeconds}
+            onChange={(n) => onChange({ ...step, minDurationSeconds: n })}
+          />
+          <NumberField
+            label="Max dur (s)"
+            value={step.maxDurationSeconds}
+            onChange={(n) => onChange({ ...step, maxDurationSeconds: n })}
+          />
+        </>
+      )
+    case 'visit_profile':
+      return (
+        <>
+          <NumberField
+            label="Min (s)"
+            value={step.minSeconds}
+            onChange={(n) => onChange({ ...step, minSeconds: n })}
+          />
+          <NumberField
+            label="Max (s)"
+            value={step.maxSeconds}
+            onChange={(n) => onChange({ ...step, maxSeconds: n })}
           />
         </>
       )

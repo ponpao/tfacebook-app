@@ -13,6 +13,7 @@ import {
   Mail,
   Copy,
   FolderInput,
+  FileText,
   Pencil,
   Trash2,
   ChevronRight,
@@ -282,6 +283,7 @@ export function AccountContextMenu({ x, y, account, onClose }: Props): React.JSX
   const openExportModal = useAccountStore((s) => s.openExportModal)
   const openEditAccount = useAccountStore((s) => s.openEditAccount)
   const openSetNotes = useAccountStore((s) => s.openSetNotes)
+  const openImportNote = useAccountStore((s) => s.openImportNote)
   const openCleanProfile = useAccountStore((s) => s.openCleanProfile)
   const openAddFriends = useAccountStore((s) => s.openAddFriends)
   const openJoinGroups = useAccountStore((s) => s.openJoinGroups)
@@ -779,6 +781,11 @@ export function AccountContextMenu({ x, y, account, onClose }: Props): React.JSX
           icon={Pencil}
           label="Edit Account Info"
           onClick={run(() => openEditAccount(account))}
+        />
+        <Item
+          icon={FileText}
+          label="Import Note"
+          onClick={run(() => openImportNote(targetAccounts))}
         />
         <Item
           icon={Download}

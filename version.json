@@ -1,20 +1,24 @@
 {
-  "version": "1.2.3",
-  "releaseDate": "2026-09-19",
+  "version": "1.2.4",
+  "releaseDate": "2026-09-20",
   "changelog": {
     "en": [
-      "Extended Facebook 2FA confirmation-method selection to Browser View",
-      "Selects Authentication app in the desktop dialog, then Continue, then TOTP",
-      "Detects the method chooser even when the login form remains behind the overlay",
-      "Preserved App View 2FA and direct OTP/code-entry flows",
-      "General 2FA reliability improvements"
+      "Headed App View now isolates each account: unique Chromium process, CDP port, and profile",
+      "Fixed blank/white extra App View windows when launching multiple accounts at once",
+      "Added Import Note on the account right-click menu (one note for all, or one line per row)",
+      "Scenario Builder actions now verify real feed, like, story, reel, photo, and profile steps in Browser View and App View",
+      "Added View Photo / Post and Visit Profile scenario steps, with safer return-to-feed recovery",
+      "More accurate Name, Friends, Followers, Location, and Created Date extraction",
+      "Page Detail extractor finds more managed pages, deduplicates by Page ID, and skips UI chrome names"
     ],
     "km": [
-      "បានពង្រីកការជ្រើសវិធី Facebook 2FA ទៅ Browser View ផងដែរ",
-      "ជ្រើស Authentication app ក្នុង Dialog Desktop បន្ទាប់មក Continue និង TOTP",
-      "រកឃើញអេក្រង់ជ្រើសវិធី 2FA ទោះបីទម្រង់ Login នៅក្រោយ Overlay",
-      "រក្សា App View 2FA និងការដាក់លេខកូដ OTP ដោយផ្ទាល់ដដែល",
-      "បានធ្វើឱ្យ 2FA មានស្ថិរភាពប្រសើរឡើង"
+      "App View Headed បំបែកគណនីនីមួយៗ៖ Chromium process, CDP port និង profile ផ្ទាល់ខ្លួន",
+      "បានជួសជុលផ្ទាំង App View ទទេ/ស នៅពេលបើកគណនីច្រើនក្នុងពេលតែមួយ",
+      "បានបន្ថែម Import Note ក្នុងម៉ឺនុយចុចស្តាំ (កំណត់សម្គាល់មួយសម្រាប់ទាំងអស់ ឬមួយបន្ទាត់ក្នុងមួយគណនី)",
+      "Scenario Builder ឥឡូវធ្វើសកម្មភាពពិត (feed, like, story, reel, photo, profile) លើ Browser View និង App View",
+      "បានបន្ថែមជំហាន View Photo / Post និង Visit Profile ព្រមទាំងត្រឡប់ទៅ feed ដោយសុវត្ថិភាព",
+      "បានធ្វើឱ្យការទាញ Name, Friends, Followers, Location និង Created Date កាន់តែត្រឹមត្រូវ",
+      "Page Detail extractor រកទំព័រគ្រប់គ្រងបានច្រើនជាងមុន លុបស្ទួនតាម Page ID និងមិនយកឈ្មោះ UI"
     ]
   }
 }

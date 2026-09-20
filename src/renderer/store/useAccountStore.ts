@@ -98,6 +98,10 @@ interface AccountState {
   // target account ids (selection at the time it was opened).
   setNotesTargetIds: number[] | null
 
+  // Import Note modal — selected accounts in grid order (one line each, or
+  // one note broadcast to all).
+  importNoteTargetAccounts: Account[] | null
+
   // Clean Profile Storage modal — opened from the row context menu; carries
   // the target account ids (selection at the time it was opened).
   cleanProfileTargetIds: number[] | null
@@ -127,6 +131,8 @@ interface AccountState {
   closeEditAccount: () => void
   openSetNotes: (ids: number[]) => void
   closeSetNotes: () => void
+  openImportNote: (accounts: Account[]) => void
+  closeImportNote: () => void
   openAssignUrl: (accounts: Account[]) => void
   closeAssignUrl: () => void
   openCleanProfile: (ids: number[]) => void
@@ -199,6 +205,7 @@ export const useAccountStore = create<AccountState>((set, get) => ({
   recycleBinOpen: false,
   editAccountTarget: null,
   setNotesTargetIds: null,
+  importNoteTargetAccounts: null,
   cleanProfileTargetIds: null,
   addFriendsTargetIds: null,
   joinGroupsTargetIds: null,
@@ -213,6 +220,8 @@ export const useAccountStore = create<AccountState>((set, get) => ({
   closeEditAccount: () => set({ editAccountTarget: null }),
   openSetNotes: (ids) => set({ setNotesTargetIds: ids }),
   closeSetNotes: () => set({ setNotesTargetIds: null }),
+  openImportNote: (accounts) => set({ importNoteTargetAccounts: accounts }),
+  closeImportNote: () => set({ importNoteTargetAccounts: null }),
   openCleanProfile: (ids) => set({ cleanProfileTargetIds: ids }),
   closeCleanProfile: () => set({ cleanProfileTargetIds: null }),
   openAddFriends: (ids) => set({ addFriendsTargetIds: ids }),

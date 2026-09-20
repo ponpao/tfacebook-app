@@ -130,7 +130,7 @@ export function registerIpcHandlers(): void {
   )
   ipcMain.handle(
     IPC.accounts.bulkAssign,
-    (_e, column: 'proxy' | 'user_agent' | 'target_url', assignments: { id: number; value: string }[]) =>
+    (_e, column: 'proxy' | 'user_agent' | 'target_url' | 'notes', assignments: { id: number; value: string }[]) =>
       accounts.bulkAssignField(column, assignments)
   )
   ipcMain.handle(

@@ -1974,7 +1974,17 @@ const NON_NAME_HINTS = [
   'មិនទាន់មានឈ្មោះ',
   'មិនទាន់ទាញឈ្មោះ',
   'unnamed',
-  'unknown'
+  'unknown',
+  'continue',
+  'see more',
+  "what's on your mind",
+  'whats on your mind',
+  'messenger',
+  'reels',
+  'stories',
+  'search',
+  'create',
+  "you're in sleep"
 ]
 
 function looksLikeRealName(s: string | null | undefined): s is string {
@@ -1985,6 +1995,32 @@ function looksLikeRealName(s: string | null | undefined): s is string {
   if (!/[A-Za-z\u1780-\u17FF\u00C0-\u024F]/.test(name)) return false
   const lower = name.toLowerCase()
   return !NON_NAME_HINTS.some((h) => lower.includes(h))
+}
+
+/** Parse 1.2K / 3.4M / 1,234 / 1 234 into an integer. */
+function parseCompactCount(raw: string | null | undefined): number | undefined {
+  if (!raw) return undefined
+  const compact = raw.replace(/,/g, '').replace(/\s+/g, '').trim()
+  const m = compact.match(/^(\d+(?:\.\d+)?)([KMB])?$/i)
+  if (m) {
+    const n = parseFloat(m[1])
+    if (!Number.isFinite(n)) return undefined
+    const mul: Record<string, number> = { K: 1e3, M: 1e6, B: 1e9 }
+    const factor = m[2] ? mul[m[2].toUpperCase()] ?? 1 : 1
+    return Math.round(n * factor)
+  }
+  const digits = raw.replace(/[^\d]/g, '')
+  if (!digits) return undefined
+  const n = parseInt(digits, 10)
+  return Number.isFinite(n) ? n : undefined
+}
+
+function facebookOrigin(page: Page): string {
+  if (getAppSettings().viewMode === 'app' || /m\.facebook\.com/i.test(page.url())) {
+    return 'https://m.facebook.com'
+  }
+  if (/web\.facebook\.com/i.test(page.url())) return 'https://web.facebook.com'
+  return 'https://www.facebook.com'
 }
 
 /**
@@ -2127,9 +2163,12 @@ export async function extractProfileName(page: Page, uid?: string | null): Promi
   await dismissFacebookAppPromotion(page)
   await waitForAuthenticatedFeedShell(page, 5000)
 
-  const accept = (raw: string | null | undefined): string | undefined => {
+  const tag = `[Extract][${uid || 'unknown'}]`
+  const accept = (raw: string | null | undefined, source: string): string | undefined => {
     const v = raw?.replace(/\s+/g, ' ').trim()
-    return looksLikeRealName(v) ? v : undefined
+    if (!looksLikeRealName(v)) return undefined
+    console.log(`${tag} Name source=${source} value=${JSON.stringify(v)}`)
+    return v
   }
 
   // 1. From composer greeting on the home feed
@@ -2144,7 +2183,7 @@ export async function extractProfileName(page: Page, uid?: string | null): Promi
       const m = composerText.match(
         /(?:What's on your mind|Bạn đang nghĩ gì|តើអ្នកកំពុងគិតអ្វី)[,\s]+([^?]+)\?/i
       )
-      const fromComposer = accept(m?.[1])
+      const fromComposer = accept(m?.[1], 'composer')
       if (fromComposer) return fromComposer
     }
   } catch {
@@ -2154,10 +2193,11 @@ export async function extractProfileName(page: Page, uid?: string | null): Promi
   // 2. From UID-scoped profile link (web + m.facebook.com)
   if (uid) {
     const ownProfileLink = page.locator(`a[href*="profile.php?id=${uid}"]`).first()
-    const fromUid = accept(await ownProfileLink.textContent({ timeout: 1500 }).catch(() => null))
+    const fromUid = accept(await ownProfileLink.textContent({ timeout: 1500 }).catch(() => null), 'profile-link')
     if (fromUid) return fromUid
     const fromUidAria = accept(
-      await ownProfileLink.getAttribute('aria-label', { timeout: 800 }).catch(() => null)
+      await ownProfileLink.getAttribute('aria-label', { timeout: 800 }).catch(() => null),
+      'profile-link-aria'
     )
     if (fromUidAria) return fromUidAria
   }
@@ -2183,7 +2223,7 @@ export async function extractProfileName(page: Page, uid?: string | null): Promi
       return texts
     }, uid ?? null)
     for (const t of fromMobile) {
-      const ok = accept(t)
+      const ok = accept(t, 'mobile-me')
       if (ok) return ok
     }
   } catch {
@@ -2197,8 +2237,20 @@ export async function extractProfileName(page: Page, uid?: string | null): Promi
       .getAttribute('aria-label', { timeout: 800 })
       .catch(() => null)
       .then((v) => v ?? loc.textContent({ timeout: 800 }).catch(() => null))
-    const ok = accept(raw)
+    const ok = accept(raw, `selector:${sel}`)
     if (ok) return ok
+  }
+
+  // 5. Menu / profile identity (desktop "Your profile" is excluded; App View menu)
+  try {
+    const menu = page.locator('[aria-label="Facebook Menu"], [aria-label="Menu"]').first()
+    if (await menu.isVisible().catch(() => false)) {
+      const aria = accept(await menu.getAttribute('aria-label').catch(() => null), 'profile-menu')
+      // aria is usually "Facebook Menu", not a name — skip unless it passed
+      if (aria && aria.toLowerCase() !== 'facebook menu' && aria.toLowerCase() !== 'menu') return aria
+    }
+  } catch {
+    /* ignore */
   }
   return undefined
 }
@@ -2293,10 +2345,13 @@ export async function extractFriendsAndFollowers(
   try {
     checkAborted(signal)
     await dismissFacebookDialogs(page)
-    const base = page.url().includes('web.facebook.com') ? 'https://web.facebook.com' : 'https://www.facebook.com'
-    const targetUrl = myUserId
-      ? `${base}/profile.php?id=${myUserId}&sk=friends`
-      : `${base}/me?sk=friends`
+    const base = facebookOrigin(page)
+    const targetUrl =
+      base.includes('m.facebook.com') && myUserId
+        ? `${base}/${myUserId}/friends`
+        : myUserId
+          ? `${base}/profile.php?id=${myUserId}&sk=friends`
+          : `${base}/me?sk=friends`
     await raceAbort(
       page
         .goto(targetUrl, {
@@ -2323,12 +2378,19 @@ export async function extractFriendsAndFollowers(
         page.evaluate((myId: string) => {
           const main = document.querySelector('div[role="main"]') || document.body
           const pageText = ((main as HTMLElement).innerText || '').replace(/\u00a0/g, ' ')
-          const followerMatch = pageText.match(/(\d[\d,.]*\s*(?:followers?|អ្នកតាមដាន))/i)
-          const followingMatch = pageText.match(/(\d[\d,.]*\s*(?:following|កំពុងតាមដាន))/i)
+          const labeled = (re: RegExp): string | undefined => {
+            const m = pageText.match(re)
+            return m?.[1]?.trim()
+          }
           const friendMatch =
-            pageText.match(/Friends\s*·?\s*(\d[\d,.]*)/i) ||
-            pageText.match(/(\d[\d,.]*)\s*(?:friends?|មិត្តភក្តិ)/i) ||
-            pageText.match(/(?:friends?|មិត្តភក្តិ)\s*·?\s*(\d[\d,.]*)/i)
+            labeled(/(?:Friends|មិត្តភក្តិ)\s*·?\s*([\d,.]+(?:\s*[KMB])?)/i) ||
+            labeled(/([\d,.]+(?:\s*[KMB])?)\s*(?:friends?|មិត្តភក្តិ)/i)
+          const followerMatch =
+            labeled(/([\d,.]+(?:\s*[KMB])?)\s*(?:followers?|អ្នកតាមដាន)/i) ||
+            labeled(/(?:Followers|អ្នកតាមដាន)\s*·?\s*([\d,.]+(?:\s*[KMB])?)/i)
+          const followingMatch =
+            labeled(/([\d,.]+(?:\s*[KMB])?)\s*(?:following|កំពុងតាមដាន)/i) ||
+            labeled(/(?:Following|កំពុងតាមដាន)\s*·?\s*([\d,.]+(?:\s*[KMB])?)/i)
           const NON_NAMES = [
             'Friends', 'Find Friends', 'Friend requests', 'Recently Added', 'Followers',
             'Following', 'More', 'All', 'About', 'Reels', 'Photos', 'Check-ins', 'Edit', 'Dashboard'
@@ -2351,16 +2413,22 @@ export async function extractFriendsAndFollowers(
           }
           const parseNum = (s: string | undefined): number | undefined => {
             if (!s) return undefined
-            const m = s.match(/\d[\d,.]*/)
-            if (!m) return undefined
-            const n = parseInt(m[0].replace(/[,.]/g, ''), 10)
+            const compact = s.replace(/,/g, '').replace(/\s+/g, '').trim()
+            const km = compact.match(/^(\d+(?:\.\d+)?)([KMB])?$/i)
+            if (km) {
+              const n = parseFloat(km[1])
+              const mul: Record<string, number> = { K: 1e3, M: 1e6, B: 1e9 }
+              const factor = km[2] ? mul[km[2].toUpperCase()] ?? 1 : 1
+              return Number.isFinite(n) ? Math.round(n * factor) : undefined
+            }
+            const n = parseInt(s.replace(/[^\d]/g, ''), 10)
             return Number.isFinite(n) ? n : undefined
           }
           return {
-            friendsCount: parseNum(friendMatch?.[1]) ?? (friendList.length > 0 ? friendList.length : undefined),
+            friendsCount: parseNum(friendMatch) ?? (friendList.length > 0 ? friendList.length : undefined),
             friendsList: friendList.length ? friendList : undefined,
-            followers: followerMatch ? followerMatch[1].trim() : undefined,
-            following: followingMatch ? followingMatch[1].trim() : undefined
+            followers: followerMatch ? String(parseNum(followerMatch) ?? followerMatch) : undefined,
+            following: followingMatch ? String(parseNum(followingMatch) ?? followingMatch) : undefined
           }
         }, myUserId ?? ''),
         new Promise<any>((resolve) => setTimeout(() => resolve({}), 4000))
@@ -2383,29 +2451,13 @@ export async function extractCreatedDateFromActivityLog(
 ): Promise<string | undefined> {
   try {
     checkAborted(signal)
-    // Quick check on current page first before navigating
-    const quickDate = await raceAbort(
-      Promise.race([
-        page.evaluate(() => {
-          const bodyText = document.body.innerText || ''
-          const m = bodyText.match(/(?:Joined|បានចូលរួម)\s*([A-Za-z]+\s+\d{4}|\d{1,2}\s+[A-Za-z]+\s+\d{4})/i)
-          return m ? m[1] : null
-        }),
-        new Promise<string | null>((resolve) => setTimeout(() => resolve(null), 1000))
-      ]),
-      signal
-    ).catch(() => null)
-    if (quickDate) return quickDate
-
     await dismissFacebookDialogs(page)
-    const base = page.url().includes('web.facebook.com') ? 'https://web.facebook.com' : 'https://www.facebook.com'
+    const base = facebookOrigin(page)
+    const aboutUrl = base.includes('m.facebook.com')
+      ? `${base}/me?v=info`
+      : `${base}/me/about`
     await raceAbort(
-      page
-        .goto(`${base}/me/allactivity`, {
-          waitUntil: 'domcontentloaded',
-          timeout: 6000
-        })
-        .catch(() => null),
+      page.goto(aboutUrl, { waitUntil: 'domcontentloaded', timeout: 8000 }).catch(() => null),
       signal
     )
     await raceAbort(
@@ -2417,16 +2469,13 @@ export async function extractCreatedDateFromActivityLog(
       Promise.race([
         page.evaluate(() => {
           const main = document.querySelector('div[role="main"]') || document.body
-          const lines = (main as HTMLElement).innerText.split('\n').map((l) => l.trim()).filter(Boolean)
-          const dateRegex =
-            /^(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}$/i
-          const dates = lines.filter((l) => dateRegex.test(l))
-          if (dates.length > 0) return dates[dates.length - 1]
-          const joinedMatch =
-            (main as HTMLElement).innerText.match(/Joined\s+([A-Za-z]+\s+\d{4})/i) ||
-            document.body.innerText.match(/(?:Joined|បានចូលរួម)\s*([A-Za-z0-9\s,]+)/i)
-          if (joinedMatch) return joinedMatch[1]
-          return null
+          const text = ((main as HTMLElement).innerText || '').replace(/\u00a0/g, ' ')
+          const joined =
+            text.match(/(?:Joined Facebook|Joined|បានចូលរួម|Created)\s*[:\-]?\s*([A-Za-z]+\s+\d{1,2},?\s+\d{4}|[A-Za-z]+\s+\d{4}|\d{1,2}\s+[A-Za-z]+\s+\d{4})/i)
+          const value = joined?.[1]?.trim()
+          if (!value) return null
+          if (/see more|about|activity|log in|facebook/i.test(value)) return null
+          return value
         }),
         new Promise<string | null>((resolve) => setTimeout(() => resolve(null), 4000))
       ]),
@@ -2449,14 +2498,12 @@ export async function extractPrimaryLocation(
   try {
     checkAborted(signal)
     await dismissFacebookDialogs(page)
-    const base = page.url().includes('web.facebook.com') ? 'https://web.facebook.com' : 'https://www.facebook.com'
+    const base = facebookOrigin(page)
+    const aboutUrl = base.includes('m.facebook.com')
+      ? `${base}/me?v=info`
+      : `${base}/primary_location/info`
     await raceAbort(
-      page
-        .goto(`${base}/primary_location/info`, {
-          waitUntil: 'domcontentloaded',
-          timeout: 6000
-        })
-        .catch(() => null),
+      page.goto(aboutUrl, { waitUntil: 'domcontentloaded', timeout: 8000 }).catch(() => null),
       signal
     )
     await raceAbort(
@@ -2467,13 +2514,19 @@ export async function extractPrimaryLocation(
     const location = await raceAbort(
       Promise.race([
         page.evaluate(() => {
-          const bodyText = (document.body.innerText || '').replace(/\u00a0/g, ' ')
+          const main = document.querySelector('div[role="main"]') || document.body
+          const bodyText = ((main as HTMLElement).innerText || document.body.innerText || '').replace(/\u00a0/g, ' ')
           const match =
             bodyText.match(/Your primary location is near:\s*([^\n\r]+)/i) ||
             bodyText.match(/Your primary location:\s*([^\n\r]+)/i) ||
+            bodyText.match(/(?:Lives in|From)\s+([^\n\r]+)/i) ||
             bodyText.match(/ទីតាំងចម្បងរបស់អ្នកគឺនៅជិត:\s*([^\n\r]+)/i) ||
             bodyText.match(/ទីតាំងចម្បង:\s*([^\n\r]+)/i)
-          return match ? match[1].trim().replace(/\s+/g, ' ') : null
+          const value = match ? match[1].trim().replace(/\s+/g, ' ') : null
+          if (!value) return null
+          if (/see more|about|activity|settings|facebook|not now/i.test(value)) return null
+          if (value.length < 2 || value.length > 80) return null
+          return value
         }),
         new Promise<string | null>((resolve) => setTimeout(() => resolve(null), 4000))
       ]),
@@ -2563,7 +2616,7 @@ export async function extractGroupsCount(page: Page, signal?: AbortSignal): Prom
   try {
     checkAborted(signal)
     await dismissFacebookDialogs(page)
-    const base = page.url().includes('web.facebook.com') ? 'https://web.facebook.com' : 'https://www.facebook.com'
+    const base = facebookOrigin(page)
     await raceAbort(
       page
         .goto(`${base}/groups/joins/?nav_source=tab`, {
@@ -2631,10 +2684,13 @@ export async function extractPagesCount(page: Page, signal?: AbortSignal): Promi
   try {
     checkAborted(signal)
     await dismissFacebookDialogs(page)
-    const base = page.url().includes('web.facebook.com') ? 'https://web.facebook.com' : 'https://www.facebook.com'
+    const base = facebookOrigin(page)
     await raceAbort(
       page
-        .goto(`${base}/pages/?category=your_pages`, {
+        .goto(
+          base.includes('m.facebook.com')
+            ? `${base}/pages/`
+            : `${base}/pages/?category=your_pages`, {
           waitUntil: 'domcontentloaded',
           timeout: 6000
         })
@@ -2663,7 +2719,7 @@ export async function extractPagesCount(page: Page, signal?: AbortSignal): Promi
             const href = a.href || ''
             return (
               aText &&
-              !/^(Pages|Create Page|Meta Business Suite|Discover|Followed Pages|Invites|Promote|Notifications|Messages|\d+\s*(Notifications|Messages)|Create post)$/i.test(
+              !/^(Pages|Create Page|Meta Business Suite|Discover|Followed Pages|Invites|Promote|Notifications|Messages|\d+\s*(Notifications|Messages)|Create post|Settings|Professional dashboard|Switch profile|See all)$/i.test(
                 aText
               ) &&
               !href.includes('/inbox/') &&
@@ -2778,6 +2834,9 @@ export async function extractAllMetadata(
     result.followers = ff.followers
     result.following = ff.following
     result.friendsList = ff.friendsList
+    console.log(
+      `[Extract][${resolvedUid || 'unknown'}] Friends=${ff.friendsCount ?? ''} Followers=${ff.followers ?? ''} Following=${ff.following ?? ''}`
+    )
     await onStepUpdate?.({
       ...(ff.friendsCount != null ? { friends_count: ff.friendsCount } : {}),
       ...(ff.followers ? { followers: ff.followers } : {}),
